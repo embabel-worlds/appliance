@@ -204,8 +204,8 @@ in particular are counted but never sent.
 on trust — ask your own instance:
 
 ```bash
-curl -u alice http://localhost:4242/api/v1/phone-home           # exactly what was last sent
-curl -u alice http://localhost:4242/api/v1/phone-home/preview   # what would be sent now
+curl -u <you> http://localhost:4242/api/v1/phone-home           # exactly what was last sent
+curl -u <you> http://localhost:4242/api/v1/phone-home/preview   # what would be sent now
 ```
 
 The `json` field is the literal request body, so it matches a packet capture byte for byte.
