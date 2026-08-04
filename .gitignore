@@ -1,0 +1,2 @@
+# Your configuration — holds API keys. Never commit it.
+.env
