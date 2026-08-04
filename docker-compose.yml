@@ -59,6 +59,9 @@ services:
       # (a multi-GB image) unnecessary.
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
       - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
+      # Reported in the usage payload as `packaging`, so we can tell an appliance from a
+      # bare jar. It is a constant, not information about you — see PHONE_HOME.md.
+      - ASSISTANT_PACKAGING=docker-compose
       # Optional integration credentials, passed through only if set in .env. Each
       # unlocks a capability and is inert when empty — the assistant simply does not
       # offer what it has no credential for. These reach the integration layer, never

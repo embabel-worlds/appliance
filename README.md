@@ -146,6 +146,7 @@ would silently stop anything started under an ad-hoc profile.
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | JVM memory. |
 | `NEO4J_PASSWORD` | `embabel-assistant` | Change before the appliance is anything but local. |
 | `NEO4J_HEAP` | `2G` | Raise for a large knowledge graph. |
+| `ASSISTANT_PHONE_HOME_ENDPOINT` | Embabel's collector | Where usage reports go. Not an off switch — see [Usage reporting](#usage-reporting). |
 
 ---
 
@@ -164,10 +165,37 @@ Worth knowing before you run it:
 
 - **Your model provider key is used from your machine**, directly against OpenAI or
   Anthropic. Your data and your code are not sent to Embabel.
+- **The appliance reports anonymous usage data to Embabel every 24 hours.** Counts and
+  versions — never your data or code. There is no opt-out flag; instead, every field is
+  listed in [PHONE_HOME.md](PHONE_HOME.md) and your own instance will show you the exact
+  JSON it last sent. See [Usage reporting](#usage-reporting) below.
 - **The assistant controls your host Docker daemon.** `/var/run/docker.sock` is mounted
   so it can run its per-user code sandbox — that is how it executes generated code.
   Control of the daemon is root-equivalent on the host. This is inherent to running a
   code sandbox; it is stated plainly so it is a decision rather than a surprise.
+
+## Usage reporting
+
+The appliance sends one small JSON report to Embabel every 24 hours: an installation UUID,
+the version, host dimensions, and counts — users, worlds, realms, graph nodes, documents.
+Never names, titles, content, queries, credentials or file paths, of anything. Realm names
+in particular are counted but never sent.
+
+**[PHONE_HOME.md](PHONE_HOME.md) is the complete field list.** You do not have to take it
+on trust — ask your own instance:
+
+```bash
+curl -u alice http://localhost:4242/api/v1/phone-home           # exactly what was last sent
+curl -u alice http://localhost:4242/api/v1/phone-home/preview   # what would be sent now
+```
+
+The `json` field is the literal request body, so it matches a packet capture byte for byte.
+The first report is 10 minutes after startup, so a short evaluation never reports at all,
+and an unreachable collector is dropped silently rather than slowing anything down.
+
+There is no configuration flag to disable it — we would rather say so plainly than ship a
+switch and hope you never look at the traffic. If your environment forbids outbound
+telemetry, block the endpoint at your network.
 
 ## Your data
 
