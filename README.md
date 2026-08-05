@@ -93,6 +93,30 @@ setup); a key set here is picked up at boot exactly the same way.
 Set both if you have both — model choice is per-action, so different parts of the product
 route to different providers.
 
+## Local embeddings — Docker Model Runner
+
+Chat needs a provider key; **embeddings do not**. The compose file declares a local
+embedding model (`ai/qwen3-embedding`, ~640MB, pulled like any image) that Docker Model
+Runner serves as a host-side process — on Apple silicon that means Metal GPU
+acceleration, and on every platform it means memory and document search cost no API
+tokens and work offline.
+
+This makes Docker Model Runner a requirement of the appliance:
+
+- **Docker Desktop 4.40+** — enable it with `docker desktop enable model-runner`
+  (or Settings → AI → *Enable Docker Model Runner*).
+- **Docker Engine on Linux** — install the `docker-model-plugin` package from
+  Docker's repository.
+
+`docker compose up` fails fast with a clear message if the Model Runner is missing.
+If you cannot run it, set `ASSISTANT_EMBEDDING_MODEL=text-embedding-3-small` in `.env`
+to embed via OpenAI instead, and remove the `models:` element from the compose file.
+
+**Switching embedding models on an existing install is a migration.** Stored vectors
+were produced by the previous model and the Neo4j vector indexes are dimension-bound,
+so after changing `ASSISTANT_EMBEDDING_MODEL` run the re-embed from *Settings →
+Embedding model*. Until then, search results will be inconsistent.
+
 ## MCP access
 
 The assistant is an MCP server, so Claude Code, Claude Desktop, Open WebUI and any other

@@ -51,6 +51,14 @@ services:
       # model provider. See .env.example.
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Embeddings are LOCAL by default: the `models:` element at the bottom of this
+      # file has Docker Model Runner serve ai/qwen3-embedding on the host (Metal/CUDA
+      # accelerated where available), so memory and RAG need no provider key and no
+      # per-token spend. Spring reads this as embabel.models.default-embedding-model.
+      # Set ASSISTANT_EMBEDDING_MODEL=text-embedding-3-small in .env to use OpenAI
+      # instead — but on an EXISTING install any change of embedding model means a
+      # re-embed (Settings → Embedding model): vector indexes are dimension-bound.
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-ai/qwen3-embedding}
       # Bearer token for the MCP endpoints (/mcp, /sse) and the user it acts as.
       # Open WebUI below authenticates with exactly this token.
       - ASSISTANT_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
@@ -87,6 +95,16 @@ services:
       # same mapping from the app, but the app itself needs it to compose the
       # gateway URL it hands them.
       - "host.docker.internal:host-gateway"
+    models:
+      # Binds the local embedding model (top-level `models:` below) to this service.
+      # Compose injects the platform-correct Model Runner URL into the named variable
+      # — Docker Desktop: http://model-runner.docker.internal/v1/ — which Spring
+      # reads as embabel.agent.models.docker.base-url; Embabel then discovers every
+      # model the runner serves. Injected vars OVERRIDE `environment:` entries, which
+      # is why the model NAME above is a plain env line (operators must be able to
+      # override it from .env) and only the URL is injected here.
+      embedder:
+        endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
 
   # ── Knowledge graph ─────────────────────────────────────────────────────────
   neo4j:
@@ -246,6 +264,27 @@ configs:
             - targets: ["assistant:${ASSISTANT_PORT:-4242}"]
               labels:
                 application: embabel-assistant
+
+# ── Local embedding model ─────────────────────────────────────────────────────
+# Pulled like an image (an OCI artifact from Docker Hub, ~640MB) and served by
+# Docker Model Runner as a HOST-side process — on Apple silicon that means real
+# Metal GPU access, which a container in the VM can never have. This is why it is
+# a `models:` element and not a service.
+#
+# REQUIRES Docker Model Runner: Docker Desktop 4.40+ with it enabled
+# (`docker desktop enable model-runner`, or Settings → AI), or on Linux Docker
+# Engine the `docker-model-plugin` package. `docker compose up` fails fast and
+# clearly without it. Compose v2.38+ for this element (v5.x current).
+#
+# The model choice is STICKY: vectors already in Neo4j were made by it, and
+# swapping models (ASSISTANT_EMBEDDING_MODEL) forces a re-embed of every chunk
+# and entity — an explicit action in Settings, not something a restart does.
+models:
+  embedder:
+    # Qwen3-Embedding 0.6B — current best sub-1GB open embedding model (MTEB),
+    # multilingual, 1024-dim. The assistant provisions its vector indexes from
+    # the model's reported dimensions, so nothing else states "1024" anywhere.
+    model: ai/qwen3-embedding
 
 volumes:
   embabel_assistant_data:
