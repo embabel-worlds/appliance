@@ -1,2 +1,9 @@
 # Your configuration — holds API keys. Never commit it.
 .env
+
+# Editor and OS noise. An operator clones this repo and runs it; anything their
+# tooling drops here is theirs, not ours.
+.idea/
+*.iml
+.vscode/
+.DS_Store
