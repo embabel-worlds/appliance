@@ -43,7 +43,7 @@ echo $GITHUB_PAT | docker login ghcr.io -u <your-github-username> --password-std
 
 ## Ports — the 42 block
 
-`4242` is the one to remember; the rest are +1/+2.
+`4242` is the one to remember; the rest count up from it.
 
 | Service | Port | What it is |
 |---|---|---|
@@ -51,6 +51,8 @@ echo $GITHUB_PAT | docker login ghcr.io -u <your-github-username> --password-std
 | neo4j | 4243 / 4244 | the knowledge graph — browser and Bolt |
 | docling | — | PDF/DOCX/PPTX/XLSX → structured markdown, internal only |
 | open-webui | 4245 | optional alternative chat front-end, off by default |
+| grafana | 4246 | dashboards over the assistant's metrics — on by default |
+| prometheus | 4247 | scrapes and stores those metrics, 15 days by default |
 
 Everything binds to `127.0.0.1` — reachable from your machine, not from the network.
 This leaves `8042` free, so a development checkout and an appliance can run side by side.
@@ -131,20 +133,44 @@ world's `data/secrets.env`. Use `.env` for things the whole server needs.
 | `NEO4J_BROWSER_PORT` | `4243` |
 | `NEO4J_BOLT_PORT` | `4244` |
 | `OPEN_WEBUI_PORT` | `4245` |
+| `GRAFANA_PORT` | `4246` |
+| `PROMETHEUS_PORT` | `4247` |
 
 All bind to `127.0.0.1`. Read [Who can log in](#who-can-log-in) before changing that.
 
 ## Optional services
 
+`COMPOSE_PROFILES` is one comma-separated list and it is the whole truth — compose
+reconciles the project to exactly those profiles on every `up`. `.env.example` ships it
+as `metrics`; adding Open WebUI means `COMPOSE_PROFILES=metrics,openwebui`, and dropping
+`metrics` from the list is how you turn the dashboards off.
+
+| Profile | What it starts |
+|---|---|
+| `metrics` | Grafana on 4246 and Prometheus on 4247. **On by default.** |
+| `openwebui` | Open WebUI on 4245 with the assistant pre-wired as an MCP tool server. Create an account on first visit; the first account is the admin. |
+
 | Variable | Notes |
 |---|---|
-| `COMPOSE_PROFILES` | `openwebui` starts Open WebUI on 4245 with the assistant pre-wired as an MCP tool server. Create an account on first visit; the first account is the admin. |
 | `OPEN_WEBUI_SECRET_KEY` | Stable key so Open WebUI's encrypted credentials survive a container recreate. Any random string. |
 | `OPEN_WEBUI_DEFAULT_MODEL` | Default chat model in Open WebUI (default `gpt-4.1`). |
+| `PROMETHEUS_RETENTION` | How long samples are kept (default `15d`). Costs disk in the Prometheus volume. |
 
-Set the profile **in `.env`**, not as an ad-hoc `--profile` flag. Compose reconciles the
+Set profiles **in `.env`**, not as an ad-hoc `--profile` flag. Compose reconciles the
 project to the active profile set on every `up`, so a later plain `docker compose up -d`
 would silently stop anything started under an ad-hoc profile.
+
+### Metrics
+
+Open <http://localhost:4246>. It lands on **Surface Health**; six more dashboards — LLM,
+MCP Surface, HTTP & JVM, Graph & Tenancy, Code Mode & Sandbox, Virtual Cypher — are in
+the dashboard list. There is no login: like every other port here it binds to
+`127.0.0.1`, so anyone who can reach 4246 is an admin.
+
+The dashboards ship inside the Grafana image and move with `EMBABEL_VERSION`, so they
+always match the metrics the running assistant emits. That means they are read-only —
+panel edits in the UI won't persist across a restart. Prometheus scrapes
+`/actuator/prometheus` on the assistant every 10 seconds over the compose network.
 
 ## Tuning and infrastructure
 
@@ -219,7 +245,7 @@ environment forbids outbound telemetry, block the endpoint at your network.
 
 ## Your data
 
-Two Docker volumes hold everything:
+Two Docker volumes hold everything that matters:
 
 | Volume | Contents |
 |---|---|
@@ -232,6 +258,11 @@ Two Docker volumes hold everything:
 docker run --rm -v embabel-appliance_embabel_assistant_data:/data \
   -v "$PWD:/backup" alpine tar czf /backup/embabel-data.tgz -C /data .
 ```
+
+Three more volumes hold state you can throw away — `embabel_appliance_open_webui_data`,
+`embabel_appliance_prometheus_data` (metric history) and `embabel_appliance_grafana_data`
+(Grafana's own database; the dashboards live in the image, not here). Losing them costs
+you chat history in Open WebUI and past metrics, nothing you authored.
 
 ## Upgrading
 
@@ -257,6 +288,8 @@ move between versions.
 | `assistant` restarts during boot | Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
 | An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
+| Nothing on 4246 | `metrics` isn't in `COMPOSE_PROFILES` in `.env` — that variable is the whole list, so setting it to just `openwebui` turns the dashboards off |
+| Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:4247/api/v1/targets` — the `embabel-assistant` target should be `up` |
 | Port already in use | Change the port variables in `.env` |
 
 When reporting a problem, `docker compose logs assistant > assistant.log` captures what's

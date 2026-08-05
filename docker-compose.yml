@@ -90,7 +90,7 @@ services:
 
   # ── Knowledge graph ─────────────────────────────────────────────────────────
   neo4j:
-    image: neo4j:2026.04-community
+    image: neo4j:2026.06-community
     container_name: embabel-appliance-neo4j
     restart: unless-stopped
     ports:
@@ -168,7 +168,90 @@ services:
     volumes:
       - embabel_appliance_open_webui_data:/app/backend/data
 
+  # ── Metrics ─────────────────────────────────────────────────────────────────
+  # Prometheus scrapes the assistant's /actuator/prometheus; Grafana renders it.
+  #
+  #   open http://localhost:4246        (no login, lands on Surface Health)
+  #
+  # ON by default. These carry a `metrics` profile only so you can turn them OFF
+  # without editing this file — drop `metrics` from COMPOSE_PROFILES in .env and
+  # they stop. That is also the reason .env.example ships COMPOSE_PROFILES set
+  # rather than commented out: with the variable absent the profile is inactive
+  # and the dashboard silently never comes up.
+  #
+  # Set profiles in `.env`, never as an ad-hoc `--profile` flag. Compose reconciles
+  # the project to the ACTIVE profile set on every `up`, so a later plain
+  # `docker compose up -d` stops anything an ad-hoc flag started.
+  prometheus:
+    profiles: ["metrics"]
+    image: prom/prometheus:v3.1.0
+    container_name: embabel-appliance-prometheus
+    restart: unless-stopped
+    depends_on:
+      - assistant
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-4247}:9090"
+    configs:
+      # Inline content, not a bind mount — see the pull-only note at the top of
+      # this file. There is no prometheus.yml on your disk to lose.
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - embabel_appliance_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
+
+  grafana:
+    profiles: ["metrics"]
+    # Stock Grafana with the Embabel dashboards baked in, because a pull-only
+    # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
+    # the dashboards match the metrics the app of that version actually emits.
+    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    container_name: embabel-appliance-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-4246}:3000"
+    environment:
+      # No login wall. Consistent with the rest of the appliance, this is safe only
+      # because the port binds to 127.0.0.1 — anyone who can reach 4246 is admin.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_USERS_DEFAULT_THEME=dark
+      # Land on Surface Health instead of an empty home. Path is the baked image
+      # layer, not /var/lib/grafana — the volume below would shadow that.
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/embabel-dashboards/embabel-overview.json
+      - GF_FEATURE_TOGGLES_ENABLE=newDashboardSharingComponent
+    volumes:
+      # Grafana's own state (annotations, starred dashboards, its sqlite db). The
+      # dashboards themselves are in the image, so this holds nothing you authored.
+      - embabel_appliance_grafana_data:/var/lib/grafana
+
+configs:
+  # The scrape target is the assistant ON THE COMPOSE NETWORK — service name and the
+  # in-container port, which SERVER_PORT keeps equal to the published one. A
+  # workstation checkout scrapes host.docker.internal instead, because there the app
+  # runs on the host; here it does not.
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 10s
+        evaluation_interval: 10s
+
+      scrape_configs:
+        - job_name: embabel-assistant
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: ["assistant:${ASSISTANT_PORT:-4242}"]
+              labels:
+                application: embabel-assistant
+
 volumes:
   embabel_assistant_data:
   embabel_appliance_neo4j_data:
   embabel_appliance_open_webui_data:
+  embabel_appliance_prometheus_data:
+  embabel_appliance_grafana_data:
