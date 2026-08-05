@@ -126,6 +126,13 @@ services:
       - "127.0.0.1:${NEO4J_BOLT_PORT:-4244}:7687"      # bolt, for cypher-shell
     environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-embabel-assistant}
+      # Advertise the HOST-published Bolt port. The browser on 4243 runs in the
+      # user's browser and connects over Bolt from the host, and it pre-fills its
+      # connect form from this value — without it the form offers the in-container
+      # default :7687, which nothing on the host listens on, and the login fails
+      # before credentials are even checked. The assistant is unaffected: it dials
+      # neo4j:7687 directly over the compose network.
+      - NEO4J_server_bolt_advertised__address=localhost:${NEO4J_BOLT_PORT:-4244}
       - NEO4J_PLUGINS=["apoc","graph-data-science"]
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*

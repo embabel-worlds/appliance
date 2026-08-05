@@ -57,6 +57,22 @@ echo $GITHUB_PAT | docker login ghcr.io -u <your-github-username> --password-std
 Everything binds to `127.0.0.1` — reachable from your machine, not from the network.
 This leaves `8042` free, so a development checkout and an appliance can run side by side.
 
+### Signing in to each
+
+| Service | How |
+|---|---|
+| assistant | the account you created during setup — see [Who can log in](#who-can-log-in) |
+| neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:4244` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is |
+| open-webui | create an account on first visit; the first account is the admin |
+| grafana | no login — anyone who can reach 4246 is admin, which is safe only because it binds to `127.0.0.1` |
+| prometheus | no login |
+
+For scripted graph queries, use the shell inside the container — nothing to install:
+
+```bash
+docker exec -it embabel-appliance-neo4j cypher-shell -u neo4j -p embabel-assistant
+```
+
 If you move the assistant off 4242, set `ASSISTANT_PORT` and nothing else: the container
 port moves with it deliberately. The code sandbox is handed a callback URL built from the
 server port, so a host port that differs from the container port would leave every
@@ -324,6 +340,7 @@ move between versions.
 | `setup.py` says it cannot find the token | The app is still starting. `docker compose logs assistant \| grep "Setup token"` |
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
+| Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:4244` (pre-filled; 7687 is not published to the host) |
 | Login page loads but chat never answers | No provider key took effect. The appliance restarts once at the end of setup for exactly this reason — check it came back with `docker compose ps` |
 | `docker compose up` fails on an image pull | Not authenticated to ghcr.io — see [Registry access](#registry-access) |
 | First code-execution turn hangs for minutes | The sandbox image is still downloading. `docker pull embabel/assistant-sandbox:latest` |
