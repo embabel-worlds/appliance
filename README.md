@@ -11,7 +11,7 @@ Your data and your code stay on your machine. The assistant talks to the model p
 ```bash
 git clone https://github.com/embabel/appliance.git && cd appliance
 docker compose up -d       # first boot pulls images; give it a few minutes
-./setup.py                 # create your account, connect a model provider
+./setup.py                 # account, model provider, and Claude Code wiring
 open http://localhost:4242
 ```
 
@@ -96,7 +96,8 @@ route to different providers.
 ## Local embeddings — Docker Model Runner
 
 Chat needs a provider key; **embeddings do not**. The compose file declares a local
-embedding model (`ai/qwen3-embedding`, ~640MB, pulled like any image) that Docker Model
+embedding model (`ai/qwen3-embedding:0.6B-F16`, ~1.2GB, pulled like any image — the tag
+is pinned because `latest` is a different, 4B model) that Docker Model
 Runner serves as a host-side process — on Apple silicon that means Metal GPU
 acceleration, and on every platform it means memory and document search cost no API
 tokens and work offline.
@@ -122,17 +123,28 @@ Embedding model*. Until then, search results will be inconsistent.
 The assistant is an MCP server, so Claude Code, Claude Desktop, Open WebUI and any other
 MCP-aware client can drive it.
 
+**You normally configure nothing here.** First-run setup's "Connect coding agents" step
+mints a bearer token bound to the account you create, stores it in the data volume, and —
+if the `claude` CLI is on your PATH — offers to run `claude mcp add` for you on the spot.
+
+The `.env` variables exist for scripted deployments that skip the wizard, or to supply a
+token before first boot:
+
 | Variable | Default | Notes |
 |---|---|---|
-| `EMBABEL_MCP_API_TOKEN` | empty | Bearer token for `/mcp` and `/sse`. **Empty means no client can connect** — the endpoints reject every bearer request. Generate one with `openssl rand -hex 32`. |
-| `EMBABEL_MCP_API_TOKEN_USER` | `alice` | Which user's world an MCP client acts as. It sees that user's data, tools and integrations. |
+| `EMBABEL_MCP_API_TOKEN` | empty | Pre-set bearer token for `/mcp` and `/sse` (`openssl rand -hex 32`). A setup-minted token **takes precedence** — adding a value here after setup has minted one has no effect. |
+| `EMBABEL_MCP_API_TOKEN_USER` | empty | Which user's world a pre-set token acts as. Both must be set together; there is no implicit default user. |
 
-Then point a client at `http://localhost:4242/mcp`:
+To wire a client manually (Claude Code shown; the URL + header work for any client):
 
 ```bash
-claude mcp add --transport http embabel http://localhost:4242/mcp \
+claude mcp add --transport http --scope user embabel http://localhost:4242/mcp \
   --header "Authorization: Bearer <your token>"
 ```
+
+A setup-minted token lives in the data volume at
+`/data/embabel/assistant/admin/providers.env` — read it from there to wire additional
+clients, or edit that file (and restart) to rotate it.
 
 ## Optional — integration credentials
 

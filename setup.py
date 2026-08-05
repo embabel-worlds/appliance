@@ -203,11 +203,51 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
                 shown = ", ".join(models[:6])
                 more = f" (+{len(models) - 6} more)" if len(models) > 6 else ""
                 print(f"  {len(models)} models available: {shown}{more}")
-            return
+            return result
         # A rejected answer is worth retrying in place — usually a typo'd key.
         print(f"\n  {result.get('detail', 'That did not work.')}\n  Let's try that step again.")
         if prefilled:
             print("  (that key came from your environment — you'll be asked for one now)")
+
+
+def wire_coding_agents(result: dict) -> None:
+    """Offer to point Claude Code at the appliance, using the token the mcp step just
+    minted. The token exists in this process exactly once — the server never returns
+    it again — so this is the moment to hand it to a client.
+
+    `claude mcp add` only writes config; the token itself goes live when setup
+    completes and the appliance restarts, and the closing message says so."""
+    token, url = result.get("token"), result.get("url")
+    if not token or not url:
+        return
+
+    print("\n── Wire up Claude Code " + "─" * 39)
+    claude = shutil.which("claude")
+    if claude:
+        answer = input("  Point Claude Code at this appliance now (user scope)? [Y/n]: ").strip().lower()
+        if answer in ("", "y", "yes"):
+            try:
+                run = subprocess.run(
+                    [claude, "mcp", "add", "--transport", "http", "--scope", "user",
+                     "embabel", url, "--header", f"Authorization: Bearer {token}"],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if run.returncode == 0:
+                    print("  Claude Code wired as 'embabel' — new sessions will see the appliance.")
+                    return
+                print(f"  claude mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
+            except (subprocess.SubprocessError, OSError) as e:
+                print(f"  Could not run claude: {e}")
+    else:
+        print("  Claude Code CLI not found on PATH.")
+
+    # Manual fallback — also what Codex/Cursor users copy from. Printing the token is
+    # deliberate: this is the operator's own machine and the only time it is available.
+    print("  Wire any MCP client manually:")
+    print(f"    URL:    {url}")
+    print(f"    Header: Authorization: Bearer {token}")
+    print("  (Claude Code: claude mcp add --transport http --scope user embabel "
+          f"{url} --header \"Authorization: Bearer <token>\")")
 
 
 def main() -> int:

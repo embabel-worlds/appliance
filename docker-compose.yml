@@ -58,11 +58,21 @@ services:
       # Set ASSISTANT_EMBEDDING_MODEL=text-embedding-3-small in .env to use OpenAI
       # instead — but on an EXISTING install any change of embedding model means a
       # re-embed (Settings → Embedding model): vector indexes are dimension-bound.
-      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-ai/qwen3-embedding}
-      # Bearer token for the MCP endpoints (/mcp, /sse) and the user it acts as.
-      # Open WebUI below authenticates with exactly this token.
-      - ASSISTANT_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
-      - ASSISTANT_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-alice}
+      #
+      # The registry-qualified form is REQUIRED: it must equal the id the Model
+      # Runner reports at /engines/v1/models — `docker.io/`-prefixed for current
+      # runner versions — because Embabel classifies and resolves the discovered
+      # model by exact name. The `models:` element below uses the shorter PULL
+      # name; the two refer to the same artifact.
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
+      # MCP bearer credentials. First-run setup normally mints these into the data
+      # volume (setup.py, the "Connect coding agents" step); the values below are the
+      # scripted-deploy fallback from .env. They are EMBABEL_* rather than the
+      # relaxed-binding ASSISTANT_* forms on purpose — an empty bound env var would
+      # shadow the setup-minted token (env beats config files for the same property);
+      # these names are only placeholder fallbacks read by application-appliance.yml.
+      - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
+      - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
       # `none` drops document conversion to raw Tika and makes the docling service
       # (a multi-GB image) unnecessary.
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
@@ -266,7 +276,7 @@ configs:
                 application: embabel-assistant
 
 # ── Local embedding model ─────────────────────────────────────────────────────
-# Pulled like an image (an OCI artifact from Docker Hub, ~640MB) and served by
+# Pulled like an image (an OCI artifact from Docker Hub, ~1.2GB) and served by
 # Docker Model Runner as a HOST-side process — on Apple silicon that means real
 # Metal GPU access, which a container in the VM can never have. This is why it is
 # a `models:` element and not a service.
@@ -281,10 +291,20 @@ configs:
 # and entity — an explicit action in Settings, not something a restart does.
 models:
   embedder:
-    # Qwen3-Embedding 0.6B — current best sub-1GB open embedding model (MTEB),
+    # Qwen3-Embedding 0.6B — the best small open embedding model going (MTEB),
     # multilingual, 1024-dim. The assistant provisions its vector indexes from
     # the model's reported dimensions, so nothing else states "1024" anywhere.
-    model: ai/qwen3-embedding
+    #
+    # The tag is DELIBERATELY exact, never `latest`: (a) on this repository
+    # `latest` is the 4B variant (2.5GB, 2560-dim) — a different model, not a
+    # newer build of this one; (b) embeddings are sticky (see above), so the
+    # model behind this name must never change out from under an install.
+    #
+    # This is the PULL name; the runner then serves it under the registry-
+    # qualified id docker.io/ai/qwen3-embedding:0.6B-F16, which is the form
+    # EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL above must use. Check with:
+    #   curl -s localhost:12434/engines/v1/models
+    model: ai/qwen3-embedding:0.6B-F16
 
 volumes:
   embabel_assistant_data:
