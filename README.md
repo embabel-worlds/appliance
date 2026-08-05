@@ -83,7 +83,10 @@ The assistant cannot answer without one of these.
 | `ANTHROPIC_API_KEY` | Used by the app builder for stronger code generation, and available to any action configured for it. |
 
 **You normally do not set these here** — `./setup.py` collects a key, validates it against
-the provider, and stores it inside the data volume. Use `.env` if you would rather supply a
+the provider, and stores it inside the data volume. If either variable is already exported
+in the shell you run it from, it uses that instead of asking; `./setup.py --ignore-env`
+always asks. Note that is your *shell's* environment, not `.env` — a key set only in `.env`
+reaches the appliance but is invisible to the script, so setup still asks for one. Use `.env` if you would rather supply a
 key up front (an air-gapped build, a scripted deployment, or to add a second provider after
 setup); a key set here is picked up at boot exactly the same way.
 
@@ -141,14 +144,17 @@ All bind to `127.0.0.1`. Read [Who can log in](#who-can-log-in) before changing 
 ## Optional services
 
 `COMPOSE_PROFILES` is one comma-separated list and it is the whole truth — compose
-reconciles the project to exactly those profiles on every `up`. `.env.example` ships it
-as `metrics`; adding Open WebUI means `COMPOSE_PROFILES=metrics,openwebui`, and dropping
-`metrics` from the list is how you turn the dashboards off.
+reconciles the project to exactly those profiles on every `up`.
 
 | Profile | What it starts |
 |---|---|
-| `metrics` | Grafana on 4246 and Prometheus on 4247. **On by default.** |
 | `openwebui` | Open WebUI on 4245 with the assistant pre-wired as an MCP tool server. Create an account on first visit; the first account is the admin. |
+
+Grafana and Prometheus are **not** profile-gated — they are ordinary services and start
+with everything else. A compose profile can only ever be *off* by default, since compose
+activates one only when `COMPOSE_PROFILES` names it, and this appliance is designed to run
+with no `.env` at all. To turn the dashboards off, delete those two services from
+`docker-compose.yml`.
 
 | Variable | Notes |
 |---|---|
@@ -288,7 +294,7 @@ move between versions.
 | `assistant` restarts during boot | Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
 | An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
-| Nothing on 4246 | `metrics` isn't in `COMPOSE_PROFILES` in `.env` — that variable is the whole list, so setting it to just `openwebui` turns the dashboards off |
+| Nothing on 4246 | `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
 | Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:4247/api/v1/targets` — the `embabel-assistant` target should be `up` |
 | Port already in use | Change the port variables in `.env` |
 

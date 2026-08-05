@@ -173,17 +173,16 @@ services:
   #
   #   open http://localhost:4246        (no login, lands on Surface Health)
   #
-  # ON by default. These carry a `metrics` profile only so you can turn them OFF
-  # without editing this file — drop `metrics` from COMPOSE_PROFILES in .env and
-  # they stop. That is also the reason .env.example ships COMPOSE_PROFILES set
-  # rather than commented out: with the variable absent the profile is inactive
-  # and the dashboard silently never comes up.
+  # NO PROFILE, deliberately. These once carried a `metrics` profile so they could be
+  # switched off from `.env`, but a compose profile cannot be active by default: it is
+  # only on when COMPOSE_PROFILES names it, and this appliance is designed to start with
+  # no `.env` at all (`./setup.py` collects everything). The result was documentation
+  # promising dashboards on by default and a fresh install silently having none.
   #
-  # Set profiles in `.env`, never as an ad-hoc `--profile` flag. Compose reconciles
-  # the project to the ACTIVE profile set on every `up`, so a later plain
-  # `docker compose up -d` stops anything an ad-hoc flag started.
+  # So they are ordinary services. To turn them off, delete these two services and their
+  # volumes below — the same way you would drop any other service. `--scale grafana=0
+  # --scale prometheus=0` works for one run, but the next plain `up -d` brings them back.
   prometheus:
-    profiles: ["metrics"]
     image: prom/prometheus:v3.1.0
     container_name: embabel-appliance-prometheus
     restart: unless-stopped
@@ -203,7 +202,6 @@ services:
       - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
 
   grafana:
-    profiles: ["metrics"]
     # Stock Grafana with the Embabel dashboards baked in, because a pull-only
     # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
     # the dashboards match the metrics the app of that version actually emits.

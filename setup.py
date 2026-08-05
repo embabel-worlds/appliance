@@ -6,6 +6,9 @@
 Walks you through creating your account and connecting a model provider. Nothing to
 install: standard library only.
 
+If OPENAI_API_KEY or ANTHROPIC_API_KEY is already exported in your shell, the provider
+step uses it instead of asking. `--ignore-env` always asks.
+
 This client is deliberately thin. It does not know what the steps ARE — it asks the
 appliance (`GET /api/v1/setup`) and renders whatever it describes, so when the appliance
 gains a step this client picks it up without changing. If you would rather drive the API
@@ -17,6 +20,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import re
 import subprocess
 import sys
@@ -26,6 +30,14 @@ import urllib.request
 DEFAULT_BASE = "http://localhost:4242"
 TOKEN_HEADER = "X-Embabel-Setup-Token"
 CONTAINER = "embabel-assistant"
+
+# Provider -> the variable that provider's key lives in, mirroring ProviderValidator's
+# PROVIDERS map on the server. If a provider is added there and not here, nothing breaks:
+# it is simply not offered from the environment, and gets asked for as before.
+PROVIDER_ENV = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
 
 
 class SetupError(Exception):
@@ -125,13 +137,58 @@ def ask(field: dict) -> str:
         print("  Required.")
 
 
-def run_step(base: str, token: str, step: dict) -> None:
+def from_environment(step: dict) -> dict:
+    """Answers this step can take from the shell rather than from the operator.
+
+    A developer who already has OPENAI_API_KEY exported should not be made to paste it
+    back in. This is the one place the client knows anything about a specific step — it
+    keys off the server's own field names (`provider`, `apiKey`) and does nothing at all
+    for a step that lacks them, so an unrelated step added server-side is unaffected.
+
+    Note this reads the environment of the shell running THIS script, which is not the
+    container's. A key set only in `.env` reaches the appliance but not here, and is still
+    asked for; that is a server-side question about when the provider step counts as
+    satisfied, not something a client can see.
+    """
+    names = {field["name"] for field in step["fields"]}
+    if not {"provider", "apiKey"} <= names:
+        return {}
+
+    available = {
+        provider: os.environ[var]
+        for provider, var in PROVIDER_ENV.items()
+        if os.environ.get(var, "").strip()
+    }
+    if not available:
+        return {}
+    if len(available) == 1:
+        provider = next(iter(available))
+    else:
+        # Both are set, and which one to connect first is a real choice — ask that much,
+        # then still skip the key.
+        print("\n  Found keys for both providers in your environment.")
+        provider = ask(next(f for f in step["fields"] if f["name"] == "provider"))
+        if provider not in available:
+            return {}
+    return {"provider": provider, "apiKey": available[provider]}
+
+
+def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> None:
     print(f"\n── {step['title']} " + "─" * max(0, 60 - len(step["title"])))
     if step.get("description"):
         print(f"   {step['description']}")
 
     while True:
-        answers = {field["name"]: ask(field) for field in step["fields"]}
+        # Only on the FIRST attempt. A retry means the server rejected these answers, and
+        # re-offering the same environment value would loop forever on a stale key.
+        prefilled = from_environment(step) if use_environment else {}
+        use_environment = False
+        if prefilled:
+            print(f"\n  Using {PROVIDER_ENV[prefilled['provider']]} from your environment.")
+        answers = {
+            field["name"]: prefilled.get(field["name"]) or ask(field)
+            for field in step["fields"]
+        }
         print("\n  Working…", end=" ", flush=True)
         try:
             result = call(base, f"/{step['id']}", token, answers)
@@ -149,12 +206,19 @@ def run_step(base: str, token: str, step: dict) -> None:
             return
         # A rejected answer is worth retrying in place — usually a typo'd key.
         print(f"\n  {result.get('detail', 'That did not work.')}\n  Let's try that step again.")
+        if prefilled:
+            print("  (that key came from your environment — you'll be asked for one now)")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Embabel Me appliance.")
     parser.add_argument("--url", default=DEFAULT_BASE, help=f"appliance base URL (default {DEFAULT_BASE})")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
+    parser.add_argument(
+        "--ignore-env",
+        action="store_true",
+        help=f"always ask, even if {' or '.join(PROVIDER_ENV.values())} is set",
+    )
     args = parser.parse_args()
 
     print("\n  Embabel Me — first-run setup")
@@ -168,7 +232,7 @@ def main() -> int:
         if not pending:
             print("  Everything is already configured.")
         for step in pending:
-            run_step(args.url, token, step)
+            run_step(args.url, token, step, use_environment=not args.ignore_env)
 
         print("\n  Finishing…", end=" ", flush=True)
         done = call(args.url, "/complete", token, {})
