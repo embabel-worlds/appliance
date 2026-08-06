@@ -49,13 +49,14 @@ services:
   # Large image. Set ASSISTANT_DOC_CONVERTER=none in .env and `--scale docling=0`
   # if you only ever ingest text.
   #
-  # MIRRORED to GHCR, and pinned. Upstream is quay.io, which was the third
-  # registry in a first run and the one users actually failed on ("TLS handshake
-  # timeout" mid-pull of a multi-GB image). Everything the appliance needs from
-  # us now comes from one registry we control. Upstream is MIT; the mirror is a
-  # byte-for-byte multi-arch copy, refreshed by .github/workflows/mirror-docling.yml.
+  # Upstream quay.io for now. A GHCR mirror is coming (quay.io was the third
+  # registry in a first run and the one users actually failed on, mid-pull of a
+  # multi-GB image) — see .github/workflows/mirror-docling.yml — but the compose
+  # file must never point at a tag before it exists: doing so turned a slow pull
+  # into "manifest unknown", which is worse. Switch the image line only after
+  # `docker manifest inspect ghcr.io/embabel/docling-serve:<tag>` succeeds.
   docling:
-    image: ghcr.io/embabel/docling-serve:${DOCLING_VERSION:-v1.29.0}
+    image: quay.io/docling-project/docling-serve:${DOCLING_VERSION:-v1.29.0}
     container_name: embabel-appliance-docling
     restart: unless-stopped
     environment:
