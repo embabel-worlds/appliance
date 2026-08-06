@@ -144,6 +144,14 @@ setup); a key set here is picked up at boot exactly the same way.
 Set both if you have both — model choice is per-action, so different parts of the product
 route to different providers.
 
+## Authorization fallback
+
+Both doors default `ORG_ROLE_FALLBACK` to `admin` when no external organization role
+provider is configured. This lets the setup-created operator use admin-gated local
+surfaces. The fallback applies to **every authenticated principal**, not only that operator.
+To opt out, set `ORG_ROLE_FALLBACK=user` in `.env`; every authenticated principal will then
+receive the user role unless an external organization role provider resolves roles instead.
+
 ## Local embeddings — Docker Model Runner
 
 Chat needs a provider key; **embeddings do not**. The compose file declares a local
