@@ -72,7 +72,7 @@ services:
       # The appliance has exactly one setup-created operator. Grant that account
       # access to admin-gated local surfaces such as saved KG views when no external
       # organization role provider is configured.
-      - ORG_ROLE_FALLBACK=admin
+      - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
       - BRAVE_API_KEY
       - GITHUB_TOKEN
       - TELEGRAM_BOT_TOKEN
