@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import http.client
 import json
 import os
 import re
@@ -37,6 +38,10 @@ TOKEN_HEADER = "X-Embabel-Setup-Token"
 # `./setup.py` works for whichever door is up — and keeps working if a name or
 # project prefix ever changes.
 DOOR_SERVICES = ("assistant", "worlds")
+# Door name (what a person types) -> compose file + service. `./worlds.py` and
+# `./setup.py worlds` ride these to make first run a single command.
+DOOR_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
+DOOR_SERVICE = {"me": "assistant", "worlds": "worlds"}
 TOKEN_PATTERN = re.compile(r"Setup token:\s*([0-9a-f]{32,})")
 # How long to keep watching a booting container for its token before asking.
 BOOT_WAIT_SECONDS = 120
@@ -93,6 +98,17 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
             f"Could not reach the appliance at {base} ({e.reason}).\n"
             "Is it running? Try: docker compose ps"
         )
+    except (http.client.HTTPException, ConnectionError, TimeoutError, OSError) as e:
+        # DURING BOOT, "up" is a spectrum: Docker's port proxy accepts the TCP
+        # connection before the app listens, then hangs up — RemoteDisconnected,
+        # reset, or a stalled read, none of which urllib wraps in URLError. All of
+        # them mean the same thing here: not reachable YET. The boot-wait loop in
+        # discover_token owns retrying; crashing out of it turned a normal first
+        # boot into a stack trace.
+        raise Unreachable(
+            f"Could not reach the appliance at {base} ({e.__class__.__name__}: {e}).\n"
+            "Is it running? Try: docker compose ps"
+        )
 
 
 def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None:
@@ -118,6 +134,29 @@ def find_door_container() -> str | None:
     return found[0] if found else None
 
 
+def door_service(container: str) -> str | None:
+    """Which door this container is — the compose service name from its label."""
+    run = _docker("inspect", "-f", '{{index .Config.Labels "com.docker.compose.service"}}', container)
+    return run.stdout.strip() if run is not None and run.returncode == 0 else None
+
+
+def print_worlds_surfaces(base: str) -> None:
+    """Worlds onboarding ends at the doors of the product, not at "done": every
+    surface a worlds operator reaches next, in one block. The API/MCP lines use the
+    door's real detected port; the rest are the compose defaults (.env moves them)."""
+    print("  \u2500\u2500 Your Worlds surfaces " + "\u2500" * 38)
+    print(f"  API            {base}")
+    print(f"  MCP endpoint   {base}/mcp")
+    print("                 Authorization: Bearer \u2014 the token this setup just minted,")
+    print("                 stored at /data/embabel/assistant/admin/providers.env")
+    print("  TUI            docker compose -f docker-compose-worlds.yml run --rm tui")
+    print("  Console (dev)  cd worlds-console/app && EMBABEL_USER=<you> EMBABEL_PASSWORD=\u2026 npm run dev")
+    print("                 \u2192 http://localhost:5173 \u2014 opens with the commissioning sequence")
+    print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
+    print("  Dashboards     http://localhost:4246   \u00b7   Metrics  http://localhost:4247")
+    print()
+
+
 def container_base_url(container: str) -> str | None:
     """The door's URL from its own SERVER_PORT. The compose files keep the host and
     container ports equal by design, so the container's port IS the published one."""
@@ -127,6 +166,53 @@ def container_base_url(container: str) -> str | None:
             if line.startswith("SERVER_PORT="):
                 return f"http://localhost:{line.split('=', 1)[1].strip()}"
     return None
+
+
+def _compose(door: str, *argv: str, capture: bool = False):
+    """docker compose against the door's file, from the appliance directory.
+    capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
+    cmd = ["docker", "compose", "-f", DOOR_COMPOSE[door], *argv]
+    try:
+        return subprocess.run(cmd, capture_output=capture, text=True)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+        raise SetupError(f"docker compose failed: {e}")
+
+
+def fresh_wipe() -> None:
+    """--fresh: delete the whole appliance state after saying exactly what dies.
+    Both door files merged, so every service and volume in the project goes,
+    whichever door was last up."""
+    print("  --fresh DELETES the appliance's entire state:")
+    print("    account and password, world, knowledge graph, documents, dashboards.")
+    print("  Images and the local embedding model survive; nothing else does.")
+    answer = input("  Type 'yes' to wipe: ").strip().lower()
+    if answer != "yes":
+        raise SetupError("Not wiped — nothing was touched.")
+    cmd = ["docker", "compose", "-f", DOOR_COMPOSE["me"], "-f", DOOR_COMPOSE["worlds"],
+           "down", "--volumes", "--remove-orphans"]
+    subprocess.run(cmd)
+    print()
+
+
+def ensure_door(door: str) -> bool:
+    """Bring the chosen door up if it is not already. True if WE started it —
+    the caller then follows the container log, because the first boot is a
+    designed experience (the operator console), not a thing to hide."""
+    running = find_door_container()
+    if running:
+        service = door_service(running)
+        if service == DOOR_SERVICE[door]:
+            return False
+        raise SetupError(
+            f"The other door is running ({running}). One door at a time — "
+            f"stop it first (docker compose down) or re-run with --fresh."
+        )
+    print(f"  Starting the {door} door — first run pulls images, give it a few minutes.\n")
+    run = _compose(door, "up", "-d")
+    if run.returncode != 0:
+        raise SetupError(f"docker compose up failed for the {door} door.")
+    print()
+    return True
 
 
 def token_from_logs(container: str) -> str | None:
@@ -347,6 +433,11 @@ def wire_coding_agents(result: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
+    parser.add_argument("door", nargs="?", choices=tuple(DOOR_COMPOSE),
+                        help="which door to set up — starts it if nothing is running "
+                             "(default: whichever door is already up)")
+    parser.add_argument("--fresh", action="store_true",
+                        help="DELETE all appliance state first (asks for confirmation), then start fresh")
     parser.add_argument("--url", default=None,
                         help=f"appliance base URL (default: detected from the running door, else {DEFAULT_BASE})")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
@@ -360,13 +451,32 @@ def main() -> int:
     print("\n  Embabel appliance — first-run setup")
     print("  " + "─" * 60)
 
+    follower = None
     try:
+        # Compose files live next to this script; docker compose needs their directory.
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+        if args.fresh:
+            fresh_wipe()
+        started = False
+        if args.door or args.fresh:
+            started = ensure_door(args.door or "me")
+
         container = find_door_container()
         base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
         if container:
             print(f"  Setting up {container} at {base}\n")
 
+        if started and container:
+            # First boot is a designed surface: stream the operator console while
+            # we wait for the setup token, then hand the terminal back to the wizard.
+            follower = subprocess.Popen(["docker", "logs", "-f", "--tail", "0", container])
+
         token = discover_token(base, container, args.token)
+        if follower:
+            follower.terminate()
+            follower = None
+            print()
         status = call(base, "", token)
 
         pending = [step for step in status["steps"] if not step["satisfied"]]
@@ -383,11 +493,17 @@ def main() -> int:
         username = done.get("signInAs")
         print(f"\n  Done. Sign in at {base}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
+        if container and door_service(container) == "worlds":
+            print_worlds_surfaces(base)
         return 0
     except SetupError as e:
+        if follower:
+            follower.terminate()
         print(f"\n  {e}\n", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
+        if follower:
+            follower.terminate()
         # Half-finished setup is fine: completed steps persist, so re-running resumes.
         print("\n\n  Interrupted. Re-run this script to pick up where you left off.\n", file=sys.stderr)
         return 130
