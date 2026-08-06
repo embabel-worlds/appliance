@@ -122,20 +122,28 @@ def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None
         return None
 
 
-def find_door_container() -> str | None:
-    """The running door's container, by compose service label."""
-    found = []
+def running_doors() -> dict[str, str]:
+    """Running door containers, keyed by compose service name."""
+    found = {}
     for service in DOOR_SERVICES:
         run = _docker("ps", "--filter", f"label=com.docker.compose.service={service}",
                       "--format", "{{.Names}}")
         if run is not None and run.returncode == 0:
-            found += run.stdout.split()
-    if len(found) > 1:
-        # Both doors up is a misconfiguration in itself (see the compose headers) —
-        # say so, but setup still has to happen somewhere.
-        print(f"  Both doors are running ({', '.join(found)}) — run one at a time.")
-        print(f"  Setting up {found[0]}.")
-    return found[0] if found else None
+            for name in run.stdout.split():
+                found[service] = name
+    return found
+
+
+def find_door_container(prefer: str | None = None) -> str | None:
+    """The running door's container. When a door was explicitly asked for, PREFER it:
+    announcing "setting up embabel-assistant" and then refusing because the caller
+    asked for worlds is a small masterpiece of unhelpfulness."""
+    doors = running_doors()
+    if prefer and DOOR_SERVICE.get(prefer) in doors:
+        return doors[DOOR_SERVICE[prefer]]
+    if len(doors) > 1:
+        print(f"  Both doors are running ({', '.join(doors.values())}) — run one at a time.")
+    return next(iter(doors.values()), None)
 
 
 def door_service(container: str) -> str | None:
@@ -210,14 +218,25 @@ def ensure_door(door: str) -> bool:
     added since the last run (the console was, once) would never be created, and
     the operator sees a service in their YAML with nothing behind it. `up -d`
     is idempotent — it reconciles and leaves running containers alone."""
-    running = find_door_container()
-    if running:
-        service = door_service(running)
-        if service != DOOR_SERVICE[door]:
+    doors = running_doors()
+    other = next(((svc, name) for svc, name in doors.items() if svc != DOOR_SERVICE[door]), None)
+    if other:
+        # Asked for this door while the other one is up. Offer the precise fix rather
+        # than "docker compose down", which is ambiguous (which file?) and heavier
+        # than needed — it would take the shared graph and metrics down too.
+        other_door = "me" if other[0] == "assistant" else "worlds"
+        print(f"  The {other_door} door is running ({other[1]}), and only one door may run at a time")
+        print("  — they share one graph, so two would duplicate every scheduled job.\n")
+        answer = input(f"  Stop the {other_door} door and continue? [Y/n]: ").strip().lower()
+        if answer not in ("", "y", "yes"):
             raise SetupError(
-                f"The other door is running ({running}). One door at a time — "
-                f"stop it first (docker compose down) or re-run with --fresh."
+                f"Left the {other_door} door running. Stop it when you are ready:\n"
+                f"    docker compose -f {DOOR_COMPOSE[other_door]} stop {other[0]}"
             )
+        _compose(other_door, "stop", other[0])
+        print()
+    running = doors.get(DOOR_SERVICE[door])
+    if running:
         print(f"  The {door} door is running — reconciling with the compose file.\n")
         _compose(door, "up", "-d")
         print()
@@ -486,7 +505,7 @@ def main() -> int:
         if args.door or args.fresh:
             started = ensure_door(args.door or "me")
 
-        container = find_door_container()
+        container = find_door_container(args.door)
         base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
         if container:
             print(f"  Setting up {container} at {base}\n")
