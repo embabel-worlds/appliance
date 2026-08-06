@@ -69,6 +69,10 @@ services:
       # Distinguishes this door from the Me door in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose-worlds
+      # Without an external organization role provider, this fallback applies to
+      # every authenticated principal. Admin by default lets the setup-created
+      # operator use admin-gated local surfaces; set `user` to opt out.
+      - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
       - BRAVE_API_KEY
       - GITHUB_TOKEN
       - TELEGRAM_BOT_TOKEN

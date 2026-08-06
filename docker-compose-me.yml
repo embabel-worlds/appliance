@@ -96,6 +96,10 @@ services:
       # bare jar — and this door from the worlds door. It is a constant, not information
       # about you — see PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose
+      # Without an external organization role provider, this fallback applies to
+      # every authenticated principal. Admin by default lets the setup-created
+      # operator use admin-gated local surfaces; set `user` to opt out.
+      - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
       # Optional integration credentials, passed through only if set in .env. Each
       # unlocks a capability and is inert when empty — the assistant simply does not
       # offer what it has no credential for. These reach the integration layer, never
