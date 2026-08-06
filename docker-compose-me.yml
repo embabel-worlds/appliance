@@ -23,6 +23,21 @@ services:
     image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
     container_name: embabel-assistant
     restart: unless-stopped
+    # The setup wizard persists validated keys in the shared data volume. Spring also
+    # imports this file, but Compose's required empty provider variables outrank that
+    # property source. Read only the provider values before Java starts; a non-empty
+    # shell/.env value remains the explicit operator override.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        providers=/data/embabel/assistant/admin/providers.env
+        if [ -f "$$providers" ]; then
+          [ -n "$$OPENAI_API_KEY" ] || OPENAI_API_KEY=$$(sed -n 's/^OPENAI_API_KEY=//p' "$$providers" | tail -n 1)
+          [ -n "$$ANTHROPIC_API_KEY" ] || ANTHROPIC_API_KEY=$$(sed -n 's/^ANTHROPIC_API_KEY=//p' "$$providers" | tail -n 1)
+        fi
+        export OPENAI_API_KEY ANTHROPIC_API_KEY
+        exec java --enable-native-access=ALL-UNNAMED -Duser.home=/data $$JAVA_OPTS -jar /app/assistant.jar
     depends_on:
       neo4j:
         condition: service_healthy
