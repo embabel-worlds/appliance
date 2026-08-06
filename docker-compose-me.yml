@@ -99,7 +99,7 @@ services:
       # The appliance has exactly one setup-created operator. Grant that account
       # access to admin-gated local surfaces such as saved KG views when no external
       # organization role provider is configured.
-      - ORG_ROLE_FALLBACK=admin
+      - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
       # Optional integration credentials, passed through only if set in .env. Each
       # unlocks a capability and is inert when empty — the assistant simply does not
       # offer what it has no credential for. These reach the integration layer, never
