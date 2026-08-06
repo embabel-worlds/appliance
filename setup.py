@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Embabel Me appliance — first-run setup.
+"""Embabel appliance — first-run setup.
 
     ./setup.py
 
 Walks you through creating your account and connecting a model provider. Nothing to
-install: standard library only.
+install: standard library only. Works for either door — it finds the running
+container (Me or Worlds), its port, and its setup token by itself.
 
 If OPENAI_API_KEY or ANTHROPIC_API_KEY is already exported in your shell, the provider
 step uses it instead of asking. `--ignore-env` always asks.
@@ -22,14 +23,23 @@ import getpass
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
 DEFAULT_BASE = "http://localhost:4242"
 TOKEN_HEADER = "X-Embabel-Setup-Token"
-CONTAINER = "embabel-assistant"
+# The appliance's two doors, by compose SERVICE name. Containers are found through
+# their compose service label rather than a hardcoded container_name, so plain
+# `./setup.py` works for whichever door is up — and keeps working if a name or
+# project prefix ever changes.
+DOOR_SERVICES = ("assistant", "worlds")
+TOKEN_PATTERN = re.compile(r"Setup token:\s*([0-9a-f]{32,})")
+# How long to keep watching a booting container for its token before asking.
+BOOT_WAIT_SECONDS = 120
 
 # Provider -> the variable that provider's key lives in, mirroring ProviderValidator's
 # PROVIDERS map on the server. If a provider is added there and not here, nothing breaks:
@@ -41,6 +51,14 @@ PROVIDER_ENV = {
 
 
 class SetupError(Exception):
+    pass
+
+
+class AlreadySetUp(SetupError):
+    pass
+
+
+class Unreachable(SetupError):
     pass
 
 
@@ -63,7 +81,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
         except ValueError:
             detail = body
         if e.code == 410:
-            raise SetupError(
+            raise AlreadySetUp(
                 "This appliance is already set up. Sign in at " + base +
                 "\n(To start over you would have to delete the data volume, which erases everything.)"
             )
@@ -71,32 +89,109 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
             raise SetupError(f"The setup token was not accepted.\n{detail}")
         raise SetupError(detail)
     except urllib.error.URLError as e:
-        raise SetupError(
+        raise Unreachable(
             f"Could not reach the appliance at {base} ({e.reason}).\n"
             "Is it running? Try: docker compose ps"
         )
 
 
-def discover_token(explicit: str | None) -> str:
-    """The token is printed to the container log on first boot. Read it from there so the
-    usual case needs no copy-paste at all; fall back to asking."""
+def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(["docker", *argv], capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return None
+
+
+def find_door_container() -> str | None:
+    """The running door's container, by compose service label."""
+    found = []
+    for service in DOOR_SERVICES:
+        run = _docker("ps", "--filter", f"label=com.docker.compose.service={service}",
+                      "--format", "{{.Names}}")
+        if run is not None and run.returncode == 0:
+            found += run.stdout.split()
+    if len(found) > 1:
+        # Both doors up is a misconfiguration in itself (see the compose headers) —
+        # say so, but setup still has to happen somewhere.
+        print(f"  Both doors are running ({', '.join(found)}) — run one at a time.")
+        print(f"  Setting up {found[0]}.")
+    return found[0] if found else None
+
+
+def container_base_url(container: str) -> str | None:
+    """The door's URL from its own SERVER_PORT. The compose files keep the host and
+    container ports equal by design, so the container's port IS the published one."""
+    run = _docker("inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", container)
+    if run is not None and run.returncode == 0:
+        for line in run.stdout.splitlines():
+            if line.startswith("SERVER_PORT="):
+                return f"http://localhost:{line.split('=', 1)[1].strip()}"
+    return None
+
+
+def token_from_logs(container: str) -> str | None:
+    run = _docker("logs", container)
+    if run is None or run.returncode != 0:
+        return None
+    # BOTH streams: which one the app logs to is a packaging detail, and it must
+    # never decide whether setup works.
+    matches = TOKEN_PATTERN.findall(run.stdout + run.stderr)
+    # Last match wins: a restarted container logs it again, and the newest is current.
+    return matches[-1] if matches else None
+
+
+def probe(base: str) -> str:
+    """'pending' if the appliance is up and waiting for setup, 'unreachable' if not up.
+    Raises AlreadySetUp — checked HERE, before any token hunting, so an appliance that
+    is simply done says "sign in" instantly instead of sending anyone log-spelunking."""
+    try:
+        call(base, "", "probe")
+        return "pending"
+    except AlreadySetUp:
+        raise
+    except Unreachable:
+        return "unreachable"
+    except SetupError:
+        return "pending"  # 401: up, and wants the real token
+
+
+def discover_token(base: str, container: str | None, explicit: str | None) -> str:
+    """The token is printed to the container log on every boot until setup completes.
+    Read it from there so the usual case needs no copy-paste at all; wait out a
+    container that is still booting; ask only when there is genuinely no way to know."""
     if explicit:
         return explicit
-    try:
-        logs = subprocess.run(
-            ["docker", "logs", CONTAINER],
-            capture_output=True, text=True, timeout=30,
-        ).stdout
-        # Last match wins: a restarted container logs it again, and the newest is current.
-        matches = re.findall(r"Setup token:\s*([0-9a-f]{32,})", logs)
-        if matches:
-            print(f"Found the setup token in the {CONTAINER} logs.\n")
-            return matches[-1]
-    except (subprocess.SubprocessError, FileNotFoundError, OSError):
-        pass
-    print("Could not read the setup token from the container logs.")
-    print(f"Find it with:  docker compose logs {CONTAINER} | grep 'Setup token'\n")
-    token = input("Setup token: ").strip()
+
+    deadline = time.monotonic() + BOOT_WAIT_SECONDS
+    announced = False
+    while True:
+        if container:
+            token = token_from_logs(container)
+            if token:
+                print(f"  Found the setup token in the {container} log.\n")
+                return token
+        state = probe(base)  # raises AlreadySetUp — the friendliest outcome
+        if state == "pending":
+            # The API answers but the current container log has no token — a remote
+            # appliance with no local docker, or a log that lost it. Ask below.
+            break
+        if container is None or time.monotonic() >= deadline:
+            break
+        if not announced:
+            print(f"  The appliance is still starting — watching the {container} log "
+                  f"for its setup token (up to {BOOT_WAIT_SECONDS}s)…")
+            announced = True
+        time.sleep(3)
+
+    if container is None and state == "unreachable":
+        raise SetupError(
+            f"No appliance is running: no door container was found and {base} does not answer.\n"
+            "Start one first:  docker compose up -d"
+        )
+    print("  Could not find the setup token automatically.")
+    if container:
+        print(f"  It is printed in the container log:  docker logs {container} 2>&1 | grep 'Setup token'")
+    token = input("  Setup token: ").strip()
     if not token:
         raise SetupError("A setup token is required.")
     return token
@@ -173,7 +268,7 @@ def from_environment(step: dict) -> dict:
     return {"provider": provider, "apiKey": available[provider]}
 
 
-def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> None:
+def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> dict:
     print(f"\n── {step['title']} " + "─" * max(0, 60 - len(step["title"])))
     if step.get("description"):
         print(f"   {step['description']}")
@@ -251,8 +346,9 @@ def wire_coding_agents(result: dict) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Set up the Embabel Me appliance.")
-    parser.add_argument("--url", default=DEFAULT_BASE, help=f"appliance base URL (default {DEFAULT_BASE})")
+    parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
+    parser.add_argument("--url", default=None,
+                        help=f"appliance base URL (default: detected from the running door, else {DEFAULT_BASE})")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
     parser.add_argument(
         "--ignore-env",
@@ -261,25 +357,31 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    print("\n  Embabel Me — first-run setup")
+    print("\n  Embabel appliance — first-run setup")
     print("  " + "─" * 60)
 
     try:
-        token = discover_token(args.token)
-        status = call(args.url, "", token)
+        container = find_door_container()
+        base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
+        if container:
+            print(f"  Setting up {container} at {base}\n")
+
+        token = discover_token(base, container, args.token)
+        status = call(base, "", token)
 
         pending = [step for step in status["steps"] if not step["satisfied"]]
         if not pending:
             print("  Everything is already configured.")
         for step in pending:
-            run_step(args.url, token, step, use_environment=not args.ignore_env)
+            result = run_step(base, token, step, use_environment=not args.ignore_env)
+            wire_coding_agents(result or {})
 
         print("\n  Finishing…", end=" ", flush=True)
-        done = call(args.url, "/complete", token, {})
+        done = call(base, "/complete", token, {})
         print(done.get("detail", "complete"))
 
         username = done.get("signInAs")
-        print(f"\n  Done. Sign in at {args.url}" + (f" as {username}" if username else ""))
+        print(f"\n  Done. Sign in at {base}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
         return 0
     except SetupError as e:

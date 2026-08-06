@@ -15,8 +15,9 @@ docker compose up -d       # first boot pulls images; give it a few minutes
 open http://localhost:4242
 ```
 
-`setup.py` needs nothing installed — Python 3 standard library only. It finds the setup
-token in the container log, walks you through each step, and checks your API key against
+`setup.py` needs nothing installed — Python 3 standard library only, no flags. It finds
+the running door, its port, and its setup token by itself (waiting out a still-booting
+app rather than failing), walks you through each step, and checks your API key against
 the provider before storing it, so a mistyped key fails there and then rather than at your
 first message.
 
@@ -55,6 +56,10 @@ same data**:
 `docker compose up` opens the Me door. Everything door-agnostic — the graph, the
 local embedding model, document conversion, metrics — lives in `infra.yml`,
 included by both.
+
+First-run setup is the same `./setup.py` for either door, with no flags: it finds
+the running container by its compose service label and takes the port and setup
+token from there.
 
 Prefer a terminal? Each door carries the TUI as a run-on-demand service —
 `docker compose run --rm tui` (add `-f docker-compose-worlds.yml` for Worlds,
@@ -365,7 +370,7 @@ move between versions.
 
 | Symptom | Cause |
 |---|---|
-| `setup.py` says it cannot find the token | The app is still starting. `docker compose logs assistant \| grep "Setup token"` |
+| `setup.py` cannot find the token | It already waits out a booting app, so the running container's log truly lacks one. `docker compose restart assistant` (or `worlds`) — the token is printed afresh on every boot until setup completes |
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
 | Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:4244` (pre-filled; 7687 is not published to the host) |
