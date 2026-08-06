@@ -89,6 +89,12 @@ services:
     environment:
       # In-container address of the door: same compose network, container port.
       - WORLDS_URL=http://worlds:${WORLDS_PORT:-4342}
+      # OPTIONAL: skip the console's sign-in by having the proxy authenticate for
+      # you. Convenient on your own laptop; understand what it means before setting
+      # it — ANYONE who can reach 4343 is then this user, and the console acts as
+      # them (chat, memory, document ingest). Empty by default: the console asks.
+      - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
+      - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
 
   # ── TUI — the Worlds door's primary human interface ─────────────────────────
   #   docker compose -f docker-compose-worlds.yml run --rm tui

@@ -41,15 +41,6 @@ docker compose down                  # stop, KEEP your data
 docker compose down -v               # stop and DELETE everything
 ```
 
-### Registry access
-
-The Embabel images are private while the appliance is in preview. Authenticate once
-with a GitHub personal access token that has `read:packages`:
-
-```bash
-echo $GITHUB_PAT | docker login ghcr.io -u <your-github-username> --password-stdin
-```
-
 ## Two doors — Me and Worlds
 
 The appliance is one product with two fronts, running the **same image over the
