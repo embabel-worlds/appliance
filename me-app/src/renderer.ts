@@ -23,8 +23,13 @@ const receipt = $<HTMLDivElement>('receipt')
 let facts: Fact[] = []
 
 function currentSettings(): Settings {
+  let baseUrl = baseUrlInput.value.trim().replace(/\/+$/, '')
+  // A URL without a scheme ("localhost:4242") makes fetch throw before any
+  // connection attempt — normalize rather than error.
+  if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`
+  baseUrlInput.value = baseUrl
   return {
-    baseUrl: baseUrlInput.value.trim().replace(/\/$/, ''),
+    baseUrl,
     username: usernameInput.value.trim(),
     password: passwordInput.value,
   }
