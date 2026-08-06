@@ -175,6 +175,9 @@ services:
   tui:
     profiles: ["tui"]
     image: ghcr.io/embabel/tui:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    # TUI is currently published for amd64 only; emulate it on arm64 until
+    # a multi-arch image is available.
+    platform: linux/amd64
     stdin_open: true
     tty: true
     command: ["--server", "Me=http://assistant:${ASSISTANT_PORT:-4242}"]
