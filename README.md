@@ -10,10 +10,18 @@ Your data and your code stay on your machine. The assistant talks to the model p
 
 ```bash
 git clone https://github.com/embabel/appliance.git && cd appliance
-docker compose up -d       # first boot pulls images; give it a few minutes
-./setup.py                 # account, model provider, and Claude Code wiring
-open http://localhost:4242
+
+./me.py         # Embabel Me — the personal assistant   → http://localhost:4242
+./worlds.py     # Embabel Worlds — the world runtime     → http://localhost:4343
 ```
+
+One command is the whole thing: it starts the door (pulling images on first run),
+shows you the boot, walks you through your account and model-provider key, and ends
+by telling you exactly where to go. Add `--fresh` to wipe everything and start over.
+
+**Prerequisite: Docker Model Runner.** Embeddings run locally, so the appliance needs
+it enabled — `docker desktop enable model-runner` (Docker Desktop 4.40+, or Settings →
+AI), or the `docker-model-plugin` package on Docker Engine. Everything else is pulled.
 
 `setup.py` needs nothing installed — Python 3 standard library only, no flags. It finds
 the running door, its port, and its setup token by itself (waiting out a still-booting
@@ -47,10 +55,13 @@ echo $GITHUB_PAT | docker login ghcr.io -u <your-github-username> --password-std
 The appliance is one product with two fronts, running the **same image over the
 same data**:
 
-| Door | Start with | Port | What it is |
+| Door | Start with | Open | What it is |
 |---|---|---|---|
-| **Me** | `docker compose up -d` | 4242 | the personal assistant — web UI, chat, memory |
-| **Worlds** | `docker compose -f docker-compose-worlds.yml up -d` | 4342 | the world runtime framed as a headless team server — MCP, automations, webhooks, the data plane |
+| **Me** | `./me.py` | **4242** | the personal assistant — web UI, chat, memory |
+| **Worlds** | `./worlds.py` | **4343** — the console | the world runtime — realms, documents, keys, views, chat, MCP, automations |
+
+For Worlds, **4343 is the front door**: the console. The server itself is on 4342 —
+that is the API and MCP endpoint, not where you go to look at anything.
 
 `docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
 `docker compose up` opens the Me door. Everything door-agnostic — the graph, the

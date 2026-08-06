@@ -1,7 +1,8 @@
 # Embabel Worlds — the world-runtime door of the appliance.
 #
-#   docker compose -f docker-compose-worlds.yml up -d
-#   open http://localhost:4342
+#   ./worlds.py                 # or: docker compose -f docker-compose-worlds.yml up -d
+#   open http://localhost:4343   # THE CONSOLE — the Worlds front door.
+#                                # 4342 is the server: API and MCP, not a place to look.
 #
 # THE SAME IMAGE, THE SAME DATA as the Me door (docker-compose-me.yml) — this is
 # the superset design: the world runtime is always in the product, and this door
