@@ -67,6 +67,10 @@ class Unreachable(SetupError):
     pass
 
 
+class TokenRejected(SetupError):
+    """The setup token itself was refused — no answer to any step can fix that."""
+
+
 # ── plumbing ────────────────────────────────────────────────────────────────
 
 def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
@@ -91,7 +95,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
                 "\n(To start over you would have to delete the data volume, which erases everything.)"
             )
         if e.code == 401:
-            raise SetupError(f"The setup token was not accepted.\n{detail}")
+            raise TokenRejected(f"The setup token was not accepted.\n{detail}")
         raise SetupError(detail)
     except urllib.error.URLError as e:
         raise Unreachable(
@@ -145,13 +149,15 @@ def print_worlds_surfaces(base: str) -> None:
     surface a worlds operator reaches next, in one block. The API/MCP lines use the
     door's real detected port; the rest are the compose defaults (.env moves them)."""
     print("  \u2500\u2500 Your Worlds surfaces " + "\u2500" * 38)
-    print(f"  API            {base}")
+    print("  Console        http://localhost:4343   \u2190 START HERE")
+    print("                 The Worlds console: realms, documents, keys, views, chat.")
+    print("                 Opens with the commissioning sequence.")
+    print()
+    print(f"  API / UI       {base}   (the door itself)")
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
     print("  TUI            docker compose -f docker-compose-worlds.yml run --rm tui")
-    print("  Console (dev)  cd worlds-console/app && EMBABEL_USER=<you> EMBABEL_PASSWORD=\u2026 npm run dev")
-    print("                 \u2192 http://localhost:5173 \u2014 opens with the commissioning sequence")
     print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
     print("  Dashboards     http://localhost:4246   \u00b7   Metrics  http://localhost:4247")
     print()
@@ -373,9 +379,18 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
         print("\n  Working…", end=" ", flush=True)
         try:
             result = call(base, f"/{step['id']}", token, answers)
-        except SetupError as e:
+        except (AlreadySetUp, Unreachable, TokenRejected):
+            # The appliance or the session is the problem, not the answer — no amount
+            # of retyping helps.
             print("\n")
             raise
+        except SetupError as e:
+            # A REJECTED ANSWER: server-side validation (password rules, malformed key).
+            # Retry IN PLACE. Ending the whole wizard — and making someone re-run it and
+            # re-answer the steps they already got right — because a password was four
+            # characters long is a hostile way to meet a new user.
+            print(f"\n  {e}\n  Let's try that step again.")
+            continue
         if result.get("ok"):
             print(result.get("detail", "done"))
             models = result.get("models")

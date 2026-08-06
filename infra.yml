@@ -61,8 +61,10 @@ services:
   # call in a chat blocks on a multi-GB pull and reads as a hang. The tag MUST
   # match WorldConfig.DEFAULT_SANDBOX_IMAGE — that is the name the app asks the
   # daemon for (overridable per world via `sandboxDockerimage` in its config.yml).
+  # On GHCR like every other Embabel image — the old unqualified name pointed at a
+  # Docker Hub repository that was never public, so first pull failed for everyone.
   sandbox-image:
-    image: embabel/assistant-sandbox:latest
+    image: ghcr.io/embabel/assistant-sandbox:latest
     container_name: embabel-appliance-sandbox-image
     restart: "no"
     command: ["true"]

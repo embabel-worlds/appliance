@@ -73,6 +73,22 @@ services:
       embedder:
         endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
 
+  # ── Console — the Worlds web face ───────────────────────────────────────────
+  # Static app + nginx proxying /api to the door on the SAME ORIGIN, so the
+  # browser's login applies with no CORS and no token plumbing. Ships as an image
+  # like everything else: no checkout, no Node, no dev server.
+  worlds-console:
+    image: ghcr.io/embabel/worlds-console:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    container_name: embabel-worlds-console
+    restart: unless-stopped
+    depends_on:
+      - worlds
+    ports:
+      - "127.0.0.1:${WORLDS_CONSOLE_PORT:-4343}:80"
+    environment:
+      # In-container address of the door: same compose network, container port.
+      - WORLDS_URL=http://worlds:${WORLDS_PORT:-4342}
+
   # ── TUI — the Worlds door's primary human interface ─────────────────────────
   #   docker compose -f docker-compose-worlds.yml run --rm tui
   # Same client as the Me door, in worlds mode: no Chat tab, no memories panel —
