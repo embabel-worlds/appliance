@@ -201,18 +201,27 @@ def fresh_wipe() -> None:
 
 
 def ensure_door(door: str) -> bool:
-    """Bring the chosen door up if it is not already. True if WE started it —
-    the caller then follows the container log, because the first boot is a
-    designed experience (the operator console), not a thing to hide."""
+    """Bring the chosen door up. Returns True if it was not already running — the
+    caller then follows the container log, because the first boot is a designed
+    experience (the operator console), not a thing to hide.
+
+    ALWAYS runs `compose up -d`, even when the door is already up. "The door
+    container is running" does NOT mean "this compose file is applied": a service
+    added since the last run (the console was, once) would never be created, and
+    the operator sees a service in their YAML with nothing behind it. `up -d`
+    is idempotent — it reconciles and leaves running containers alone."""
     running = find_door_container()
     if running:
         service = door_service(running)
-        if service == DOOR_SERVICE[door]:
-            return False
-        raise SetupError(
-            f"The other door is running ({running}). One door at a time — "
-            f"stop it first (docker compose down) or re-run with --fresh."
-        )
+        if service != DOOR_SERVICE[door]:
+            raise SetupError(
+                f"The other door is running ({running}). One door at a time — "
+                f"stop it first (docker compose down) or re-run with --fresh."
+            )
+        print(f"  The {door} door is running — reconciling with the compose file.\n")
+        _compose(door, "up", "-d")
+        print()
+        return False
     print(f"  Starting the {door} door — first run pulls images, give it a few minutes.\n")
     run = _compose(door, "up", "-d")
     if run.returncode != 0:
