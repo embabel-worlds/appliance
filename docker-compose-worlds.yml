@@ -1,0 +1,87 @@
+# Embabel Worlds — the world-runtime door of the appliance.
+#
+#   docker compose -f docker-compose-worlds.yml up -d
+#   open http://localhost:4342
+#
+# THE SAME IMAGE, THE SAME DATA as the Me door (docker-compose-me.yml) — this is
+# the superset design: the world runtime is always in the product, and this door
+# frames it as a headless-leaning team server (MCP, automations, webhooks, the
+# data plane) on the 43xx block. There is no stripped-down build and no special
+# Spring profile; what differs is the port, the name, and the packaging label.
+#
+# RUN ONE DOOR AT A TIME against the shared store. Both doors up simultaneously
+# means two identical JVMs each running the singleton background work — cron
+# firing twice, channel autostart connecting the same Telegram bot token twice
+# (an API conflict, not just waste), warmers and sweeps duplicated. If a genuine
+# both-at-once deployment ever matters, that is the moment a "this instance does
+# not schedule" switch earns its way into the app; until then, one door.
+
+name: embabel-appliance
+
+include:
+  - infra.yml
+
+services:
+
+  # ── The world runtime ───────────────────────────────────────────────────────
+  worlds:
+    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    container_name: embabel-worlds
+    restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    ports:
+      # Same host-equals-container port rule as the Me door: the code sandbox is
+      # handed host.docker.internal:${server.port}, so the two move together.
+      - "127.0.0.1:${WORLDS_PORT:-4342}:${WORLDS_PORT:-4342}"
+    environment:
+      - SERVER_PORT=${WORLDS_PORT:-4342}
+      - NEO4J_HOST=neo4j
+      - NEO4J_PORT=7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
+      - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
+      - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:4342}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Same embedding model as the Me door, NON-NEGOTIABLY: both doors write
+      # vectors into the same graph. See the models element in infra.yml.
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
+      - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
+      - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
+      - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
+      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
+      # Distinguishes this door from the Me door in the usage payload — a constant,
+      # not information about you. See PHONE_HOME.md.
+      - ASSISTANT_PACKAGING=docker-compose-worlds
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+    volumes:
+      # Same socket rationale as the Me door: sandboxes are host-daemon siblings,
+      # and the socket is root-equivalent on the host — a decision, not a surprise.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # THE SAME worlds-on-disk volume as the Me door. A world is the unit the
+      # whole product family agrees on; the doors are surfaces over it.
+      - embabel_assistant_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    models:
+      # Same injection as the Me door — see the comment there.
+      embedder:
+        endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
+
+  # ── TUI — the Worlds door's primary human interface ─────────────────────────
+  #   docker compose -f docker-compose-worlds.yml run --rm tui
+  # Same client as the Me door, in worlds mode: no Chat tab, no memories panel —
+  # Automate / Extend / Data / Monitor / Settings ARE the worlds surface. The
+  # mode is a client flag for now; when the server can announce which door it
+  # is, that should drive the surface and the flag become an override.
+  tui:
+    profiles: ["tui"]
+    image: ghcr.io/embabel/tui:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    stdin_open: true
+    tty: true
+    command: ["--server", "Worlds=http://worlds:${WORLDS_PORT:-4342}", "--mode", "worlds"]

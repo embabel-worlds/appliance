@@ -1,0 +1,170 @@
+# Embabel Me — the personal-assistant door of the appliance.
+#
+#   docker compose up -d              # plain `up` opens THIS door (see docker-compose.yml)
+#   ./setup.py                        # account, model provider, Claude Code wiring
+#   open http://localhost:4242
+#
+# The other door is docker-compose-worlds.yml — the SAME image and the SAME data,
+# framed as a headless world runtime. See its header before running both at once.
+#
+# Everything door-agnostic (graph, embedding model, docling, sandbox, metrics)
+# lives in infra.yml, included below. Same project name as the worlds door, so
+# however you arrive there is exactly one appliance on this machine.
+
+name: embabel-appliance
+
+include:
+  - infra.yml
+
+services:
+
+  # ── The assistant itself ────────────────────────────────────────────────────
+  assistant:
+    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    container_name: embabel-assistant
+    restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    ports:
+      # Published to the HOST, not merely exposed on the compose network: code-mode
+      # sandbox containers are siblings on the host daemon (see the socket mount
+      # below) and reach the tool gateway back through host.docker.internal:4242.
+      # Unpublishing this port silently breaks every sandbox tool call.
+      # Same port on BOTH sides — see SERVER_PORT below.
+      - "127.0.0.1:${ASSISTANT_PORT:-4242}:${ASSISTANT_PORT:-4242}"
+    environment:
+      # The container port MUST equal the published host port: the code sandbox is
+      # handed a tool-gateway URL of host.docker.internal:${server.port}, so a
+      # remapped port leaves every code-mode call dialling nothing. Moving the
+      # appliance to another port therefore moves both sides together.
+      - SERVER_PORT=${ASSISTANT_PORT:-4242}
+      # Neo4j on the compose network — the in-container Bolt port, not the 7891
+      # host mapping a workstation checkout uses.
+      - NEO4J_HOST=neo4j
+      - NEO4J_PORT=7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
+      # The host-published browser port, for the Neo4j link in the UI: a browser
+      # resolves it from outside the compose network.
+      - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
+      - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:4242}
+      # At least one of these is required — the assistant cannot answer without a
+      # model provider. See .env.example.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Embeddings are LOCAL by default: the `models:` element in infra.yml has
+      # Docker Model Runner serve ai/qwen3-embedding on the host (Metal/CUDA
+      # accelerated where available), so memory and RAG need no provider key and no
+      # per-token spend. Spring reads this as embabel.models.default-embedding-model.
+      # Set ASSISTANT_EMBEDDING_MODEL=text-embedding-3-small in .env to use OpenAI
+      # instead — but on an EXISTING install any change of embedding model means a
+      # re-embed (Settings → Embedding model): vector indexes are dimension-bound.
+      #
+      # The registry-qualified form is REQUIRED: it must equal the id the Model
+      # Runner reports at /engines/v1/models — `docker.io/`-prefixed for current
+      # runner versions — because Embabel classifies and resolves the discovered
+      # model by exact name. The `models:` element in infra.yml uses the shorter
+      # PULL name; the two refer to the same artifact.
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
+      # MCP bearer credentials. First-run setup normally mints these into the data
+      # volume (setup.py, the "Connect coding agents" step); the values below are the
+      # scripted-deploy fallback from .env. They are EMBABEL_* rather than the
+      # relaxed-binding ASSISTANT_* forms on purpose — an empty bound env var would
+      # shadow the setup-minted token (env beats config files for the same property);
+      # these names are only placeholder fallbacks read by application-appliance.yml.
+      - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
+      - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
+      # `none` drops document conversion to raw Tika and makes the docling service
+      # (a multi-GB image) unnecessary.
+      - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
+      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
+      # Reported in the usage payload as `packaging`, so we can tell an appliance from a
+      # bare jar — and this door from the worlds door. It is a constant, not information
+      # about you — see PHONE_HOME.md.
+      - ASSISTANT_PACKAGING=docker-compose
+      # Optional integration credentials, passed through only if set in .env. Each
+      # unlocks a capability and is inert when empty — the assistant simply does not
+      # offer what it has no credential for. These reach the integration layer, never
+      # a prompt: the LLM can invoke a tool that needs a token without seeing it.
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+    volumes:
+      # The per-user code sandbox shells out to the docker CLI. Sandbox containers
+      # are created on the HOST daemon, as siblings of this container — no
+      # docker-in-docker, and no bind mounts from this filesystem into them
+      # (files move by `docker cp`), so this socket is the entire coupling.
+      #
+      # This grants the assistant control of the host Docker daemon, which is
+      # root-equivalent on the host. That is inherent to running a code sandbox;
+      # it is called out here so it is a decision, not a surprise.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Worlds, documents, artifacts, apps — the whole persistent surface.
+      - embabel_assistant_data:/data
+    extra_hosts:
+      # Linux has no host.docker.internal by default; sandbox containers get the
+      # same mapping from the app, but the app itself needs it to compose the
+      # gateway URL it hands them.
+      - "host.docker.internal:host-gateway"
+    models:
+      # Binds the local embedding model (infra.yml) to this service. Compose injects
+      # the platform-correct Model Runner URL into the named variable — Docker
+      # Desktop: http://model-runner.docker.internal/v1/ — which Spring reads as
+      # embabel.agent.models.docker.base-url; Embabel then discovers every model the
+      # runner serves. Injected vars OVERRIDE `environment:` entries, which is why
+      # the model NAME above is a plain env line (operators must be able to override
+      # it from .env) and only the URL is injected here.
+      embedder:
+        endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
+
+  # ── Open WebUI — chat front-end over the assistant's MCP surface ────────────
+  # Profile-gated: the assistant ships its own web UI on 4242, so this is for
+  # people who want their existing chat client. Turn it on WITHOUT editing this
+  # file by putting COMPOSE_PROFILES=openwebui in .env.
+  open-webui:
+    profiles: ["openwebui"]
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: embabel-appliance-open-webui
+    restart: unless-stopped
+    depends_on:
+      - assistant
+    ports:
+      - "127.0.0.1:${OPEN_WEBUI_PORT:-4245}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OPENAI_API_BASE_URL=${OPEN_WEBUI_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ENABLE_OLLAMA_API=false
+      # Don't download a local sentence-transformers model on first boot — it can
+      # stall startup for minutes behind HF rate limits, and Embabel handles
+      # documents anyway.
+      - RAG_EMBEDDING_ENGINE=openai
+      - DEFAULT_MODELS=${OPEN_WEBUI_DEFAULT_MODEL:-gpt-4.1}
+      # Stable key so encrypted tool-server credentials survive a container recreate.
+      - WEBUI_SECRET_KEY=${OPEN_WEBUI_SECRET_KEY:-}
+      # The assistant as a native (Streamable HTTP) MCP tool server. Reached over
+      # the compose network by service name, authenticated with the same bearer
+      # token the assistant is configured with above.
+      - 'TOOL_SERVER_CONNECTIONS=[{"url":"http://assistant:4242/mcp","path":"","type":"mcp","auth_type":"bearer","key":"${EMBABEL_MCP_API_TOKEN:-}","config":{"enable":true,"access_control":null},"info":{"id":"embabel_assistant","name":"embabel_assistant","description":"Embabel assistant tools"}}]'
+    volumes:
+      - embabel_appliance_open_webui_data:/app/backend/data
+
+  # ── TUI — terminal client, run on demand ────────────────────────────────────
+  #   docker compose run --rm tui
+  # Interactive, so never started by `up` (profile-gated; `run` targets the
+  # service explicitly and starts it regardless — verified). Reaches this door
+  # over the compose network by service name, passed as the FIRST server so the
+  # login dropdown defaults to it. Image published from the embabel/tui repo,
+  # versioned with the rest of the appliance.
+  tui:
+    profiles: ["tui"]
+    image: ghcr.io/embabel/tui:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    stdin_open: true
+    tty: true
+    command: ["--server", "Me=http://assistant:${ASSISTANT_PORT:-4242}"]
+
+volumes:
+  embabel_appliance_open_webui_data:

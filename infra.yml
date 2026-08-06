@@ -1,0 +1,193 @@
+# Shared substrate for BOTH appliance doors — Me (docker-compose-me.yml) and
+# Worlds (docker-compose-worlds.yml). Never `docker compose up` this file directly;
+# the door files include: it. Everything here is door-agnostic: the graph, the
+# local embedding model, document conversion, the sandbox pre-pull, and metrics.
+#
+# One EMBABEL_VERSION moves every Embabel image AND both doors together: a shared
+# graph only stays coherent if schema migrations and the embedding model can never
+# diverge between the processes writing to it.
+#
+# PULL-ONLY BY DESIGN — see the note in docker-compose.yml.
+
+services:
+
+  # ── Knowledge graph ─────────────────────────────────────────────────────────
+  # ONE graph, shared by both doors deliberately: in the superset design the world
+  # store IS the product's data plane, and the doors are two surfaces over it.
+  neo4j:
+    image: neo4j:2026.06-community
+    container_name: embabel-appliance-neo4j
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${NEO4J_BROWSER_PORT:-4243}:7474"   # browser
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-4244}:7687"      # bolt, for cypher-shell
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-embabel-assistant}
+      # Advertise the HOST-published Bolt port. The browser on 4243 runs in the
+      # user's browser and connects over Bolt from the host, and it pre-fills its
+      # connect form from this value — without it the form offers the in-container
+      # default :7687, which nothing on the host listens on, and the login fails
+      # before credentials are even checked. The app services are unaffected: they
+      # dial neo4j:7687 directly over the compose network.
+      - NEO4J_server_bolt_advertised__address=localhost:${NEO4J_BOLT_PORT:-4244}
+      - NEO4J_PLUGINS=["apoc","graph-data-science"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
+      - NEO4J_server_memory_heap_max__size=${NEO4J_HEAP:-2G}
+    healthcheck:
+      # The app's Drivine pool connects during startup; without this gate it
+      # races Neo4j's plugin load and the first boot fails on a fresh volume.
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $${NEO4J_PASSWORD:-embabel-assistant} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    volumes:
+      - embabel_appliance_neo4j_data:/data
+
+  # ── Document conversion (PDF/DOCX/PPTX/XLSX → structured markdown) ──────────
+  # Large image. Set ASSISTANT_DOC_CONVERTER=none in .env and `--scale docling=0`
+  # if you only ever ingest text.
+  docling:
+    image: quay.io/docling-project/docling-serve
+    container_name: embabel-appliance-docling
+    restart: unless-stopped
+    environment:
+      - DOCLING_SERVE_ENABLE_UI=0
+
+  # ── Code sandbox image, pre-pulled ──────────────────────────────────────────
+  # Not a running service: a one-shot that exists so `docker compose up` pulls the
+  # sandbox image onto the host daemon up front. Without it the first code-mode
+  # call in a chat blocks on a multi-GB pull and reads as a hang. The tag MUST
+  # match WorldConfig.DEFAULT_SANDBOX_IMAGE — that is the name the app asks the
+  # daemon for (overridable per world via `sandboxDockerimage` in its config.yml).
+  sandbox-image:
+    image: embabel/assistant-sandbox:latest
+    container_name: embabel-appliance-sandbox-image
+    restart: "no"
+    command: ["true"]
+
+  # ── Metrics ─────────────────────────────────────────────────────────────────
+  # Prometheus scrapes each door's /actuator/prometheus; Grafana renders it.
+  #
+  #   open http://localhost:4246        (no login, lands on Surface Health)
+  #
+  # NO PROFILE, deliberately. These once carried a `metrics` profile so they could be
+  # switched off from `.env`, but a compose profile cannot be active by default: it is
+  # only on when COMPOSE_PROFILES names it, and this appliance is designed to start with
+  # no `.env` at all (`./setup.py` collects everything). The result was documentation
+  # promising dashboards on by default and a fresh install silently having none.
+  #
+  # So they are ordinary services. To turn them off, delete these two services and their
+  # volumes below — the same way you would drop any other service. `--scale grafana=0
+  # --scale prometheus=0` works for one run, but the next plain `up -d` brings them back.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: embabel-appliance-prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-4247}:9090"
+    configs:
+      # Inline content, not a bind mount — see the pull-only note in
+      # docker-compose.yml. There is no prometheus.yml on your disk to lose.
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - embabel_appliance_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
+
+  grafana:
+    # Stock Grafana with the Embabel dashboards baked in, because a pull-only
+    # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
+    # the dashboards match the metrics the app of that version actually emits.
+    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    container_name: embabel-appliance-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-4246}:3000"
+    environment:
+      # No login wall. Consistent with the rest of the appliance, this is safe only
+      # because the port binds to 127.0.0.1 — anyone who can reach 4246 is admin.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_USERS_DEFAULT_THEME=dark
+      # Land on Surface Health instead of an empty home. Path is the baked image
+      # layer, not /var/lib/grafana — the volume below would shadow that.
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/embabel-dashboards/embabel-overview.json
+      - GF_FEATURE_TOGGLES_ENABLE=newDashboardSharingComponent
+    volumes:
+      # Grafana's own state (annotations, starred dashboards, its sqlite db). The
+      # dashboards themselves are in the image, so this holds nothing you authored.
+      - embabel_appliance_grafana_data:/var/lib/grafana
+
+configs:
+  # Scrape targets are the doors ON THE COMPOSE NETWORK — service name and the
+  # in-container port, which SERVER_PORT keeps equal to the published one. Both
+  # doors are listed; Prometheus treats an absent door as a down target, which is
+  # benign and honest — the Surface Health dashboard shows exactly what is running.
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 10s
+        evaluation_interval: 10s
+
+      scrape_configs:
+        - job_name: embabel-assistant
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: ["assistant:${ASSISTANT_PORT:-4242}"]
+              labels:
+                application: embabel-assistant
+        - job_name: embabel-worlds
+          metrics_path: /actuator/prometheus
+          static_configs:
+            - targets: ["worlds:${WORLDS_PORT:-4342}"]
+              labels:
+                application: embabel-worlds
+
+# ── Local embedding model ─────────────────────────────────────────────────────
+# Pulled like an image (an OCI artifact from Docker Hub, ~1.2GB) and served by
+# Docker Model Runner as a HOST-side process — on Apple silicon that means real
+# Metal GPU access, which a container in the VM can never have. This is why it is
+# a `models:` element and not a service.
+#
+# ONE model for BOTH doors, and that is load-bearing, not tidiness: every vector
+# in the shared graph must come from the same embedding model.
+#
+# REQUIRES Docker Model Runner: Docker Desktop 4.40+ with it enabled
+# (`docker desktop enable model-runner`, or Settings → AI), or on Linux Docker
+# Engine the `docker-model-plugin` package. `docker compose up` fails fast and
+# clearly without it. Compose v2.38+ for this element (v5.x current).
+#
+# The model choice is STICKY: vectors already in Neo4j were made by it, and
+# swapping models (ASSISTANT_EMBEDDING_MODEL) forces a re-embed of every chunk
+# and entity — an explicit action in Settings, not something a restart does.
+models:
+  embedder:
+    # Qwen3-Embedding 0.6B — the best small open embedding model going (MTEB),
+    # multilingual, 1024-dim. The app provisions its vector indexes from the
+    # model's reported dimensions, so nothing else states "1024" anywhere.
+    #
+    # The tag is DELIBERATELY exact, never `latest`: (a) on this repository
+    # `latest` is the 4B variant (2.5GB, 2560-dim) — a different model, not a
+    # newer build of this one; (b) embeddings are sticky (see above), so the
+    # model behind this name must never change out from under an install.
+    #
+    # This is the PULL name; the runner then serves it under the registry-
+    # qualified id docker.io/ai/qwen3-embedding:0.6B-F16, which is the form
+    # EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL must use. Check with:
+    #   curl -s localhost:12434/engines/v1/models
+    model: ai/qwen3-embedding:0.6B-F16
+
+volumes:
+  # Worlds on disk — documents, artifacts, apps, credentials. Shared by both
+  # doors: a world is the unit the whole product family agrees on.
+  embabel_assistant_data:
+  embabel_appliance_neo4j_data:
+  embabel_appliance_prometheus_data:
+  embabel_appliance_grafana_data:

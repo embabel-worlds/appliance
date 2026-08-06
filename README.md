@@ -41,6 +41,34 @@ with a GitHub personal access token that has `read:packages`:
 echo $GITHUB_PAT | docker login ghcr.io -u <your-github-username> --password-stdin
 ```
 
+## Two doors — Me and Worlds
+
+The appliance is one product with two fronts, running the **same image over the
+same data**:
+
+| Door | Start with | Port | What it is |
+|---|---|---|---|
+| **Me** | `docker compose up -d` | 4242 | the personal assistant — web UI, chat, memory |
+| **Worlds** | `docker compose -f docker-compose-worlds.yml up -d` | 4342 | the world runtime framed as a headless team server — MCP, automations, webhooks, the data plane |
+
+`docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
+`docker compose up` opens the Me door. Everything door-agnostic — the graph, the
+local embedding model, document conversion, metrics — lives in `infra.yml`,
+included by both.
+
+Prefer a terminal? Each door carries the TUI as a run-on-demand service —
+`docker compose run --rm tui` (add `-f docker-compose-worlds.yml` for Worlds,
+where it opens in worlds mode: no Chat tab, since the world runtime has no
+personal-assistant surface).
+
+Because the doors share one graph and one data volume, two rules hold:
+
+1. **Run one door at a time.** Both up at once means two identical JVMs running
+   the singleton background work — cron firing twice, the same Telegram bot
+   token connected twice (an API conflict, not just waste).
+2. **`EMBABEL_VERSION` and the embedding model move both doors together** — they
+   are set once, in `.env` and `infra.yml`, deliberately.
+
 ## Ports — the 42 block
 
 `4242` is the one to remember; the rest count up from it.
