@@ -1,0 +1,38 @@
+# Mirror docling-serve from quay.io into GHCR.
+#
+# WHY: a first run pulled from three registries — ours, Docker Hub and quay.io —
+# and real users failed on the last one mid-pull of a multi-GB image. Docling is
+# MIT-licensed, so we copy it byte for byte (a multi-arch index copy, not a
+# rebuild) and pin the version in infra.yml.
+#
+# Run this when adopting a new upstream version, then bump DOCLING_VERSION.
+name: mirror-docling
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Upstream docling-serve tag to mirror (e.g. v1.29.0)"
+        required: true
+        default: "v1.29.0"
+
+permissions:
+  packages: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Copy the multi-arch index
+        run: |
+          docker buildx imagetools create \
+            --tag ghcr.io/embabel/docling-serve:${{ inputs.version }} \
+            quay.io/docling-project/docling-serve:${{ inputs.version }}
+      - name: Verify
+        run: docker buildx imagetools inspect ghcr.io/embabel/docling-serve:${{ inputs.version }}

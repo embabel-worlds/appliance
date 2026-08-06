@@ -51,8 +51,14 @@ services:
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:4242}
       # At least one of these is required — the assistant cannot answer without a
       # model provider. See .env.example.
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # BARE FORM, NOT ${VAR:-} — load-bearing. `${VAR:-}` sets the variable to the
+      # EMPTY STRING when it is unset, and an empty env var SHADOWS the key that
+      # first-run setup wrote into the data volume (env beats config files in
+      # Spring), so chat failed with "this request requires an apiKey" for anyone
+      # who did not happen to have the key exported in their shell. The bare form
+      # omits the variable entirely when unset, letting providers.env through.
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
       # Embeddings are LOCAL by default: the `models:` element in infra.yml has
       # Docker Model Runner serve ai/qwen3-embedding on the host (Metal/CUDA
       # accelerated where available), so memory and RAG need no provider key and no
@@ -87,10 +93,10 @@ services:
       # unlocks a capability and is inert when empty — the assistant simply does not
       # offer what it has no credential for. These reach the integration layer, never
       # a prompt: the LLM can invoke a tool that needs a token without seeing it.
-      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - BRAVE_API_KEY
+      - GITHUB_TOKEN
+      - TELEGRAM_BOT_TOKEN
+      - SLACK_APP_TOKEN
     volumes:
       # The per-user code sandbox shells out to the docker CLI. Sandbox containers
       # are created on the HOST daemon, as siblings of this container — no
@@ -136,7 +142,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - OPENAI_API_BASE_URL=${OPEN_WEBUI_OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_KEY
       - ENABLE_OLLAMA_API=false
       # Don't download a local sentence-transformers model on first boot — it can
       # stall startup for minutes behind HF rate limits, and Embabel handles

@@ -48,8 +48,14 @@ services:
   # ── Document conversion (PDF/DOCX/PPTX/XLSX → structured markdown) ──────────
   # Large image. Set ASSISTANT_DOC_CONVERTER=none in .env and `--scale docling=0`
   # if you only ever ingest text.
+  #
+  # MIRRORED to GHCR, and pinned. Upstream is quay.io, which was the third
+  # registry in a first run and the one users actually failed on ("TLS handshake
+  # timeout" mid-pull of a multi-GB image). Everything the appliance needs from
+  # us now comes from one registry we control. Upstream is MIT; the mirror is a
+  # byte-for-byte multi-arch copy, refreshed by .github/workflows/mirror-docling.yml.
   docling:
-    image: quay.io/docling-project/docling-serve
+    image: ghcr.io/embabel/docling-serve:${DOCLING_VERSION:-v1.29.0}
     container_name: embabel-appliance-docling
     restart: unless-stopped
     environment:

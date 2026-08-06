@@ -44,8 +44,14 @@ services:
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
       - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
       - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:4342}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # BARE FORM, NOT ${VAR:-} — load-bearing. `${VAR:-}` sets the variable to the
+      # EMPTY STRING when it is unset, and an empty env var SHADOWS the key that
+      # first-run setup wrote into the data volume (env beats config files in
+      # Spring), so chat failed with "this request requires an apiKey" for anyone
+      # who did not happen to have the key exported in their shell. The bare form
+      # omits the variable entirely when unset, letting providers.env through.
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
       # Same embedding model as the Me door, NON-NEGOTIABLY: both doors write
       # vectors into the same graph. See the models element in infra.yml.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
@@ -56,10 +62,10 @@ services:
       # Distinguishes this door from the Me door in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose-worlds
-      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - BRAVE_API_KEY
+      - GITHUB_TOKEN
+      - TELEGRAM_BOT_TOKEN
+      - SLACK_APP_TOKEN
     volumes:
       # Same socket rationale as the Me door: sandboxes are host-daemon siblings,
       # and the socket is root-equivalent on the host — a decision, not a surprise.
