@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Embabel Me</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0; padding: 24px 28px; max-width: 720px;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .tagline { color: color-mix(in srgb, currentColor 55%, transparent); margin: 0 0 20px; font-size: 13px; }
+    section { margin-bottom: 22px; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.6; margin: 0 0 8px; }
+    .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+    label.field { display: flex; flex-direction: column; font-size: 12px; opacity: 0.85; gap: 3px; }
+    input[type=text], input[type=password] {
+      font: inherit; padding: 6px 8px; border-radius: 6px;
+      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      background: transparent; min-width: 180px;
+    }
+    button {
+      font: inherit; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      background: color-mix(in srgb, currentColor 8%, transparent);
+    }
+    button.primary { background: #4f46e5; border-color: #4f46e5; color: white; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status { font-size: 13px; }
+    .status.ok { color: #16a34a; }
+    .status.error { color: #dc2626; }
+    .fact {
+      display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 8px;
+      border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 8px;
+    }
+    .fact input { margin-top: 3px; }
+    .fact strong { font-size: 13px; }
+    .fact p { margin: 4px 0 0; font-size: 13px; opacity: 0.8; overflow-wrap: anywhere; }
+    .summary { margin-top: 10px; font-size: 13px; font-weight: 600; }
+    #receipt { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Embabel Me</h1>
+  <p class="tagline">Reads signals from this Mac and sends only what you approve to your own appliance.</p>
+
+  <section>
+    <h2>Appliance</h2>
+    <div class="row">
+      <label class="field">URL
+        <input type="text" id="baseUrl" placeholder="http://localhost:4242" />
+      </label>
+      <label class="field">Username
+        <input type="text" id="username" autocapitalize="off" autocorrect="off" />
+      </label>
+      <label class="field">Password
+        <input type="password" id="password" />
+      </label>
+    </div>
+    <div class="row">
+      <button id="test">Test connection</button>
+      <span id="connection-status" class="status"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ambient</h2>
+    <div class="row">
+      <label style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+        <input type="checkbox" id="stream-toggle" />
+        Stream presence (active/idle at keyboard, every 30s)
+      </label>
+      <span id="stream-status" class="status"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Scan</h2>
+    <div class="row">
+      <button id="scan" class="primary">Scan this Mac</button>
+    </div>
+    <div id="facts" hidden>
+      <div id="fact-list"></div>
+      <div class="row">
+        <button id="send" class="primary" disabled>Send selected to appliance</button>
+      </div>
+      <div id="receipt"></div>
+    </div>
+  </section>
+
+  <script src="dist/renderer.js"></script>
+</body>
+</html>

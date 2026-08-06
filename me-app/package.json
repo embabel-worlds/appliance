@@ -1,0 +1,17 @@
+{
+  "name": "embabel-me-app",
+  "version": "0.0.1",
+  "description": "Embabel Me sensor app — reads local macOS signals and sends them to your appliance",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && node -e \"require('./dist/scanner').scan().then(f => console.log(JSON.stringify(f, null, 2)))\""
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^33.0.0",
+    "typescript": "^5.6.0"
+  }
+}
