@@ -51,7 +51,14 @@ services:
       # who did not happen to have the key exported in their shell. The bare form
       # omits the variable entirely when unset, letting providers.env through.
       - OPENAI_API_KEY
-      - ANTHROPIC_API_KEY
+      # ANTHROPIC keeps the ${VAR:-} form ON PURPOSE, unlike OPENAI above: the
+      # Anthropic auto-config THROWS in its constructor when no key is present
+      # ("Anthropic API key required"), which crash-loops the whole app for anyone
+      # who only has an OpenAI key — i.e. everyone setup.py serves by default. An
+      # empty value constructs, and the appliance's default LLM roles are OpenAI,
+      # so nothing routes there unless configured. Remove this workaround when
+      # BYOK lands and a missing provider key is simply inert.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # Same embedding model as the Me door, NON-NEGOTIABLY: both doors write
       # vectors into the same graph. See the models element in infra.yml.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
