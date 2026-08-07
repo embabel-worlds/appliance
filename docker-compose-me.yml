@@ -45,9 +45,15 @@ services:
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
-      # The host-published browser port, for the Neo4j link in the UI: a browser
-      # resolves it from outside the compose network.
+      # The host-published ports, for the Neo4j link in the UI: a browser resolves
+      # them from outside the compose network, so BOTH halves of that link must be
+      # host ports — the HTTP one it opens and the Bolt one it then dials. Left
+      # unset, the app falls back to a workstation checkout's 8892/7891, and the
+      # link in the appliance silently opens someone's dev graph instead of this
+      # one. NEO4J_BROWSER_PORT stays for anything that reads it by that name.
       - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
+      - NEO4J_HTTP_PORT=${NEO4J_BROWSER_PORT:-4243}
+      - NEO4J_BOLT_ADVERTISED_PORT=${NEO4J_BOLT_PORT:-4244}
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:4242}
       # At least one of these is required — the assistant cannot answer without a
       # model provider. See .env.example.

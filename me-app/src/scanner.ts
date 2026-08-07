@@ -53,7 +53,7 @@ async function dock(): Promise<RawFact[]> {
   const xml = await plutilXml(path.join(HOME, 'Library/Preferences/com.apple.dock.plist'))
   const labels = [...xml.matchAll(/<key>file-label<\/key>\s*<string>([^<]*)<\/string>/g)].map((m) => m[1]!)
   if (labels.length === 0) return []
-  return [{ label: 'Dock', text: joinCapped('Apps the user keeps in their macOS Dock, in order: ', labels) }]
+  return [{ label: 'Dock', text: joinCapped('{user} keeps these apps in their macOS Dock, in order: ', labels) }]
 }
 
 const BUNDLE_NAMES: Record<string, string> = {
@@ -86,9 +86,9 @@ async function defaultHandlers(): Promise<RawFact[]> {
     handlers.find((h) => h.LSHandlerURLScheme === scheme)?.LSHandlerRoleAll
   const facts: RawFact[] = []
   const browser = forScheme('https') ?? forScheme('http')
-  if (browser) facts.push({ label: 'Default browser', text: `The user's default web browser is ${bundleName(browser)}.` })
+  if (browser) facts.push({ label: 'Default browser', text: `{user}'s default web browser is ${bundleName(browser)}.` })
   const mail = forScheme('mailto')
-  if (mail) facts.push({ label: 'Mail handler', text: `The user's default mail app is ${bundleName(mail)}.` })
+  if (mail) facts.push({ label: 'Mail handler', text: `{user}'s default mail app is ${bundleName(mail)}.` })
   return facts
 }
 
@@ -125,7 +125,7 @@ async function jetbrainsRecents(): Promise<RawFact[]> {
   return [
     {
       label: 'JetBrains projects',
-      text: joinCapped('Projects the user recently opened in JetBrains IDEs (most recent first): ', recent),
+      text: joinCapped('{user} recently opened these projects in JetBrains IDEs (most recent first): ', recent),
     },
   ]
 }
@@ -153,7 +153,7 @@ async function vscodeRecents(): Promise<RawFact[]> {
     .filter((u) => u.startsWith('file://'))
     .map((u) => tildeify(decodeURIComponent(u.replace('file://', ''))))
   if (folders.length === 0) return []
-  return [{ label: 'VS Code folders', text: joinCapped('Folders open in Visual Studio Code: ', folders) }]
+  return [{ label: 'VS Code folders', text: joinCapped('{user} has these folders open in Visual Studio Code: ', folders) }]
 }
 
 /** Installed applications: a compact profile of the tools on the machine. */
@@ -170,7 +170,7 @@ async function applications(): Promise<RawFact[]> {
   }
   if (names.length === 0) return []
   names.sort((a, b) => a.localeCompare(b))
-  return [{ label: 'Installed apps', text: joinCapped('Applications installed on the machine: ', names) }]
+  return [{ label: 'Installed apps', text: joinCapped('{user} has these applications installed on their machine: ', names) }]
 }
 
 /** Run every extractor, tolerating individual failures. */

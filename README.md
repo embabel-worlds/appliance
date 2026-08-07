@@ -97,7 +97,7 @@ This leaves `8042` free, so a development checkout and an appliance can run side
 | Service | How |
 |---|---|
 | assistant | the account you created during setup — see [Who can log in](#who-can-log-in) |
-| neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:4244` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is |
+| neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:4244` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:4243/browser/?dbms=neo4j://neo4j@localhost:4244&db=neo4j>** to force the right one, or run `:server disconnect` first |
 | open-webui | create an account on first visit; the first account is the admin |
 | grafana | no login — anyone who can reach 4246 is admin, which is safe only because it binds to `127.0.0.1` |
 | prometheus | no login |
@@ -384,6 +384,7 @@ move between versions.
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
 | Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:4244` (pre-filled; 7687 is not published to the host) |
+| Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:4244`, or open <http://localhost:4243/browser/?dbms=neo4j://neo4j@localhost:4244&db=neo4j>. Confirm with `docker exec embabel-appliance-neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |
 | Login page loads but chat never answers | No provider key took effect. The appliance restarts once at the end of setup for exactly this reason — check it came back with `docker compose ps` |
 | `docker compose up` fails on an image pull | Not authenticated to ghcr.io — see [Registry access](#registry-access) |
 | First code-execution turn hangs for minutes | The sandbox image is still downloading. `docker pull embabel/assistant-sandbox:latest` |
