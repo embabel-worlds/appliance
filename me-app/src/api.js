@@ -171,6 +171,27 @@ async function sendFocus(settings, sample) {
 }
 
 /**
+ * The documents the appliance already holds — uri + ingestedAt per document.
+ * The indexer's reconcile anchor (embabel/appliance#10): server truth, so
+ * there is no client ledger to drift.
+ * @param {Settings} settings
+ * @returns {Promise<{ok: boolean, message: string, documents: Array<{uri?: string, title?: string, ingestedAt?: string}>}>}
+ */
+async function listDocuments(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/documents`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, documents: [] }
+    const body = await readJson(res)
+    return { ok: true, message: '', documents: body?.documents ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), documents: [] }
+  }
+}
+
+/**
  * Ingest one document by URL — for the Local files panel this is a file:// URL
  * under /local, which the server reads straight off its own mount (no bytes
  * shipped). Conversion of a big PDF is genuinely slow, hence the long timeout.
@@ -192,4 +213,4 @@ async function ingestDocumentUrl(settings, url) {
   return { ok: true, message: body?.title ?? 'ingested' }
 }
 
-module.exports = { testConnection, sendFacts, sendFocus, ingestDocumentUrl }
+module.exports = { testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl }

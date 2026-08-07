@@ -104,6 +104,16 @@ void app.whenReady().then(() => {
   createWindow()
   app.on('activate', createWindow)
 
+  // Resume the indexing trickle across app restarts: if any shared folder is
+  // ticked for indexing and credentials are saved, the watcher picks up where
+  // it left off — the server-side reconcile makes resuming free, and edits
+  // made while the app was closed are caught by the first sweep.
+  const saved = loadSettings()
+  if (saved.username.trim() && mounts.state().mounts.some((m) => m.index)) {
+    log('[me-app] resuming document indexing watcher')
+    indexer.start(saved)
+  }
+
   // Presence transitions, delivered rather than polled. Registered once, after
   // ready (powerMonitor is unavailable before it); each is a no-op while the
   // stream is off.
@@ -193,13 +203,11 @@ ipcMain.handle('mounts:remove', (_e, host) => mounts.remove(host))
 ipcMain.handle('mounts:set-index', (_e, host, index) => mounts.setIndex(host, index))
 ipcMain.handle('mounts:apply', () => mounts.apply())
 
-// Opt-in indexing of ticked folders (indexer.js). start kicks the run and
-// returns immediately; the renderer polls index:state for progress, exactly
-// like the ambient stream's heartbeat.
-ipcMain.handle('index:start', (_e, settings) => {
-  void indexer.start(settings, mounts.state().mounts)
-  return indexer.state()
-})
+// Opt-in indexing of ticked folders (indexer.js, embabel/appliance#10). start
+// kicks or resumes the background trickle and returns immediately; the
+// renderer polls index:state for progress, exactly like the ambient stream's
+// heartbeat. The trickle keeps sweeping for new and CHANGED files on its own.
+ipcMain.handle('index:start', (_e, settings) => indexer.start(settings))
 ipcMain.handle('index:state', () => indexer.state())
 
 // ---------------------------------------------------------------------------

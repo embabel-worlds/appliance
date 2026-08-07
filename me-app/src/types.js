@@ -94,19 +94,25 @@
  */
 
 /**
- * Progress of an opt-in indexing run — see indexer.js. Polled by the renderer
- * the way StreamState is; `message` carries the final verdict once `running`
- * goes false.
+ * Progress of the background indexing trickle — see indexer.js and
+ * embabel/appliance#10. `enabled` says the watcher is on (sweeps keep
+ * rescheduling); `running` says a sweep is processing right now. Polled by the
+ * renderer the way StreamState is; `message` carries each sweep's verdict,
+ * `skipped` counts files the server already holds unchanged, and `nextSweepAt`
+ * is when the next change check fires.
  * @typedef {object} IndexState
+ * @property {boolean} enabled
  * @property {boolean} running
  * @property {'idle' | 'waiting' | 'scanning' | 'indexing'} phase
  * @property {number} total
  * @property {number} done
  * @property {number} ok
  * @property {number} failed
+ * @property {number} skipped
  * @property {string} currentFile
  * @property {string} message
  * @property {boolean} truncated
+ * @property {string | null} nextSweepAt
  */
 
 // The narrow IPC surface preload.js exposes to the renderer as `window.me`:

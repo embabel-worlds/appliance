@@ -43,6 +43,13 @@ async function init() {
   usernameInput.value = settings.username
   passwordInput.value = settings.password
   renderMounts(await window.me.mountsState())
+  // The indexing watcher runs in the background across window closes and app
+  // relaunches — say what it's up to whenever the panel opens.
+  const indexing = await window.me.indexingState()
+  if (indexing.enabled) {
+    if (indexing.running) followIndexing({ message: 'indexing' })
+    else if (indexing.message) setStatus(mountStatus, indexing.failed === 0, indexing.message)
+  }
 }
 
 $('test').addEventListener('click', async () => {
@@ -227,7 +234,7 @@ function followIndexing(applied) {
     if (s.running) {
       const progress =
         s.phase === 'waiting' ? 'waiting for the appliance to come back…'
-        : s.phase === 'scanning' ? 'scanning ticked folders…'
+        : s.phase === 'scanning' ? 'checking what changed…'
         : `indexing ${s.done}/${s.total}${s.currentFile ? ` — ${s.currentFile}` : ''}`
       setStatus(mountStatus, null, progress)
       return

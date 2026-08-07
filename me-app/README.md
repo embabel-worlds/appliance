@@ -85,13 +85,21 @@ files mention the renewal?" are answered by walking your folders **live** —
 metadata and bounded grep, nothing copied, nothing stored, no index to go
 stale.
 
-*Level two is per-folder opt-in:* tick **index contents** and Apply, after the
-restart, pushes that folder's documents (PDF, Office, markdown…) through the
+*Level two is per-folder opt-in:* tick **index contents** and a background
+watcher pushes that folder's documents (PDF, Office, markdown…) through the
 appliance's own ingestion pipeline — as `file:///local/…` URLs the server reads
 straight off its mount, so no bytes are uploaded — embedding them into the
-knowledge base for summarization and semantic search. Re-applying re-ingests
-by the same URL, replacing rather than duplicating. Caps: 200 files per
-folder per run, 30&nbsp;MB per file, honest truncation reported.
+knowledge base for summarization and semantic search. The watcher keeps
+running (and resumes on app launch): every sweep reconciles against the
+server's own document list, so only **new or changed** files are ingested —
+a file whose mtime is newer than its stored `ingestedAt` re-ingests by the
+same URL, replacing rather than duplicating, and a crash anywhere resumes
+with at most one file redone. Ingestion is sequential with a duty cycle
+(sleep in proportion to how long each file took), and it reads the app's own
+presence sensing: screen locked or idle → full tilt, actively working → ~25%
+duty. Sweeps run every 15 minutes (sooner with a backlog), capped at 200
+ingests per sweep and 30&nbsp;MB per file, with honest truncation reported.
+Unticking every folder stops the watcher. Design: appliance issue #10.
 
 The override file is gitignored and never touches the tracked compose files;
 removing every folder deletes it again. Before the restart, the panel sends one
