@@ -34,7 +34,17 @@ needed, no app names, no content). Each push replaces the previous one in the
 appliance's in-memory context layer — a heartbeat for the attention system, not
 a stored history. It requires the sensor endpoint (assistant `me` branch).
 
-`npm run smoke` prints what a scan would gather without starting the UI.
+**Browser history is opt-in** — tick "Include browser history" before scanning and
+the sensor also reports most-visited sites, which news outlets you read (with the
+headlines you actually opened), and recent web searches. Read from a *copy* of the
+Chromium history database via the system `sqlite3`, because the live file is locked
+while the browser runs; Chromium needs no Full Disk Access, and Safari — which does
+— is deliberately not touched. This is what lets the assistant answer "what kind of
+news do I read?" with outlets and stories rather than a guess from your Dock.
+
+`npm run smoke` prints what a scan would gather without starting the UI;
+`node -e "require('./dist/scanner').scan({browserHistory:true}).then(console.log)"`
+includes the history facts.
 
 ## Design notes
 

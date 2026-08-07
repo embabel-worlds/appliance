@@ -24,6 +24,11 @@ export interface SendResult {
   message: string
 }
 
+/** What the scan is allowed to read. Browser history is opt-in — see scanner.ts. */
+export interface ScanOptions {
+  browserHistory?: boolean
+}
+
 /** State of the ambient presence stream. */
 export interface StreamState {
   running: boolean
@@ -36,7 +41,7 @@ export interface MeApi {
   loadSettings(): Promise<Settings>
   saveSettings(settings: Settings): Promise<boolean>
   testConnection(settings: Settings): Promise<ConnectionResult>
-  scan(): Promise<Fact[]>
+  scan(options: ScanOptions): Promise<Fact[]>
   sendFacts(settings: Settings, facts: Fact[]): Promise<SendResult[]>
   setStream(settings: Settings, enabled: boolean): Promise<StreamState>
   streamState(): Promise<StreamState>

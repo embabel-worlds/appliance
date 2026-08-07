@@ -12,7 +12,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import * as scanner from './scanner'
 import * as api from './api'
-import type { Fact, SendResult, Settings, StreamState } from './types'
+import type { Fact, ScanOptions, SendResult, Settings, StreamState } from './types'
 
 const run = promisify(execFile)
 
@@ -104,7 +104,7 @@ ipcMain.handle('settings:save', (_e, settings: Settings): boolean => {
   return true
 })
 ipcMain.handle('connection:test', (_e, settings: Settings) => api.testConnection(settings))
-ipcMain.handle('scan:run', () => scanner.scan())
+ipcMain.handle('scan:run', (_e, options: ScanOptions) => scanner.scan(options))
 ipcMain.handle('facts:send', (_e, settings: Settings, facts: Fact[]): Promise<SendResult[]> =>
   api.sendFacts(settings, facts),
 )

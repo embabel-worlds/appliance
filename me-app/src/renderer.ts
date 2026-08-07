@@ -74,7 +74,7 @@ setInterval(async () => {
 $<HTMLButtonElement>('scan').addEventListener('click', async () => {
   factList.innerHTML = ''
   receipt.innerHTML = ''
-  facts = await window.me.scan()
+  facts = await window.me.scan({ browserHistory: $<HTMLInputElement>('history-toggle').checked })
   factsSection.hidden = false
   if (facts.length === 0) {
     factList.textContent = 'Nothing found to report.'
