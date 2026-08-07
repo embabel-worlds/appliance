@@ -883,7 +883,6 @@ for (const tab of document.querySelectorAll('.tab')) {
 const privacyBar = $('privacy')
 const privacyHeadline = $('privacy-headline')
 const privacySub = $('privacy-sub')
-const privacyCta = $('privacy-golocal')
 let privacyDetailOpen = false
 let lastInUse = null
 
@@ -917,11 +916,9 @@ async function refreshPrivacy() {
   privacyHeadline.textContent = words.headline
   privacySub.textContent = words.sub
 
-  // The offer, not just the warning: if a model on this machine could do the
-  // talking, one click makes it so.
-  const localAvailable = await firstLocalModel(settings)
-  privacyCta.hidden = inUse.allLocal || !localAvailable
-  privacyCta.dataset['model'] = localAvailable ?? ''
+  // No 'fix it for me' button: which model to use is the user's call, and a
+  // banner that quietly picks one is making that call for them. The Models tab
+  // is one click away and shows what it is choosing between.
 
   renderPrivacyDetail(inUse)
 
@@ -940,16 +937,6 @@ async function refreshPrivacy() {
   }
 }
 
-/** A local model to offer, or null if this machine is running none. */
-async function firstLocalModel(settings) {
-  const listed = await window.me.listModels(settings)
-  if (!listed.ok) return null
-  const local = listed.models.filter((m) => LOCAL_PROVIDERS.has(m.provider))
-  // Prefer something built for conversation over an embedding model.
-  const chatty = local.find((m) => !/embed/i.test(m.name)) ?? local[0]
-  return chatty?.name ?? null
-}
-
 function renderPrivacyDetail(inUse) {
   document.getElementById('privacy-detail-panel')?.remove()
   if (!privacyDetailOpen) return
@@ -964,20 +951,6 @@ function renderPrivacyDetail(inUse) {
   }
   privacyBar.after(panel)
 }
-
-$('privacy-golocal').addEventListener('click', async () => {
-  const model = privacyCta.dataset['model']
-  if (!model) return
-  privacyCta.disabled = true
-  privacyCta.textContent = 'Switching…'
-  const result = await window.me.setChatModel(currentSettings(), model)
-  privacyCta.disabled = false
-  privacyCta.textContent = 'Go fully local'
-  if (result.ok) {
-    await refreshPrivacy()
-    if (typeof modelsLoaded !== 'undefined' && modelsLoaded) void loadModels()
-  }
-})
 
 $('privacy-detail').addEventListener('click', async () => {
   privacyDetailOpen = !privacyDetailOpen
