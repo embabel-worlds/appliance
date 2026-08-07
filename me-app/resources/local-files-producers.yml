@@ -1,0 +1,47 @@
+# Written by Embabel Me — the "Local files" panel provisions this file; it is rewritten on Apply.
+#
+# The `files` producer (assistant specs/LOCAL_FILES.md) over the folders the user shared
+# through the Me app: bind-mounted read-only under /local, reached through the world's
+# data/local symlink (trusted via filesTrustedRoots in world.yml). Roots are RELATIVE —
+# resolved under the world sandbox base; the walk is live on every query.
+- name: worldFiles
+  kind: files
+  roots: ["local/"]
+  include: ["**/*"]
+  maxFiles: 4000
+  contentCapKb: 64
+
+# The DIRECTORIES view over the same walk (emit: directories): one row per contained folder,
+# carrying fileCount/sizeBytes aggregated over its DIRECT matching files — folder-level
+# questions ("what folders do I have", "which folder has the most files", empty folders)
+# are first-class. Same roots, same guardrails.
+- name: worldFolders
+  kind: files
+  emit: directories
+  roots: ["local/"]
+  include: ["**/*"]
+  maxFiles: 4000
+
+# CONTENT search over the same walk (emit: search): the anchor keys are free-text TERMS (a
+# Concept's value) — one row per file whose content matches, with the matching-lines excerpt.
+- name: fileContentSearch
+  kind: files
+  emit: search
+  roots: ["local/"]
+  include: ["**/*"]
+  maxFiles: 4000
+  contentCapKb: 64
+
+# CONCEPT search (agentic): the term is expanded into literal probes ("trip logistics" →
+# travel/flight/hotel) and a file matching ANY probe is returned — how "files about <idea>"
+# works when the idea's words never appear verbatim. Fails open to plain search if no expander.
+- name: fileConceptSearch
+  kind: files
+  emit: search
+  agentic: true
+  intent: "files on the user's own disk that concern the given idea or topic"
+  maxProbes: 5
+  roots: ["local/"]
+  include: ["**/*"]
+  maxFiles: 4000
+  contentCapKb: 64

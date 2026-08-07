@@ -1,0 +1,149 @@
+# Written by Embabel Me — the "Local files" panel provisions this file; it is rewritten on Apply.
+#
+# LOCAL FILES as a virtual anchor fan-out (assistant specs/LOCAL_FILES.md): the folders the
+# user shared through the Me app, bind-mounted read-only under /local and reached through the
+# world's data/local symlink. Walked LIVE on every query — nothing is committed, no index,
+# no staleness, no drift. Rows are METADATA; `content` exists ONLY on the grep path.
+#
+#   MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+#   WHERE f.content CONTAINS 'renewal'
+#   RETURN f.path, f.content
+- name: File
+  visibility: internal
+  userAnchor: false
+  description: "A file on the user's own disk (notes, documents, downloads), reached ONLY from the user anchor: (me:AssistantUser)-[:HAS_FILE]->(f:File). A row is METADATA — path, name, ext, dir, sizeBytes, modifiedAt, createdAt. f.content is present ONLY when the query itself filters on it CASE-INSENSITIVELY with `toLower(f.content) CONTAINS '<lowercase term>'`, and then holds the query-relevant matching lines, NEVER the whole file body. Always lowercase with toLower: the grep is a case-insensitive superset but the graph re-applies your predicate to the excerpt, so a bare `f.content CONTAINS` would drop a file whose only match is capitalized. To SUMMARIZE or report on a document's content, use the ingested-documents path ((:Concept)-[:RELEVANT_TO]->(:Document)), not File.content."
+  virtualJoins:
+    # LEXICAL content relevance: files whose content mentions the literal term. Seed a
+    # (:Concept {value:'<lowercase term>'}) and pin via:'keyword'.
+    - anchorLabel: Concept
+      relationship: RELEVANT_TO
+      via: keyword
+      keyField: value
+      recordKeyField: matchedFor
+      producer: fileContentSearch
+      description: "files whose CONTENT mentions the literal term — seed (:Concept {value:'<term>'}) and pin [:RELEVANT_TO {via:'keyword'}]. The excerpt is on f.content; the term is the filter."
+    # CONCEPT relevance: "files about <idea>" where the idea's words may never appear — the idea is
+    # expanded into literal probes and files matching ANY probe return (r.probe says which hit).
+    - anchorLabel: Concept
+      relationship: RELEVANT_TO
+      via: agentic-rag
+      keyField: value
+      recordKeyField: matchedFor
+      producer: fileConceptSearch
+      description: "files ABOUT an idea/topic whose exact words may not appear — seed (:Concept {value:'<idea>'}) and pin [:RELEVANT_TO {via:'agentic-rag'}]. Use for conceptual asks ('files about trip logistics'); for a literal term prefer via:'keyword'."
+    - anchorLabel: AssistantUser
+      relationship: HAS_FILE
+      keyField: id
+      recordKeyField: ownerKey
+      producer: worldFiles
+      description: "Files on the user's own disk: notes, documents, downloads. Filter by metadata (f.name, f.ext, f.dir, f.path, f.modifiedAt) or grep content CASE-INSENSITIVELY with `toLower(f.content) CONTAINS '<lowercase term>'` — f.content is then ONLY the matching lines. Always anchor on (me:AssistantUser) and always lowercase the content match with toLower."
+      maxFanoutTotal: 5000
+  examples:
+    - q: "which of my files mention lotteries"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        WHERE toLower(f.content) CONTAINS 'lotteries'
+        RETURN f.path, f.content
+    # CONCEPT ask — the idea's words may never appear; the agentic edge expands it into probes.
+    - q: "which of my files are about gardening"
+      cypher: |
+        MATCH (:Concept {value:'gardening'})-[r:RELEVANT_TO {via:'agentic-rag'}]->(f:File)
+        RETURN f.path, f.content, r.probe
+    - q: "what files changed in the last week"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        WHERE datetime(f.modifiedAt) > datetime() - duration('P7D')
+        RETURN f.name, f.dir, f.modifiedAt ORDER BY f.modifiedAt DESC
+    # Two content terms AND as two bare CONTAINS conjuncts — each on f.content, never combined
+    # into one quoted phrase (the terms may sit on different lines of the same file).
+    - q: "which of my files mention both apples and oranges"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        WHERE toLower(f.content) CONTAINS 'apples' AND toLower(f.content) CONTAINS 'oranges'
+        RETURN f.path, f.content
+    # SUBJECTIVE superlative over file CONTENT ("most aggressive non-compete clause"): engage the
+    # content grep with a toLower CONTAINS on the anchor term FIRST (so f.content is populated), then
+    # argmax over f.content. NEVER a bare metadata argmax (f.content is null) nor ORDER BY … LIMIT 1.
+    - q: "which of my files has the most aggressive non-compete clause"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        WHERE toLower(f.content) CONTAINS 'non-compete'
+        RETURN argmax(f.path, f.content, 'most aggressive non-compete clause') AS winner
+    - q: "what are my three largest files"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        RETURN f.path, f.sizeBytes ORDER BY f.sizeBytes DESC LIMIT 3
+    - q: "which files did I create this week"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        WHERE datetime(f.createdAt) > datetime() - duration('P7D')
+        RETURN f.name, f.dir, f.createdAt ORDER BY f.createdAt DESC
+    # Containment: resolve the FOLDER by name first (its path is not guessable — 'projects' may live
+    # anywhere under the roots), then prefix-match files on d.path + '/'. A path-prefix spans every
+    # nesting level; dir equality matches only one; a bare hardcoded prefix guesses wrong.
+    - q: "which files are in my projects folder"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FOLDER]->(d:Folder)
+        WHERE toLower(d.name) CONTAINS 'projects'
+        MATCH (me)-[:HAS_FILE]->(f:File)
+        WHERE f.path STARTS WITH d.path + '/'
+        RETURN f.path ORDER BY f.path
+    - q: "where on disk is my expense report"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FILE]->(f:File)
+        WHERE f.name CONTAINS 'expense'
+        RETURN f.path, f.url
+  properties:
+    path:
+      description: "Path relative to the world file roots — the node identity."
+      metadata:
+        identity: "true"
+    name: "File name including extension."
+    ext: "Lower-cased extension without the dot."
+    dir: "Directory portion of the path (e.g. 'local/Documents/projects'). For \"files under directory X\" prefer f.path STARTS WITH 'X/' — it includes every nesting level; f.dir = 'X' matches only that exact level."
+    depth: "Directory levels below the file roots as a NUMBER — 'local/todo.txt' is 1, 'local/Documents/a.md' is 2. Filter numerically: f.depth >= 2."
+    url: "Absolute file:// URL of the real file on disk — return this when the user wants a link to open the file."
+    sizeBytes: "File size in bytes."
+    modifiedAt: "Last-modified time (ISO-8601 instant) — live truth; filter recency with datetime(f.modifiedAt)."
+    createdAt: "Creation (birth) time where the filesystem records it, else the modified time (ISO-8601 instant) — answers \"when did this file appear here\". Filter with datetime(f.createdAt). May exceed modifiedAt when an mtime was set backwards (restores)."
+    content: "ONLY present when the query filters on it with `toLower(f.content) CONTAINS '…'`: the matching lines (±1 line of context), NEVER the whole file body."
+
+# FOLDERS as first-class virtual nodes over the same walk: one row per directory under the
+# shared mounts, with fileCount/sizeBytes aggregated over DIRECT matching files.
+#
+#   MATCH (me:AssistantUser)-[:HAS_FOLDER]->(d:Folder)
+#   RETURN d.path, d.fileCount ORDER BY d.fileCount DESC
+- name: Folder
+  visibility: internal
+  userAnchor: false
+  description: "A directory on the user's own disk, reached ONLY from the user anchor: (me:AssistantUser)-[:HAS_FOLDER]->(d:Folder). Rows carry path, name, dir (parent), depth, url, fileCount and sizeBytes (aggregated over the folder's DIRECT files — not recursive). Folders have NO content property. For the FILES inside a folder use (me)-[:HAS_FILE]->(f:File) WHERE f.path STARTS WITH '<folder>/'."
+  virtualJoins:
+    - anchorLabel: AssistantUser
+      relationship: HAS_FOLDER
+      keyField: id
+      recordKeyField: ownerKey
+      producer: worldFolders
+      description: "Directories on the user's own disk, with per-folder direct file counts and sizes. Use for \"what folders do I have\", \"which folder has the most files\", \"empty folders\". For the files themselves use HAS_FILE."
+      maxFanoutTotal: 5000
+  examples:
+    - q: "what folders do I have"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FOLDER]->(d:Folder)
+        RETURN d.path, d.fileCount ORDER BY d.path
+    - q: "which folder has the most files"
+      cypher: |
+        MATCH (me:AssistantUser)-[:HAS_FOLDER]->(d:Folder)
+        RETURN d.path, d.fileCount ORDER BY d.fileCount DESC LIMIT 1
+  properties:
+    path:
+      description: "Root-relative directory path — the node identity."
+      metadata:
+        identity: "true"
+    name: "Directory name (last path segment)."
+    dir: "Parent directory portion of the path ('' for a top-level root)."
+    depth: "Directory levels below the file roots as a NUMBER — 'local' is 0, 'local/Documents' is 1."
+    url: "Absolute file:// URL of the real directory."
+    fileCount: "Number of DIRECT matching files in this folder (not recursive) — a NUMBER; 0 means the folder is empty."
+    sizeBytes: "Total size of the folder's DIRECT matching files in bytes — a NUMBER, not recursive."
+    modifiedAt: "The directory's last-modified time (ISO-8601 instant)."
+    createdAt: "The directory's creation time where recorded, else its modified time (ISO-8601 instant)."

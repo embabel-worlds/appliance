@@ -115,12 +115,15 @@ push, never written to the graph, and is what lets the assistant know not to
 interrupt you.
 
 **Local files.** Share folders — Documents, a projects directory — with the
-appliance so it can index what is in them. Each is bind-mounted **read-only**
-into the assistant container under `/local/<name>`; the panel writes a
-gitignored `docker-compose.override.yml` next to the compose files (the tracked
-files stay pull-only) and recreates the assistant container to apply it. The
-graph stays up throughout, and the panel tells the assistant where its new
-files live so you can just ask it to index them.
+appliance. Each is bind-mounted **read-only** into the assistant container
+under `/local/<name>`; the panel writes a gitignored
+`docker-compose.override.yml` next to the compose files (the tracked files
+stay pull-only), wires the folders into the assistant's virtual Cypher, and
+recreates the assistant container to apply it — the graph stays up throughout.
+Sharing alone makes the files *queryable live* ("what changed this week?",
+"which files mention the renewal?") with nothing copied or stored; tick
+**index contents** on a folder to additionally embed its documents (PDFs
+included) into the knowledge base for summarization and semantic search.
 
 The app is **optional and additive**: the appliance is fully functional without
 it. It is also a spike — unpackaged, so macOS prompts currently say "Electron"

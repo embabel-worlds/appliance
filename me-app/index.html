@@ -232,10 +232,13 @@
         <p class="hint">
           Share folders — Documents, a projects directory — with your appliance. Each
           appears read-only inside the assistant container under <code>/local</code>,
-          where the assistant can index its documents and answer from them. Applying
-          rewrites <code>docker-compose.override.yml</code> next to the compose files
-          and restarts the assistant container; the graph and everything it remembers
-          stay up.
+          and Apply wires it into the assistant's virtual Cypher: "what changed this
+          week?", "which files mention the renewal?" are answered by walking your
+          folders live — nothing is copied or stored. Tick <strong>index contents</strong>
+          to go further for a folder: its documents (PDFs included) are embedded into
+          the knowledge base, for summarization and semantic search. Applying rewrites
+          <code>docker-compose.override.yml</code> and restarts the assistant container;
+          the graph and everything it remembers stay up.
         </p>
         <div id="mount-list"></div>
         <div class="row">

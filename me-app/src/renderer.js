@@ -200,12 +200,42 @@ function renderMounts(state) {
     const target = document.createElement('span')
     target.className = 'target'
     target.textContent = `→ ${mount.target} (read-only)`
+    // Sharing makes the folder QUERYABLE (live metadata and grep); indexing is
+    // the separate, deliberate opt-in that embeds its documents into the graph.
+    const index = document.createElement('label')
+    index.className = 'check'
+    const tick = document.createElement('input')
+    tick.type = 'checkbox'
+    tick.checked = mount.index
+    tick.addEventListener('change', async () => renderMounts(await window.me.setMountIndex(mount.host, tick.checked)))
+    index.append(tick, document.createTextNode('index contents'))
     const remove = document.createElement('button')
     remove.textContent = 'Remove'
     remove.addEventListener('click', async () => renderMounts(await window.me.removeMount(mount.host)))
-    row.append(host, target, remove)
+    row.append(host, target, index, remove)
     mountList.append(row)
   }
+}
+
+/**
+ * Follow an indexing run to its end, narrating progress in the status line.
+ * @param {import('./types').ConnectionResult} applied — the Apply result the final message builds on
+ */
+function followIndexing(applied) {
+  const poll = setInterval(async () => {
+    const s = await window.me.indexingState()
+    if (s.running) {
+      const progress =
+        s.phase === 'waiting' ? 'waiting for the appliance to come back…'
+        : s.phase === 'scanning' ? 'scanning ticked folders…'
+        : `indexing ${s.done}/${s.total}${s.currentFile ? ` — ${s.currentFile}` : ''}`
+      setStatus(mountStatus, null, progress)
+      return
+    }
+    clearInterval(poll)
+    setStatus(mountStatus, s.failed === 0, `${applied.message} · ${s.message}`)
+    mountApply.disabled = false
+  }, 2000)
 }
 
 mountAdd.addEventListener('click', async () => renderMounts(await window.me.addMount()))
@@ -229,7 +259,8 @@ mountApply.addEventListener('click', async () => {
         text:
           `The local folder ${m.host} on this Mac is shared with the assistant: ` +
           `it is mounted read-only inside the appliance container at ${m.target}, ` +
-          `and its documents can be read and indexed from that path.`,
+          `and its files are queryable as File and Folder nodes reached from the user anchor.` +
+          (m.index ? ' Its documents are also being indexed into the document knowledge base.' : ''),
       })),
     )
     const okCount = results.filter((r) => r.ok).length
@@ -238,6 +269,14 @@ mountApply.addEventListener('click', async () => {
   setStatus(mountStatus, null, 'Recreating the assistant container…')
   const result = await window.me.applyMounts()
   setStatus(mountStatus, result.ok, result.message + (result.ok ? told : ''))
+  // Ticked folders: once the restarted assistant answers again, push their
+  // documents through its ingestion pipeline (file:// URLs under /local — the
+  // server reads its own mount; nothing is uploaded). Progress via polling.
+  if (result.ok && state.mounts.some((m) => m.index) && usernameInput.value.trim()) {
+    await window.me.startIndexing(currentSettings())
+    followIndexing(result)
+    return // followIndexing re-enables the button when the run ends
+  }
   mountApply.disabled = false
 })
 

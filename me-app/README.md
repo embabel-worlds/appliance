@@ -65,17 +65,37 @@ while the browser runs; Chromium needs no Full Disk Access, and Safari — which
 — is deliberately not touched. This is what lets the assistant answer "what kind of
 news do I read?" with outlets and stories rather than a guess from your Dock.
 
-**Local files** shares folders with your appliance so it can index what's in
-them. Pick folders (Documents, a projects directory); each is bind-mounted
+**Local files** shares folders with your appliance, in two deliberate levels.
+Pick folders (Documents, a projects directory); each is bind-mounted
 **read-only** into the assistant container under `/local/<name>`. The panel
 writes `../docker-compose.override.yml` — the one file name Docker Compose
 merges into plain `docker compose up` by convention, and which `setup.py` also
 includes explicitly — then **Apply** recreates the assistant container with the
-mounts (the graph and everything the appliance remembers stay up). Before the
-restart, the panel sends one fact per folder so the assistant knows where its
-new files live; ask it to index `/local/<name>` and the documents become part
-of its graph. The file is gitignored and never touches the tracked compose
-files; removing every folder deletes it again.
+mounts (the graph and everything the appliance remembers stay up).
+
+*Level one is free and automatic:* Apply also provisions every world in the
+appliance data volume for the assistant's **virtual Cypher** `files` producer —
+a `data/local → /local` symlink, the `filesTrustedRoots` trust in
+`config/world.yml` (a human-only setting the assistant itself can never widen;
+this panel, acting for the human who just picked the folders, is the sanctioned
+out-of-band writer), and the `File`/`Folder` type and producer declarations
+(`resources/`, provisioned marker-first — a hand-edited copy is warned
+about and left alone). From then on "what files changed this week?" or "which
+files mention the renewal?" are answered by walking your folders **live** —
+metadata and bounded grep, nothing copied, nothing stored, no index to go
+stale.
+
+*Level two is per-folder opt-in:* tick **index contents** and Apply, after the
+restart, pushes that folder's documents (PDF, Office, markdown…) through the
+appliance's own ingestion pipeline — as `file:///local/…` URLs the server reads
+straight off its mount, so no bytes are uploaded — embedding them into the
+knowledge base for summarization and semantic search. Re-applying re-ingests
+by the same URL, replacing rather than duplicating. Caps: 200 files per
+folder per run, 30&nbsp;MB per file, honest truncation reported.
+
+The override file is gitignored and never touches the tracked compose files;
+removing every folder deletes it again. Before the restart, the panel sends one
+fact per folder so the assistant knows where its new files live.
 
 `npm run smoke` prints what a scan would gather without starting the UI;
 `node -e "require('./src/platform').platform.scan({browserHistory:true}).then(console.log)"`

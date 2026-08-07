@@ -17,7 +17,10 @@ const api = {
   mountsState: () => ipcRenderer.invoke('mounts:state'),
   addMount: () => ipcRenderer.invoke('mounts:add'),
   removeMount: (host) => ipcRenderer.invoke('mounts:remove', host),
+  setMountIndex: (host, index) => ipcRenderer.invoke('mounts:set-index', host, index),
   applyMounts: () => ipcRenderer.invoke('mounts:apply'),
+  startIndexing: (settings) => ipcRenderer.invoke('index:start', settings),
+  indexingState: () => ipcRenderer.invoke('index:state'),
 }
 
 contextBridge.exposeInMainWorld('me', api)

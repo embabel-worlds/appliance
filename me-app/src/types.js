@@ -73,10 +73,13 @@
 /**
  * One host folder shared into the assistant container — see mounts.js.
  * `host` is the absolute path on this machine; `target` is where it appears
- * inside the container: always under /local, read-only.
+ * inside the container: always under /local, read-only. `index` is the user's
+ * opt-in to embed the folder's documents into the knowledge base — sharing
+ * alone only makes files queryable (virtual Cypher), never stored.
  * @typedef {object} LocalMount
  * @property {string} host
  * @property {string} target
+ * @property {boolean} index
  */
 
 /**
@@ -90,10 +93,27 @@
  * @property {LocalMount[]} mounts
  */
 
+/**
+ * Progress of an opt-in indexing run — see indexer.js. Polled by the renderer
+ * the way StreamState is; `message` carries the final verdict once `running`
+ * goes false.
+ * @typedef {object} IndexState
+ * @property {boolean} running
+ * @property {'idle' | 'waiting' | 'scanning' | 'indexing'} phase
+ * @property {number} total
+ * @property {number} done
+ * @property {number} ok
+ * @property {number} failed
+ * @property {string} currentFile
+ * @property {string} message
+ * @property {boolean} truncated
+ */
+
 // The narrow IPC surface preload.js exposes to the renderer as `window.me`:
 // loadSettings, saveSettings, testConnection, scan, sendFacts, setStream,
 // streamState, grantStates, openAutomationSettings, mountsState, addMount
-// (opens the folder picker), removeMount, applyMounts (docker compose up).
+// (opens the folder picker), removeMount, setMountIndex, applyMounts
+// (provision + docker compose up), startIndexing, indexingState.
 // See preload.js — it is short enough to be its own definition.
 
 module.exports = {}

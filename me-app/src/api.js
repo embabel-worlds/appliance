@@ -170,4 +170,26 @@ async function sendFocus(settings, sample) {
   return { ok: true, message: body?.receipts?.[0]?.detail ?? (working ? 'active' : 'idle') }
 }
 
-module.exports = { testConnection, sendFacts, sendFocus }
+/**
+ * Ingest one document by URL — for the Local files panel this is a file:// URL
+ * under /local, which the server reads straight off its own mount (no bytes
+ * shipped). Conversion of a big PDF is genuinely slow, hence the long timeout.
+ * @param {Settings} settings
+ * @param {string} url
+ * @returns {Promise<ConnectionResult>}
+ */
+async function ingestDocumentUrl(settings, url) {
+  let res
+  try {
+    res = await post(settings, '/api/v1/documents/url', { url }, 300_000)
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+  const body = await readJson(res)
+  if (!res.ok || body?.status === 'error') {
+    return { ok: false, message: body?.message ?? `HTTP ${res.status}` }
+  }
+  return { ok: true, message: body?.title ?? 'ingested' }
+}
+
+module.exports = { testConnection, sendFacts, sendFocus, ingestDocumentUrl }

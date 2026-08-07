@@ -9,6 +9,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerMonitor, shel
 const path = require('node:path')
 const fs = require('node:fs')
 const api = require('./api')
+const indexer = require('./indexer')
 const mounts = require('./mounts')
 const { platform } = require('./platform')
 
@@ -176,7 +177,17 @@ ipcMain.handle('mounts:add', async () => {
   return picked.canceled ? mounts.state() : mounts.add(picked.filePaths)
 })
 ipcMain.handle('mounts:remove', (_e, host) => mounts.remove(host))
+ipcMain.handle('mounts:set-index', (_e, host, index) => mounts.setIndex(host, index))
 ipcMain.handle('mounts:apply', () => mounts.apply())
+
+// Opt-in indexing of ticked folders (indexer.js). start kicks the run and
+// returns immediately; the renderer polls index:state for progress, exactly
+// like the ambient stream's heartbeat.
+ipcMain.handle('index:start', (_e, settings) => {
+  void indexer.start(settings, mounts.state().mounts)
+  return indexer.state()
+})
+ipcMain.handle('index:state', () => indexer.state())
 
 // ---------------------------------------------------------------------------
 // The ambient focus stream.

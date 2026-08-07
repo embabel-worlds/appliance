@@ -14,6 +14,7 @@
 const { execFile } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
+const provision = require('./provision')
 
 /** @typedef {import('./types').ConnectionResult} ConnectionResult */
 /** @typedef {import('./types').LocalMount} LocalMount */
@@ -42,7 +43,10 @@ function applianceDir() {
   return null
 }
 
-const MOUNT_LINE = /^\s*-\s*"(.+):(\/local\/[^:"]+):ro"$/
+// The trailing `# index` comment is this panel's own annotation — compose
+// ignores YAML comments, so the override file stays the single source of truth
+// for BOTH what is mounted and what the user opted into indexing.
+const MOUNT_LINE = /^\s*-\s*"(.+):(\/local\/[^:"]+):ro"(\s*# index)?\s*$/
 
 /** @param {string} dir @returns {LocalMount[]} */
 function read(dir) {
@@ -55,7 +59,7 @@ function read(dir) {
   const mounts = []
   for (const line of text.split('\n')) {
     const match = MOUNT_LINE.exec(line)
-    if (match) mounts.push({ host: match[1], target: match[2] })
+    if (match) mounts.push({ host: match[1], target: match[2], index: !!match[3] })
   }
   return mounts
 }
@@ -69,7 +73,7 @@ function write(dir, mounts) {
     if (fs.existsSync(file)) fs.rmSync(file)
     return
   }
-  const lines = mounts.map((m) => `      - "${m.host}:${m.target}:ro"`).join('\n')
+  const lines = mounts.map((m) => `      - "${m.host}:${m.target}:ro"${m.index ? ' # index' : ''}`).join('\n')
   fs.writeFileSync(
     file,
     `${MARKER} — the "Local files" panel rewrites this file; don't edit it by hand.\n` +
@@ -127,7 +131,7 @@ function add(hosts) {
     if (mounts.some((m) => m.host === host)) continue
     const target = targetFor(host, taken)
     taken.add(target)
-    mounts.push({ host, target })
+    mounts.push({ host, target, index: false })
   }
   write(current.dir, mounts)
   return { ...current, mounts }
@@ -138,6 +142,19 @@ function remove(host) {
   const current = state()
   if (!current.supported || !current.dir) return current
   const mounts = current.mounts.filter((m) => m.host !== host)
+  write(current.dir, mounts)
+  return { ...current, mounts }
+}
+
+/**
+ * Tick or untick a folder for document indexing. The flag is only an intent
+ * until Apply runs — indexing rides the same restart-then-ingest flow.
+ * @param {string} host @param {boolean} index @returns {MountsState}
+ */
+function setIndex(host, index) {
+  const current = state()
+  if (!current.supported || !current.dir) return current
+  const mounts = current.mounts.map((m) => (m.host === host ? { ...m, index } : m))
   write(current.dir, mounts)
   return { ...current, mounts }
 }
@@ -154,7 +171,8 @@ const docker = (args, cwd) =>
   })
 
 /**
- * Recreate the assistant with the current mounts. `up -d` reconciles: compose
+ * Recreate the assistant with the current mounts, provisioning every world so
+ * virtual Cypher can walk them (see provision.js). `up -d` reconciles: compose
  * sees the changed volume list and recreates just the assistant; the graph —
  * and everything the appliance remembers — lives in other containers and
  * stays up throughout.
@@ -172,14 +190,32 @@ async function apply() {
   if (worlds.ok && worlds.out) {
     return { ok: false, message: `The worlds door is running (${worlds.out}) — stop it before applying mounts.` }
   }
+
+  // Provision BEFORE the restart, straight into the data volume, so the boot
+  // that follows loads the wiring. With no mounts left there is nothing to
+  // point the walk at — leave the worlds as they are (dangling wiring is
+  // inert: a missing data/local root simply yields no rows).
+  const wired = current.mounts.length > 0 ? await provision.provision() : { changed: false, worlds: 0, warnings: [] }
+  if (wired.error) return { ok: false, message: wired.error }
+
   const up = await docker(['compose', 'up', '-d', 'assistant'], current.dir)
   if (!up.ok) return { ok: false, message: `docker compose up failed: ${up.out.slice(-300)}` }
+  // World config is read at boot. An unchanged mount list means `up` recreated
+  // nothing — force the reload the provisioning just made necessary.
+  if (wired.changed && !/recreat/i.test(up.out)) {
+    const restart = await docker(['compose', 'restart', 'assistant'], current.dir)
+    if (!restart.ok) return { ok: false, message: `docker compose restart failed: ${restart.out.slice(-300)}` }
+  }
+
+  const wiring =
+    (wired.worlds ? ` and wired into virtual Cypher for ${wired.worlds} world(s)` : '') +
+    (wired.warnings.length ? ` — NOTE: ${wired.warnings.join('; ')}` : '')
   return {
     ok: true,
     message: current.mounts.length
-      ? `${current.mounts.length} folder(s) mounted under ${MOUNT_ROOT} — give the assistant a moment to restart.`
+      ? `${current.mounts.length} folder(s) mounted under ${MOUNT_ROOT}${wiring} — give the assistant a moment to restart.`
       : 'No folders shared — mounts removed; give the assistant a moment to restart.',
   }
 }
 
-module.exports = { applianceDir, state, add, remove, apply }
+module.exports = { applianceDir, state, add, remove, setIndex, apply }
