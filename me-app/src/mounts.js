@@ -170,6 +170,9 @@ const docker = (args, cwd) =>
     })
   })
 
+/** The end of a long output, visibly truncated — never chopped mid-word in silence. */
+const tail = (out) => (out.length > 300 ? `…${out.slice(-300)}` : out)
+
 /**
  * Recreate the assistant with the current mounts, provisioning every world so
  * virtual Cypher can walk them (see provision.js). `up -d` reconciles: compose
@@ -199,7 +202,7 @@ async function apply() {
   if (wired.error) return { ok: false, message: wired.error }
 
   const up = await docker(['compose', 'up', '-d', 'assistant'], current.dir)
-  if (!up.ok) return { ok: false, message: `docker compose up failed: ${up.out.slice(-300)}` }
+  if (!up.ok) return { ok: false, message: `docker compose up failed: ${tail(up.out)}` }
   // World config is read at boot. An unchanged mount list means `up` recreated
   // nothing — force the reload the provisioning just made necessary.
   if (wired.changed && !/recreat/i.test(up.out)) {

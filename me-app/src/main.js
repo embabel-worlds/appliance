@@ -159,9 +159,22 @@ ipcMain.handle('settings:save', (_e, settings) => {
 })
 handle('connection:test', (settings) => api.testConnection(settings))
 handle('scan:run', (options) => platform.scan(options))
-handle('facts:send', (settings, facts) => {
-  log(`[me-app] sending ${facts.length} fact(s) to ${settings.baseUrl}`)
-  return api.sendFacts(settings, facts)
+handle('facts:send', async (settings, facts) => {
+  // Say WHICH facts, by label, and what the appliance made of each — that is
+  // what correlates this file with the appliance's own [sensor] log. Labels
+  // only, never the text: the user's data belongs in exactly two places, the
+  // review pane they approved it in and the appliance, not a third file.
+  const noun = facts.length === 1 ? 'fact' : 'facts'
+  log(`[me-app] sending ${facts.length} ${noun} to ${settings.baseUrl}: ${facts.map((f) => f.label).join(', ')}`)
+  const results = await api.sendFacts(settings, facts)
+  const counts = new Map()
+  for (const r of results) {
+    const status = r.ok ? r.message.split(' ')[0] : 'failed'
+    counts.set(status, (counts.get(status) ?? 0) + 1)
+  }
+  log(`[me-app] appliance answered: ${[...counts].map(([s, n]) => `${n} ${s}`).join(', ') || 'nothing'}`)
+  for (const r of results) if (!r.ok) log(`[me-app]   ${r.label}: ${r.message}`)
+  return results
 })
 
 // Local files: host folders shared read-only into the assistant container so
