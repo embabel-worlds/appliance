@@ -25,6 +25,12 @@ const api = {
   applyMounts: () => ipcRenderer.invoke('mounts:apply'),
   startIndexing: (settings) => ipcRenderer.invoke('index:start', settings),
   indexingState: () => ipcRenderer.invoke('index:state'),
+  chatOpen: (settings) => ipcRenderer.invoke('chat:open', settings),
+  chatSend: (settings, text) => ipcRenderer.invoke('chat:send', settings, text),
+  chatHistory: (settings) => ipcRenderer.invoke('chat:history', settings),
+  // The one push channel: chat liveness events from the main-process SSE
+  // stream. The callback gets `{type, data}` — never the raw IPC event.
+  onChatEvent: (callback) => ipcRenderer.on('chat:event', (_e, event) => callback(event)),
 }
 
 contextBridge.exposeInMainWorld('me', api)

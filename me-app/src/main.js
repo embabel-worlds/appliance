@@ -9,6 +9,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerMonitor, shel
 const path = require('node:path')
 const fs = require('node:fs')
 const api = require('./api')
+const chat = require('./chat')
 const indexer = require('./indexer')
 const mounts = require('./mounts')
 const documents = require('./documents')
@@ -127,6 +128,9 @@ void app.whenReady().then(() => {
 // Keep running in the menu bar when the window closes.
 app.on('window-all-closed', () => {})
 
+// The chat SSE stream has no listener once the app is going down.
+app.on('before-quit', () => chat.stop())
+
 /**
  * Log to a FILE as well as the console. `./me.py` launches this app detached
  * with its output sent to /dev/null — correct, since Electron's chatter has no
@@ -187,6 +191,18 @@ handle('facts:send', async (settings, facts) => {
   for (const r of results) if (!r.ok) log(`[me-app]   ${r.label}: ${r.message}`)
   return results
 })
+
+// Chat: the appliance's own chat, in the smallest possible window (chat.js).
+// The SSE stream lives in this process; events reach the page as pushes on
+// `chat:event`, the one place the renderer LISTENS rather than asks.
+handle('chat:open', (settings) => {
+  chat.open(settings, (event) => {
+    if (window && !window.isDestroyed()) window.webContents.send('chat:event', event)
+  })
+  return true
+})
+handle('chat:send', (settings, text) => chat.send(settings, text))
+handle('chat:history', (settings) => chat.history(settings))
 
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the

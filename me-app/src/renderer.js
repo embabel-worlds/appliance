@@ -365,8 +365,118 @@ for (const tab of document.querySelectorAll('.tab')) {
     for (const panel of document.querySelectorAll('.tabpanel')) {
       panel.hidden = panel.dataset['panel'] !== tab.dataset['tab']
     }
+    // Chat wakes on first visit — no stream, no polling until someone looks.
+    if (tab.dataset['tab'] === 'chat') startChat()
   })
 }
+
+// ---------------------------------------------------------------------------
+// Chat — deliberately the simplest possible surface over the real protocol,
+// the same one the Worlds console and the TUI speak. History is the source of
+// truth (the SSE stream only animates liveness): replies broadcast to every
+// surface bound to the session, so a stream-only client misses turns whenever
+// the web UI or TUI is also open.
+// ---------------------------------------------------------------------------
+
+const chatScroll = $('chat-scroll')
+const chatInput = $('chat-input')
+const chatSendButton = $('chat-send')
+const chatStatus = $('chat-status')
+
+let chatStarted = false
+/** Renderer-side "thinking…" line; cleared by the next message/done event. */
+let chatWorking = null
+
+function paintChat(messages) {
+  chatScroll.innerHTML = ''
+  if (messages.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'chat-empty'
+    empty.textContent = 'Say something — same assistant, smallest possible window.'
+    chatScroll.append(empty)
+  }
+  for (const m of messages) {
+    const row = document.createElement('div')
+    row.className = `chat-msg ${m.role}`
+    row.textContent = m.content
+    chatScroll.append(row)
+  }
+  if (chatWorking) {
+    const line = document.createElement('div')
+    line.className = 'chat-working'
+    line.textContent = chatWorking
+    chatScroll.append(line)
+  }
+  chatScroll.scrollTop = chatScroll.scrollHeight
+}
+
+async function syncChat() {
+  const result = await window.me.chatHistory(currentSettings())
+  if (!result.ok) {
+    setStatus(chatStatus, false, `history: ${result.message}`)
+    return
+  }
+  paintChat(result.messages)
+}
+
+function startChat() {
+  if (chatStarted) return
+  chatStarted = true
+  const settings = currentSettings()
+  if (!settings.username || !settings.password) {
+    setStatus(chatStatus, false, 'Connect to your appliance first (the pill, top right).')
+    chatStarted = false
+    return
+  }
+  void window.me.chatOpen(settings)
+  void syncChat()
+  setInterval(syncChat, 3000)
+}
+
+window.me.onChatEvent((event) => {
+  switch (event.type) {
+    case 'connected':
+      setStatus(chatStatus, true, event.data?.assistantName ? `connected · ${event.data.assistantName}` : 'connected')
+      break
+    case 'user':
+      chatWorking = 'thinking…'
+      break
+    case 'progress':
+      chatWorking = event.data?.message ?? event.data?.text ?? 'working…'
+      void syncChat()
+      break
+    case 'message':
+    case 'assistant':
+    case 'done':
+      chatWorking = null
+      void syncChat()
+      break
+    case 'stream-closed':
+    case 'stream-error':
+      setStatus(chatStatus, false, 'stream down — reconnecting…')
+      break
+  }
+})
+
+async function sendChat() {
+  const text = chatInput.value.trim()
+  if (!text) return
+  chatInput.value = ''
+  chatWorking = 'thinking…'
+  const settings = currentSettings()
+  await window.me.saveSettings(settings)
+  const result = await window.me.chatSend(settings, text)
+  if (!result.ok) {
+    chatWorking = null
+    setStatus(chatStatus, false, result.message)
+  }
+  void syncChat()
+}
+
+chatSendButton.addEventListener('click', () => void sendChat())
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void sendChat()
+})
 
 // ---------------------------------------------------------------------------
 // Ask your documents.

@@ -206,6 +206,21 @@
     .source .actions { margin-top: 8px; display: flex; gap: 8px; }
     .source .actions button { font-size: 12px; padding: 4px 10px; }
 
+    /* Chat: the console's porthole, redrawn on this surface. */
+    .chat-scroll {
+      min-height: 200px; max-height: 48vh; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+    }
+    .chat-msg {
+      padding: 8px 11px; border: 1px solid var(--rule); border-radius: 3px;
+      background: rgba(0, 0, 0, 0.35); font-size: 13.5px;
+      white-space: pre-wrap; overflow-wrap: anywhere; max-width: 86%;
+    }
+    .chat-msg.user { align-self: flex-end; border-color: rgba(98, 95, 255, 0.45); background: rgba(98, 95, 255, 0.10); }
+    .chat-msg.assistant { align-self: flex-start; }
+    .chat-working { font-family: var(--mono); font-size: 12px; color: var(--mid); padding: 2px 1px; }
+    .chat-empty { color: var(--faint); font-size: 13px; padding: 6px 1px; }
+
     .summary { margin-top: 10px; font-size: 13px; color: var(--ink); font-weight: 600; }
     #receipt { margin-top: 12px; display: grid; gap: 3px; }
     #fact-list { margin-bottom: 12px; }
@@ -237,6 +252,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab is-on" role="tab" data-tab="sensor">Sensor</button>
       <button class="tab" role="tab" data-tab="documents">Documents</button>
+      <button class="tab" role="tab" data-tab="chat">Chat</button>
     </nav>
 
 
@@ -380,6 +396,26 @@
       </div>
     </section>
     </div><!-- /documents -->
+
+    <div class="tabpanel" data-panel="chat" hidden>
+    <section class="panel">
+      <h2>Chat</h2>
+      <div class="panel-body">
+        <p class="hint">
+          Your assistant — the same one as the web UI, in the smallest possible
+          window. The conversation is shared: what you say here appears there,
+          and vice versa.
+        </p>
+        <div id="chat-scroll" class="chat-scroll"></div>
+        <div class="row">
+          <input type="text" id="chat-input" class="grow" placeholder="Say something…"
+                 autocapitalize="off" autocorrect="off" />
+          <button id="chat-send" class="primary">Send</button>
+        </div>
+        <div id="chat-status" class="status"></div>
+      </div>
+    </section>
+    </div><!-- /chat -->
   </div>
 
   <script src="src/graph.js"></script>
