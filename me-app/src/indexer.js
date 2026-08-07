@@ -165,7 +165,11 @@ async function ingestedMap(s) {
   const map = new Map()
   for (const doc of listed.documents) {
     if (typeof doc.uri === 'string' && doc.uri.startsWith('file:///local/')) {
-      map.set(doc.uri, Date.parse(doc.ingestedAt ?? '') || 0)
+      // The SOURCE's modified date — what the server holds for the file itself.
+      // undefined when the server has none, which is a real state: that document
+      // was ingested before source dates were captured, so our copy is missing
+      // information the file has and is worth re-reading.
+      map.set(doc.uri, Date.parse(doc.modifiedAt ?? '') || undefined)
     }
   }
   return map
@@ -237,10 +241,19 @@ async function sweep() {
       scanTruncated = scanTruncated || scan.truncated
       for (const file of scan.files) {
         const url = containerUrl(mount.target, file.relative)
-        const ingestedAt = already.get(url)
-        // The change check: absent → new; mtime newer than the server's copy →
-        // changed, and re-ingesting the same URL replaces it.
-        if (ingestedAt !== undefined && ingestedAt >= file.mtimeMs) {
+        const known = already.has(url)
+        const storedModified = already.get(url)
+        // The change check compares the file's mtime against the SOURCE date the
+        // server stored for it — not against when we ingested it.
+        //
+        // Ingestion time is always newer than the file, by construction: you index
+        // a folder today, so every file in it was "ingested after it changed", and
+        // nothing ever looks stale again. Ticking and unticking could not fix it,
+        // because the ledger said everything was current forever.
+        //
+        // A known document with NO stored modified date predates date capture:
+        // re-read it, once, and it gains one.
+        if (known && storedModified !== undefined && storedModified >= file.mtimeMs) {
           current.skipped++
           continue
         }
