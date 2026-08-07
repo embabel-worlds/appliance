@@ -239,6 +239,13 @@ ipcMain.handle('verbs:state', () => outbox.state())
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the
 // container recreate — lives in mounts.js; this is just the IPC skin.
+handle('models:list', (settings) => api.listModels(settings))
+handle('models:roles', (settings) => api.getRoles(settings))
+handle('models:set-role', (settings, roleId, model) => {
+  log(`[me-app] set role ${roleId} -> ${model || '(cleared)'}`)
+  return api.setRole(settings, roleId, model)
+})
+
 handle('docs:ask', (settings, request) => {
   log(`[me-app] asking documents: ${JSON.stringify(request.question).slice(0, 120)}`)
   return documents.ask(settings, request)

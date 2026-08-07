@@ -53,9 +53,9 @@ async function readJson(res) {
   }
 }
 
-async function post(settings, path, body, timeoutMs = 15000) {
+async function post(settings, path, body, timeoutMs = 15000, method = 'POST') {
   return fetch(`${settings.baseUrl}${path}`, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json', Authorization: auth(settings) },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
@@ -227,4 +227,66 @@ async function ingestDocumentUrl(settings, url) {
   return { ok: true, message: body?.title ?? 'ingested' }
 }
 
-module.exports = { testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl }
+module.exports = {
+  listModels,
+  getRoles,
+  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl }
+
+// ---------------------------------------------------------------------------
+// Models. Everything here is the appliance's own REST surface — the app adds a
+// picker, not a mechanism.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every model the appliance can use, with its provider. Local ones (LM Studio,
+ * Ollama) are the user's own hardware: free to run, and nothing leaves the
+ * machine.
+ * @param {Settings} settings
+ */
+async function listModels(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/config/models`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, models: [], default: '' }
+    const body = await readJson(res)
+    return {
+      ok: true,
+      message: '',
+      models: body?.modelsWithProvider ?? [],
+      default: body?.default ?? '',
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), models: [], default: '' }
+  }
+}
+
+/** The role→model overrides this world has set. Empty means "inherit the defaults". */
+async function getRoles(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/config/llm-roles`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, roles: {} }
+    return { ok: true, message: '', roles: (await readJson(res)) ?? {} }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), roles: {} }
+  }
+}
+
+/**
+ * Point one role at a model, or clear it with an empty model to fall back to the
+ * appliance default. Takes effect immediately: the world re-reads its config on
+ * every access, so the next piece of work uses it — no restart.
+ */
+async function setRole(settings, roleId, model) {
+  try {
+    const res = await post(settings, `/api/v1/config/llm-roles/${encodeURIComponent(roleId)}`, { model }, 15000, 'PUT')
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    return { ok: true, message: model ? `now ${model}` : 'cleared' }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}

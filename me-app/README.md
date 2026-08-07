@@ -157,6 +157,28 @@ Finder**: `/local/Documents/paper.pdf` inside the container is
 their URL instead. A citation you can open is verification; one you can only read
 is decoration.
 
+## Models
+
+The **Models** tab says which model does what: chat, everyday work, code, document
+search. Models running on this Mac — LM Studio, Ollama — are grouped first and
+marked `local`: they cost nothing to run and the work stays on the machine.
+Hosted ones are billed to your own provider key.
+
+Every mechanism here belongs to the appliance (`/api/v1/config/models` and
+`/api/v1/config/llm-roles`); the app adds a picker and the knowledge of which
+models are yours.
+
+Two different behaviours, worth knowing before you wonder why nothing happened:
+
+- **Changing a role takes effect immediately.** The world re-reads its config on
+  every access, so the next piece of work uses the new model. No restart.
+- **A newly-started local model needs a restart.** The appliance registers models
+  at boot, so a model you load in LM Studio afterwards is invisible until then.
+
+For the appliance to see local models at all it must address them as the host
+rather than as itself — `LMSTUDIO_BASE_URL` and `OLLAMA_BASE_URL` default to
+`host.docker.internal`, which Docker Desktop proxies through to your loopback.
+
 ## If there is no appliance yet
 
 The app does not install or start the appliance — it talks to one that is already

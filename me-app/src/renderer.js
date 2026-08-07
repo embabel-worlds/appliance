@@ -660,3 +660,126 @@ askButton.addEventListener('click', () => void runAsk())
 askQuestion.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void runAsk()
 })
+
+// ---------------------------------------------------------------------------
+// Models: which model does what.
+//
+// Every mechanism here is the appliance's own — this is a picker over
+// /api/v1/config/models and /api/v1/config/llm-roles, nothing more. The value
+// it adds is knowing which models are LOCAL, and saying what a change costs:
+// role changes are live, a newly-started local model needs a restart.
+// ---------------------------------------------------------------------------
+
+// The roles worth putting in front of someone, in the order they matter. The
+// appliance has more; a picker listing all of them is a picker nobody reads.
+const ROLES = [
+  ['chat_best', 'Chat — the model you talk to'],
+  ['chat_cheap', 'Chat, cheaper — short or routine turns'],
+  ['best', 'Hardest work — planning, judgement'],
+  ['workhorse', 'Everyday work'],
+  ['cheap', 'Bulk work — classification, routing'],
+  ['code_best', 'Writing code'],
+  ['agentic_rag', 'Searching your documents'],
+]
+
+const LOCAL_PROVIDERS = new Set(['LM Studio', 'Ollama'])
+const modelsStatus = $('models-status')
+const roleList = $('role-list')
+
+async function loadModels() {
+  setStatus(modelsStatus, null, 'Loading…')
+  roleList.innerHTML = ''
+  const settings = currentSettings()
+  const [listed, roles] = await Promise.all([window.me.listModels(settings), window.me.getRoles(settings)])
+  if (!listed.ok) {
+    setStatus(modelsStatus, false, listed.message)
+    return
+  }
+  const local = listed.models.filter((m) => LOCAL_PROVIDERS.has(m.provider))
+  setStatus(
+    modelsStatus,
+    true,
+    `${listed.models.length} model(s) · ${local.length} on this Mac · default ${listed.default}`,
+  )
+
+  for (const [roleId, description] of ROLES) {
+    const row = document.createElement('div')
+    row.className = 'role'
+
+    const what = document.createElement('div')
+    what.className = 'what'
+    const name = document.createElement('div')
+    name.className = 'name'
+    name.textContent = roleId
+    const says = document.createElement('div')
+    says.className = 'says'
+    says.textContent = description
+    what.append(name, says)
+
+    const select = document.createElement('select')
+    const inherit = document.createElement('option')
+    inherit.value = ''
+    inherit.textContent = `— appliance default —`
+    select.append(inherit)
+    // Grouped, so the user's own models are not lost among the hosted ones.
+    for (const group of ['LM Studio', 'Ollama']) {
+      const models = listed.models.filter((m) => m.provider === group)
+      if (models.length === 0) continue
+      const optgroup = document.createElement('optgroup')
+      optgroup.label = `${group} — on this Mac`
+      for (const model of models) {
+        const option = document.createElement('option')
+        option.value = model.name
+        option.textContent = model.name
+        optgroup.append(option)
+      }
+      select.append(optgroup)
+    }
+    const hostedGroup = document.createElement('optgroup')
+    hostedGroup.label = 'Hosted — billed to your key'
+    for (const model of listed.models.filter((m) => !LOCAL_PROVIDERS.has(m.provider))) {
+      const option = document.createElement('option')
+      option.value = model.name
+      option.textContent = `${model.name} (${model.provider})`
+      hostedGroup.append(option)
+    }
+    select.append(hostedGroup)
+    select.value = roles.roles?.[roleId]?.model ?? ''
+
+    const badge = document.createElement('span')
+    badge.className = 'local'
+    const markLocal = () => {
+      const chosen = listed.models.find((m) => m.name === select.value)
+      badge.textContent = chosen && LOCAL_PROVIDERS.has(chosen.provider) ? 'local' : ''
+    }
+    markLocal()
+
+    select.addEventListener('change', async () => {
+      setStatus(modelsStatus, null, `Setting ${roleId}…`)
+      const result = await window.me.setRole(currentSettings(), roleId, select.value)
+      markLocal()
+      setStatus(
+        modelsStatus,
+        result.ok,
+        result.ok ? `${roleId}: ${result.message} — in effect now, no restart` : result.message,
+      )
+    })
+
+    row.append(what, select, badge)
+    roleList.append(row)
+  }
+}
+
+$('models-refresh').addEventListener('click', () => void loadModels())
+
+// Load once when the tab is first opened, not at startup: it costs two calls to
+// the appliance, and most sessions never touch this tab.
+let modelsLoaded = false
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => {
+    if (tab.dataset['tab'] === 'models' && !modelsLoaded) {
+      modelsLoaded = true
+      void loadModels()
+    }
+  })
+}

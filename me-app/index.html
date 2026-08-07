@@ -221,6 +221,17 @@
     .chat-working { font-family: var(--mono); font-size: 12px; color: var(--mid); padding: 2px 1px; }
     .chat-empty { color: var(--faint); font-size: 13px; padding: 6px 1px; }
 
+    .role {
+      display: flex; gap: 10px; align-items: center; padding: 9px 12px; margin-bottom: 8px;
+      border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
+    }
+    .role .what { flex: 1; min-width: 0; }
+    .role .name { font-family: var(--mono); font-size: 12px; color: #c7d2ff; }
+    .role .says { font-size: 12px; color: var(--faint); }
+    .role select { min-width: 250px; }
+    .role .local { font-family: var(--mono); font-size: 10px; color: var(--lit);
+      border: 1px solid rgba(62, 207, 142, 0.4); border-radius: 3px; padding: 1px 5px; }
+
     .summary { margin-top: 10px; font-size: 13px; color: var(--ink); font-weight: 600; }
     #receipt { margin-top: 12px; display: grid; gap: 3px; }
     #fact-list { margin-bottom: 12px; }
@@ -252,6 +263,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab is-on" role="tab" data-tab="sensor">Sensor</button>
       <button class="tab" role="tab" data-tab="documents">Documents</button>
+      <button class="tab" role="tab" data-tab="models">Models</button>
       <button class="tab" role="tab" data-tab="chat">Chat</button>
     </nav>
 
@@ -414,6 +426,26 @@
       </div>
     </section>
     </div><!-- /documents -->
+
+    <div class="tabpanel" data-panel="models" hidden>
+    <section class="panel">
+      <h2>Models</h2>
+      <div class="panel-body">
+        <p class="hint">
+          Which model does what. Models running on this Mac — LM Studio, Ollama — cost
+          nothing to run and keep the work on your machine; hosted ones are billed to
+          your own provider key. A change takes effect on the next piece of work: no
+          restart. Starting a NEW local model is the exception — the appliance registers
+          models at boot, so restart it to pick one up.
+        </p>
+        <div class="row">
+          <button id="models-refresh">Refresh</button>
+          <span id="models-status" class="status"></span>
+        </div>
+        <div id="role-list"></div>
+      </div>
+    </section>
+    </div><!-- /models -->
 
     <div class="tabpanel" data-panel="chat" hidden>
     <section class="panel">
