@@ -11,6 +11,7 @@ const fs = require('node:fs')
 const api = require('./api')
 const indexer = require('./indexer')
 const mounts = require('./mounts')
+const documents = require('./documents')
 const { platform } = require('./platform')
 
 /** @typedef {import('./types').Settings} Settings */
@@ -190,6 +191,25 @@ handle('facts:send', async (settings, facts) => {
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the
 // container recreate — lives in mounts.js; this is just the IPC skin.
+handle('docs:ask', (settings, request) => {
+  log(`[me-app] asking documents: ${JSON.stringify(request.question).slice(0, 120)}`)
+  return documents.ask(settings, request)
+})
+
+// Open a cited document where it actually lives. Reveal rather than open: the
+// user asked "which file said that", and Finder showing it in its folder answers
+// that better than launching Preview over the top of the app.
+handle('docs:reveal', async (filePath) => {
+  if (typeof filePath !== 'string' || !filePath.startsWith('/')) return false
+  shell.showItemInFolder(filePath)
+  return true
+})
+
+handle('docs:open', async (filePath) => {
+  if (typeof filePath !== 'string' || !filePath.startsWith('/')) return 'refused'
+  return (await shell.openPath(filePath)) || 'ok'
+})
+
 ipcMain.handle('mounts:state', () => mounts.state())
 ipcMain.handle('mounts:add', async () => {
   const picked = await dialog.showOpenDialog({

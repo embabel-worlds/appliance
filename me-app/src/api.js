@@ -18,6 +18,14 @@ const { diagnose } = require('./appliance')
 
 const SOURCE = 'me-app'
 
+/**
+ * The machine's IANA zone, sent on every batch envelope. The sensor is the
+ * most authoritative source of where the user actually is — it keeps the
+ * appliance's per-user zone current for users who never open the web UI,
+ * and tracks travel. Older servers ignore the extra field.
+ */
+const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
+
 /** @param {Settings} settings */
 const auth = (settings) =>
   'Basic ' + Buffer.from(`${settings.username}:${settings.password}`).toString('base64')
@@ -91,7 +99,7 @@ async function sendFacts(settings, facts) {
     res = await post(
       settings,
       '/api/v1/sensor/events',
-      { source: SOURCE, events: facts.map((f) => ({ kind: 'fact', label: f.label, text: f.text })) },
+      { source: SOURCE, timeZone: timeZone(), events: facts.map((f) => ({ kind: 'fact', label: f.label, text: f.text })) },
       FACTS_TIMEOUT_MS,
     )
   } catch (e) {
@@ -151,6 +159,7 @@ async function sendFocus(settings, sample) {
   try {
     res = await post(settings, '/api/v1/sensor/events', {
       source: SOURCE,
+      timeZone: timeZone(),
       events: [
         {
           kind: 'context',

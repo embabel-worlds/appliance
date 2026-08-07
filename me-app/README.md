@@ -136,6 +136,27 @@ cannot script other applications.
 
 `./me.py` opens the packaged app when it finds one and falls back to `npm start`.
 
+## Ask your documents
+
+The **Documents** tab asks questions of what your appliance has ingested — shared
+folders you ticked to index, uploads, pages you saved — optionally bounded by when
+a document was ingested.
+
+Retrieval is agentic and happens server-side (`POST /api/v1/documents/ask`): a
+bounded LLM loop that searches both semantically and lexically, reformulates when
+results look thin, and reads further into a candidate before judging it relevant.
+The LLM lives in the appliance, with your key — this app never holds it.
+
+**Attribution is the point.** Every claim carries a `[n]` marker; the server
+verifies each one against what it actually retrieved and strips any it cannot
+resolve, reporting the count rather than hiding it. Click a marker to jump to its
+source, which shows the passages the answer was drawn from — and, because this app
+knows where the appliance's mounts came from, a local document offers **Show in
+Finder**: `/local/Documents/paper.pdf` inside the container is
+`~/Documents/paper.pdf` on this Mac. Documents fetched from the web link back to
+their URL instead. A citation you can open is verification; one you can only read
+is decoration.
+
 ## If there is no appliance yet
 
 The app does not install or start the appliance — it talks to one that is already

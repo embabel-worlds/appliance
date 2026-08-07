@@ -313,3 +313,168 @@ mountApply.addEventListener('click', async () => {
 })
 
 void init()
+
+// ---------------------------------------------------------------------------
+// Tabs. The sensor and the documents are different jobs; showing both at once
+// is what made this window read as a settings screen.
+// ---------------------------------------------------------------------------
+
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => {
+    for (const t of document.querySelectorAll('.tab')) t.classList.toggle('is-on', t === tab)
+    for (const panel of document.querySelectorAll('.tabpanel')) {
+      panel.hidden = panel.dataset['panel'] !== tab.dataset['tab']
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Ask your documents.
+//
+// The answer arrives with [n] markers the SERVER has already verified against
+// what it actually retrieved, so rendering them as buttons is safe: every one
+// resolves to a source below.
+// ---------------------------------------------------------------------------
+
+const askQuestion = $('ask-question')
+const askStatus = $('ask-status')
+const askAnswer = $('ask-answer')
+const askSources = $('ask-sources')
+const askButton = $('ask')
+
+/** Turn [1] into a chip that jumps to its source. */
+function renderAnswer(text) {
+  askAnswer.innerHTML = ''
+  const parts = text.split(/(\[\d{1,3}\])/g)
+  for (const part of parts) {
+    const match = part.match(/^\[(\d{1,3})]$/)
+    if (!match) {
+      askAnswer.append(document.createTextNode(part))
+      continue
+    }
+    const chip = document.createElement('button')
+    chip.className = 'cite'
+    chip.textContent = match[1]
+    chip.title = 'Show this source'
+    chip.addEventListener('click', () => {
+      const card = document.getElementById(`source-${match[1]}`)
+      if (!card) return
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      card.classList.add('flash')
+      setTimeout(() => card.classList.remove('flash'), 1400)
+    })
+    askAnswer.append(chip)
+  }
+}
+
+/** One source card: where it lives, what it said, and how to go look. */
+function renderSource(source) {
+  const card = document.createElement('div')
+  card.className = 'source'
+  card.id = `source-${source.n}`
+
+  const head = document.createElement('div')
+  head.className = 'head'
+  const n = document.createElement('span')
+  n.className = 'n'
+  n.textContent = source.n
+  const title = document.createElement('span')
+  title.className = 'title'
+  title.textContent = source.title || source.where.label
+  head.append(n, title)
+  if (source.ingestedAt) {
+    const meta = document.createElement('span')
+    meta.className = 'meta'
+    meta.textContent = new Date(source.ingestedAt).toLocaleDateString()
+    head.append(meta)
+  }
+  card.append(head)
+
+  const where = document.createElement('div')
+  where.className = 'where'
+  where.textContent = source.where.label
+  card.append(where)
+
+  for (const passage of source.passages || []) {
+    const quote = document.createElement('blockquote')
+    quote.textContent = passage
+    card.append(quote)
+  }
+
+  // Local files reveal in Finder — the question is "which file said that", and
+  // showing it in its folder answers that better than launching Preview over
+  // the top of this window. Web sources go back where they came from.
+  const actions = document.createElement('div')
+  actions.className = 'actions'
+  if (source.where.kind === 'local' && source.where.exists) {
+    const reveal = document.createElement('button')
+    reveal.textContent = 'Show in Finder'
+    reveal.addEventListener('click', () => void window.me.revealFile(source.where.path))
+    const open = document.createElement('button')
+    open.textContent = 'Open'
+    open.addEventListener('click', () => void window.me.openFile(source.where.path))
+    actions.append(reveal, open)
+  } else if (source.where.kind === 'local') {
+    // Mapped to this Mac, but not there any more — say so rather than offering
+    // a button that opens nothing.
+    const gone = document.createElement('span')
+    gone.className = 'status error'
+    gone.textContent = 'no longer at that path'
+    actions.append(gone)
+  } else if (source.where.kind === 'url') {
+    const open = document.createElement('button')
+    open.textContent = 'Open source'
+    open.addEventListener('click', () => void window.me.openExternal(source.where.url))
+    actions.append(open)
+  }
+  if (actions.children.length > 0) card.append(actions)
+  return card
+}
+
+async function runAsk() {
+  const question = askQuestion.value.trim()
+  if (!question) return
+  askButton.disabled = true
+  askAnswer.innerHTML = ''
+  askSources.innerHTML = ''
+  setStatus(askStatus, null, 'Searching your documents…')
+  const settings = currentSettings()
+  await window.me.saveSettings(settings)
+
+  let result
+  try {
+    result = await window.me.askDocuments(settings, {
+      question,
+      from: $('ask-from').value || undefined,
+      to: $('ask-to').value || undefined,
+    })
+  } catch (e) {
+    setStatus(askStatus, false, `Ask failed: ${e instanceof Error ? e.message : String(e)}`)
+    askButton.disabled = false
+    return
+  }
+
+  askButton.disabled = false
+  if (!result.ok) {
+    setStatus(askStatus, false, result.message)
+    return
+  }
+  if (!result.sources.length) {
+    setStatus(askStatus, null, 'Nothing in your documents matched that.')
+    return
+  }
+
+  const counts = [`${result.sources.length} document(s)`]
+  // A stripped citation means the answer was less grounded than it looked. The
+  // server counts them; hiding that here would defeat the point of counting.
+  if (result.unresolvedCitations > 0) counts.push(`${result.unresolvedCitations} unverifiable citation(s) removed`)
+  setStatus(askStatus, result.unresolvedCitations === 0, counts.join(' · '))
+
+  if (result.answer) renderAnswer(result.answer)
+  for (const source of result.sources) askSources.append(renderSource(source))
+}
+
+askButton.addEventListener('click', () => void runAsk())
+askQuestion.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void runAsk()
+})
