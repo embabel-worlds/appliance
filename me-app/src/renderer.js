@@ -55,7 +55,7 @@ async function init() {
 
 $('test').addEventListener('click', async () => {
   setStatus(connectionStatus, null, 'Connecting…')
-  advice.innerHTML = ''
+  if (advice) advice.innerHTML = ''
   const settings = currentSettings()
   const result = await window.me.testConnection(settings)
   setStatus(connectionStatus, result.ok, result.message)
@@ -65,13 +65,13 @@ $('test').addEventListener('click', async () => {
   }
   // A failure the app can explain is worth more screen than one it can't:
   // "connection refused" is a dead end, "Docker is not installed" is a path.
-  if (result.action) {
+  if (result.action && advice) {
     const p = document.createElement('p')
     p.className = 'hint'
     p.textContent = result.action
     advice.append(p)
   }
-  if (result.url) {
+  if (result.url && advice) {
     const link = document.createElement('button')
     link.textContent = 'Get Docker Desktop'
     link.addEventListener('click', () => void window.me.openExternal(result.url))
