@@ -128,6 +128,15 @@
       text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
     .fact p { margin: 5px 0 0; font-size: 13px; color: var(--mid); overflow-wrap: anywhere; }
 
+    .mount {
+      display: flex; gap: 10px; align-items: center; padding: 8px 12px; margin-bottom: 8px;
+      border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
+      font-size: 13px;
+    }
+    .mount .path { flex: 1; overflow-wrap: anywhere; }
+    .mount .target { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+    .hint code { font-family: var(--mono); font-size: 11.5px; color: #c7d2ff; }
+
     .summary { margin-top: 10px; font-size: 13px; color: var(--ink); font-weight: 600; }
     #receipt { margin-top: 12px; display: grid; gap: 3px; }
     #fact-list { margin-bottom: 12px; }
@@ -214,6 +223,25 @@
             <button id="send" class="primary" disabled>Send selected to appliance</button>
           </div>
           <div id="receipt"></div>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Local files</h2>
+      <div class="panel-body">
+        <p class="hint">
+          Share folders — Documents, a projects directory — with your appliance. Each
+          appears read-only inside the assistant container under <code>/local</code>,
+          where the assistant can index its documents and answer from them. Applying
+          rewrites <code>docker-compose.override.yml</code> next to the compose files
+          and restarts the assistant container; the graph and everything it remembers
+          stay up.
+        </p>
+        <div id="mount-list"></div>
+        <div class="row">
+          <button id="mount-add">Share a folder…</button>
+          <button id="mount-apply" class="primary">Apply — restarts the assistant</button>
+          <span id="mount-status" class="status"></span>
         </div>
       </div>
     </section>

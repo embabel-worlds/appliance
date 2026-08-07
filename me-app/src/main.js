@@ -3,26 +3,32 @@
 // A menu-bar app: "Me" sits in the macOS menu bar; the window is the consent
 // surface (scan → review facts → send). All privileged work (plist reads, HTTP
 // to the appliance) happens here in the main process; the renderer only gets
-// the narrow IPC surface defined in preload.ts.
+// the narrow IPC surface defined in preload.js.
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerMonitor, shell, dialog } from 'electron'
-import path from 'node:path'
-import fs from 'node:fs'
-import * as api from './api'
-import * as mounts from './mounts'
-import { platform } from './platform'
-import type { ConnectionResult, Fact, GrantState, MountsState, ScanOptions, SendResult, Settings, StreamState } from './types'
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerMonitor, shell, dialog } = require('electron')
+const path = require('node:path')
+const fs = require('node:fs')
+const api = require('./api')
+const mounts = require('./mounts')
+const { platform } = require('./platform')
 
-let window: BrowserWindow | null = null
-let tray: Tray | null = null
+/** @typedef {import('./types').Settings} Settings */
+/** @typedef {import('./types').StreamState} StreamState */
 
-const DEFAULTS: Settings = { baseUrl: 'http://localhost:4242', username: '', password: '' }
+/** @type {BrowserWindow | null} */
+let window = null
+/** @type {Tray | null} */
+let tray = null
 
-const settingsFile = (): string => path.join(app.getPath('userData'), 'settings.json')
+/** @type {Settings} */
+const DEFAULTS = { baseUrl: 'http://localhost:4242', username: '', password: '' }
 
-function loadSettings(): Settings {
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
+
+/** @returns {Settings} */
+function loadSettings() {
   try {
-    const loaded = { ...DEFAULTS, ...(JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Partial<Settings>) }
+    const loaded = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }
     // A blank URL can get saved (e.g. toggling the stream before filling the
     // form); never let it shadow the default on the next launch.
     if (!loaded.baseUrl.trim()) loaded.baseUrl = DEFAULTS.baseUrl
@@ -32,12 +38,13 @@ function loadSettings(): Settings {
   }
 }
 
-function saveSettings(settings: Settings): void {
+/** @param {Settings} settings */
+function saveSettings(settings) {
   fs.mkdirSync(app.getPath('userData'), { recursive: true })
   fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2))
 }
 
-function createWindow(): void {
+function createWindow() {
   if (window) {
     window.show()
     window.focus()
@@ -107,42 +114,20 @@ void app.whenReady().then(() => {
 // Keep running in the menu bar when the window closes.
 app.on('window-all-closed', () => {})
 
-/**
- * Wrap an IPC handler so a thrown error is LOGGED and rethrown with a legible
- * message. An unhandled rejection here reaches the renderer as an opaque
- * "Error invoking remote method", which is how a failed send ends up looking
- * like a UI that simply stopped — the worst possible failure mode for the one
- * button that moves the user's data.
- */
-function handle<A extends unknown[], R>(channel: string, fn: (...args: A) => R | Promise<R>): void {
-  ipcMain.handle(channel, async (_e, ...args: unknown[]) => {
-    try {
-      return await fn(...(args as A))
-    } catch (e) {
-      const message = e instanceof Error ? (e.stack ?? e.message) : String(e)
-      console.error(`[me-app] ${channel} failed:`, message)
-      throw new Error(`${channel}: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  })
-}
-
-ipcMain.handle('settings:load', (): Settings => loadSettings())
-ipcMain.handle('settings:save', (_e, settings: Settings): boolean => {
+ipcMain.handle('settings:load', () => loadSettings())
+ipcMain.handle('settings:save', (_e, settings) => {
   saveSettings(settings)
   return true
 })
-handle('connection:test', (settings: Settings) => api.testConnection(settings))
-handle('scan:run', (options: ScanOptions) => platform.scan(options))
-handle('facts:send', (settings: Settings, facts: Fact[]): Promise<SendResult[]> => {
-  console.log(`[me-app] sending ${facts.length} fact(s) to ${settings.baseUrl}`)
-  return api.sendFacts(settings, facts)
-})
+ipcMain.handle('connection:test', (_e, settings) => api.testConnection(settings))
+ipcMain.handle('scan:run', (_e, options) => platform.scan(options))
+ipcMain.handle('facts:send', (_e, settings, facts) => api.sendFacts(settings, facts))
 
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the
-// container recreate — lives in mounts.ts; this is just the IPC skin.
-ipcMain.handle('mounts:state', (): MountsState => mounts.state())
-ipcMain.handle('mounts:add', async (): Promise<MountsState> => {
+// container recreate — lives in mounts.js; this is just the IPC skin.
+ipcMain.handle('mounts:state', () => mounts.state())
+ipcMain.handle('mounts:add', async () => {
   const picked = await dialog.showOpenDialog({
     title: 'Share folders with your appliance',
     buttonLabel: 'Share',
@@ -150,8 +135,8 @@ ipcMain.handle('mounts:add', async (): Promise<MountsState> => {
   })
   return picked.canceled ? mounts.state() : mounts.add(picked.filePaths)
 })
-ipcMain.handle('mounts:remove', (_e, host: string): MountsState => mounts.remove(host))
-ipcMain.handle('mounts:apply', (): Promise<ConnectionResult> => mounts.apply())
+ipcMain.handle('mounts:remove', (_e, host) => mounts.remove(host))
+ipcMain.handle('mounts:apply', () => mounts.apply())
 
 // ---------------------------------------------------------------------------
 // The ambient focus stream.
@@ -176,18 +161,25 @@ const TICK_MS = 5_000
 const TIER1_EVERY_TICKS = 4 // ~20s: refresh tab/track even when the app hasn't changed
 const HEARTBEAT_TICKS = 36 // ~3 minutes even when nothing changes at all
 
-let streamTimer: NodeJS.Timeout | null = null
+/** @type {NodeJS.Timeout | null} */
+let streamTimer = null
 let ticksSinceSend = 0
 let ticksSinceTier1 = 0
 let lastSignature = ''
-let lastApp: string | undefined
-/** Last known tier-1 values, carried across ticks that skip the probe. */
-let lastDetail: string | undefined
-let lastMedia: string | undefined
-let streamSettings: Settings | null = null
-const streamState: StreamState = { running: false, lastMessage: 'off', lastAt: null, tier1: false, denied: [] }
+/** @type {string | undefined} */
+let lastApp
+// Last known tier-1 values, carried across ticks that skip the probe.
+/** @type {string | undefined} */
+let lastDetail
+/** @type {string | undefined} */
+let lastMedia
+/** @type {Settings | null} */
+let streamSettings = null
+/** @type {StreamState} */
+const streamState = { running: false, lastMessage: 'off', lastAt: null, tier1: false, denied: [] }
 
-async function streamTick(settings: Settings): Promise<void> {
+/** @param {Settings} settings */
+async function streamTick(settings) {
   try {
     // Always take the cheap sample first: it tells us whether the expensive one
     // is even worth taking.
@@ -233,8 +225,11 @@ async function streamTick(settings: Settings): Promise<void> {
   streamState.lastAt = new Date().toISOString()
 }
 
-/** Fire a tick right now, for an event that just changed the picture. */
-function tickNow(reason: string): void {
+/**
+ * Fire a tick right now, for an event that just changed the picture.
+ * @param {string} reason
+ */
+function tickNow(reason) {
   if (!streamState.running || !streamSettings) return
   // The transition IS the news: never let change-suppression swallow it.
   lastSignature = ''
@@ -243,7 +238,7 @@ function tickNow(reason: string): void {
   void streamTick(streamSettings)
 }
 
-ipcMain.handle('stream:set', (_e, settings: Settings, enabled: boolean, tier1: boolean): StreamState => {
+ipcMain.handle('stream:set', (_e, settings, enabled, tier1) => {
   if (streamTimer) {
     clearInterval(streamTimer)
     streamTimer = null
@@ -266,12 +261,12 @@ ipcMain.handle('stream:set', (_e, settings: Settings, enabled: boolean, tier1: b
   return { ...streamState }
 })
 
-ipcMain.handle('stream:state', (): StreamState => ({ ...streamState }))
-handle('grants:state', (): Promise<GrantState[]> => platform.grantStates())
+ipcMain.handle('stream:state', () => ({ ...streamState }))
+ipcMain.handle('grants:state', () => platform.grantStates())
 
 // macOS prompts for Automation exactly once; after a refusal the only route
 // back is System Settings, so the app must be able to open the right pane. On
 // platforms with no such consent broker the URL is null and this is a no-op.
-ipcMain.handle('grants:open-settings', async (): Promise<void> => {
+ipcMain.handle('grants:open-settings', async () => {
   if (platform.automationSettingsUrl) await shell.openExternal(platform.automationSettingsUrl)
 })

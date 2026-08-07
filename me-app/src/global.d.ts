@@ -7,7 +7,7 @@
 // Re-exporting the types globally here keeps types.ts the single source of
 // truth while leaving renderer.ts import-free.
 
-import type { ConnectionResult as _ConnectionResult, Fact as _Fact, MeApi, FocusSample as _FocusSample, GrantState as _GrantState, ScanOptions as _ScanOptions, SendResult as _SendResult, Settings as _Settings, StreamState as _StreamState } from './types'
+import type { ConnectionResult as _ConnectionResult, Fact as _Fact, MeApi, FocusSample as _FocusSample, GrantState as _GrantState, LocalMount as _LocalMount, MountsState as _MountsState, ScanOptions as _ScanOptions, SendResult as _SendResult, Settings as _Settings, StreamState as _StreamState } from './types'
 
 declare global {
   type Fact = _Fact
@@ -15,6 +15,8 @@ declare global {
   type ConnectionResult = _ConnectionResult
   type FocusSample = _FocusSample
   type GrantState = _GrantState
+  type LocalMount = _LocalMount
+  type MountsState = _MountsState
   type ScanOptions = _ScanOptions
   type SendResult = _SendResult
   type StreamState = _StreamState

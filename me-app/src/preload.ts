@@ -15,6 +15,10 @@ const api: MeApi = {
   streamState: () => ipcRenderer.invoke('stream:state'),
   grantStates: () => ipcRenderer.invoke('grants:state'),
   openAutomationSettings: () => ipcRenderer.invoke('grants:open-settings'),
+  mountsState: () => ipcRenderer.invoke('mounts:state'),
+  addMount: () => ipcRenderer.invoke('mounts:add'),
+  removeMount: (host: string) => ipcRenderer.invoke('mounts:remove', host),
+  applyMounts: () => ipcRenderer.invoke('mounts:apply'),
 }
 
 contextBridge.exposeInMainWorld('me', api)

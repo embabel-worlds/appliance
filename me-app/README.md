@@ -62,6 +62,18 @@ while the browser runs; Chromium needs no Full Disk Access, and Safari — which
 — is deliberately not touched. This is what lets the assistant answer "what kind of
 news do I read?" with outlets and stories rather than a guess from your Dock.
 
+**Local files** shares folders with your appliance so it can index what's in
+them. Pick folders (Documents, a projects directory); each is bind-mounted
+**read-only** into the assistant container under `/local/<name>`. The panel
+writes `../docker-compose.override.yml` — the one file name Docker Compose
+merges into plain `docker compose up` by convention, and which `setup.py` also
+includes explicitly — then **Apply** recreates the assistant container with the
+mounts (the graph and everything the appliance remembers stay up). Before the
+restart, the panel sends one fact per folder so the assistant knows where its
+new files live; ask it to index `/local/<name>` and the documents become part
+of its graph. The file is gitignored and never touches the tracked compose
+files; removing every folder deletes it again.
+
 `npm run smoke` prints what a scan would gather without starting the UI;
 `node -e "require('./dist/scanner').scan({browserHistory:true}).then(console.log)"`
 includes the history facts.

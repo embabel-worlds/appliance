@@ -8,46 +8,41 @@
 // fact sending falls back to `/api/v1/memory/remember` — same destination
 // (DICE propositions), coarser receipts.
 
-import type { ConnectionResult, Fact, FocusSample, SendResult, Settings } from './types'
+/** @typedef {import('./types').ConnectionResult} ConnectionResult */
+/** @typedef {import('./types').Fact} Fact */
+/** @typedef {import('./types').FocusSample} FocusSample */
+/** @typedef {import('./types').SendResult} SendResult */
+/** @typedef {import('./types').Settings} Settings */
 
 const SOURCE = 'me-app'
 
-const auth = (settings: Settings): string =>
+/** @param {Settings} settings */
+const auth = (settings) =>
   'Basic ' + Buffer.from(`${settings.username}:${settings.password}`).toString('base64')
 
-const errorMessage = (e: unknown): string => {
-  if (e instanceof Error) return (e.cause as Error | undefined)?.message ?? e.message
+/** @param {unknown} e @returns {string} */
+const errorMessage = (e) => {
+  if (e instanceof Error) return e.cause?.message ?? e.message
   return String(e)
 }
 
-async function post(settings: Settings, path: string, body: unknown, timeoutMs = 15000): Promise<Response> {
+/** @param {Settings} settings @param {string} path @param {unknown} body */
+async function post(settings, path, body) {
   return fetch(`${settings.baseUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: auth(settings) },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(15000),
   })
 }
 
-/** Parse a JSON body without letting a non-JSON one throw past the caller. */
-async function readJson<T>(res: Response): Promise<T | null> {
-  try {
-    return (await res.json()) as T
-  } catch {
-    return null
-  }
-}
-
 /**
- * Facts are slower than they look: each batch resolves entities and projects
- * graph edges server-side, so a first scan of a dozen long facts can outlast a
- * conversational timeout. Generous here, tight everywhere else.
+ * Cheap authenticated GET to prove the appliance is reachable and the credentials work.
+ * @param {Settings} settings
+ * @returns {Promise<ConnectionResult>}
  */
-const FACTS_TIMEOUT_MS = 120_000
-
-/** Cheap authenticated GET to prove the appliance is reachable and the credentials work. */
-export async function testConnection(settings: Settings): Promise<ConnectionResult> {
-  let res: Response
+async function testConnection(settings) {
+  let res
   try {
     res = await fetch(`${settings.baseUrl}/api/v1/hints`, {
       headers: { Authorization: auth(settings) },
@@ -63,26 +58,19 @@ export async function testConnection(settings: Settings): Promise<ConnectionResu
   return { ok: true, message: 'Connected and authenticated.' }
 }
 
-interface EventReceipt {
-  label: string | null
-  status: string
-  detail: string | null
-}
-
-interface SensorBatchResponse {
-  receipts: EventReceipt[]
-}
-
-/** Send facts through the sensor envelope; falls back to the remember endpoint on 404. */
-export async function sendFacts(settings: Settings, facts: Fact[]): Promise<SendResult[]> {
-  let res: Response
+/**
+ * Send facts through the sensor envelope; falls back to the remember endpoint on 404.
+ * @param {Settings} settings
+ * @param {Fact[]} facts
+ * @returns {Promise<SendResult[]>}
+ */
+async function sendFacts(settings, facts) {
+  let res
   try {
-    res = await post(
-      settings,
-      '/api/v1/sensor/events',
-      { source: SOURCE, events: facts.map((f) => ({ kind: 'fact', label: f.label, text: f.text })) },
-      FACTS_TIMEOUT_MS,
-    )
+    res = await post(settings, '/api/v1/sensor/events', {
+      source: SOURCE,
+      events: facts.map((f) => ({ kind: 'fact', label: f.label, text: f.text })),
+    })
   } catch (e) {
     const message = errorMessage(e)
     return facts.map((f) => ({ id: f.id, label: f.label, ok: false, message }))
@@ -92,10 +80,7 @@ export async function sendFacts(settings: Settings, facts: Fact[]): Promise<Send
     const message = `HTTP ${res.status}`
     return facts.map((f) => ({ id: f.id, label: f.label, ok: false, message }))
   }
-  const body = await readJson<SensorBatchResponse>(res)
-  if (!body?.receipts) {
-    return facts.map((f) => ({ id: f.id, label: f.label, ok: false, message: 'sent, but the reply was unreadable' }))
-  }
+  const body = await res.json()
   return facts.map((f, i) => {
     const receipt = body.receipts[i]
     const ok = receipt?.status === 'stored' || receipt?.status === 'duplicate'
@@ -103,12 +88,17 @@ export async function sendFacts(settings: Settings, facts: Fact[]): Promise<Send
   })
 }
 
-/** Older images: one fact at a time through the remember endpoint. */
-async function sendFactsLegacy(settings: Settings, facts: Fact[]): Promise<SendResult[]> {
-  const results: SendResult[] = []
+/**
+ * Older images: one fact at a time through the remember endpoint.
+ * @param {Settings} settings
+ * @param {Fact[]} facts
+ * @returns {Promise<SendResult[]>}
+ */
+async function sendFactsLegacy(settings, facts) {
+  const results = []
   for (const fact of facts) {
     try {
-      const res = await post(settings, '/api/v1/memory/remember', { text: fact.text }, FACTS_TIMEOUT_MS)
+      const res = await post(settings, '/api/v1/memory/remember', { text: fact.text })
       results.push({ id: fact.id, label: fact.label, ok: res.ok, message: res.ok ? 'stored' : `HTTP ${res.status}` })
     } catch (e) {
       results.push({ id: fact.id, label: fact.label, ok: false, message: errorMessage(e) })
@@ -124,10 +114,14 @@ async function sendFactsLegacy(settings: Settings, facts: Fact[]): Promise<SendR
  * screen is unlocked — an idle desktop showing IntelliJ is not someone working,
  * and claiming otherwise would corrupt the very interruption decisions this
  * stream exists to inform.
+ *
+ * @param {Settings} settings
+ * @param {FocusSample} sample
+ * @returns {Promise<ConnectionResult>}
  */
-export async function sendFocus(settings: Settings, sample: FocusSample): Promise<ConnectionResult> {
+async function sendFocus(settings, sample) {
   const working = sample.active === true && sample.locked !== true
-  let res: Response
+  let res
   try {
     res = await post(settings, '/api/v1/sensor/events', {
       source: SOURCE,
@@ -151,6 +145,8 @@ export async function sendFocus(settings: Settings, sample: FocusSample): Promis
   if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
   // Echo the server's own rendering of what it understood, so the UI shows what
   // was actually communicated rather than what we hoped to communicate.
-  const body = await readJson<{ receipts?: Array<{ detail: string | null }> }>(res)
-  return { ok: true, message: body?.receipts?.[0]?.detail ?? (working ? 'active' : 'idle') }
+  const body = await res.json()
+  return { ok: true, message: body.receipts?.[0]?.detail ?? (working ? 'active' : 'idle') }
 }
+
+module.exports = { testConnection, sendFacts, sendFocus }

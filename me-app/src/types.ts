@@ -57,6 +57,24 @@ export interface StreamState {
   denied: string[]
 }
 
+/** One host folder shared into the assistant container — see mounts.ts. */
+export interface LocalMount {
+  /** Absolute path on this machine. */
+  host: string
+  /** Where it appears inside the container: always under /local, read-only. */
+  target: string
+}
+
+/** The Local files panel's state. `dir` is the appliance checkout whose
+ *  docker-compose.override.yml holds the mounts. */
+export interface MountsState {
+  supported: boolean
+  /** Why not, when unsupported — or a per-action complaint when supported. */
+  message: string
+  dir: string | null
+  mounts: LocalMount[]
+}
+
 /** The narrow IPC surface preload.ts exposes to the renderer as `window.me`. */
 export interface MeApi {
   loadSettings(): Promise<Settings>
@@ -68,4 +86,10 @@ export interface MeApi {
   streamState(): Promise<StreamState>
   grantStates(): Promise<GrantState[]>
   openAutomationSettings(): Promise<void>
+  mountsState(): Promise<MountsState>
+  /** Opens the folder picker; returns the state after any additions. */
+  addMount(): Promise<MountsState>
+  removeMount(host: string): Promise<MountsState>
+  /** Rewrites the container with the current mounts (docker compose up). */
+  applyMounts(): Promise<ConnectionResult>
 }

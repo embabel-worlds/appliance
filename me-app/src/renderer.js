@@ -1,24 +1,24 @@
 // Renderer: the consent surface. Scan → review (check/uncheck) → send → receipt.
 //
-// MUST stay import-free so tsc emits a plain script — see global.d.ts, which
-// supplies Fact/Settings/window.me from the global scope for exactly this
-// reason. An `import` here (even `import type`) reintroduces a CommonJS
-// preamble that throws in the renderer and silently disables every handler.
+// Loaded straight off index.html as a plain browser script — no module system
+// here (`nodeIntegration: false`), so no require/import. Everything it may do
+// arrives through `window.me`, the narrow bridge preload.js exposes.
 
-const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
+/** @param {string} id */
+const $ = (id) => document.getElementById(id)
 
-const baseUrlInput = $<HTMLInputElement>('baseUrl')
-const usernameInput = $<HTMLInputElement>('username')
-const passwordInput = $<HTMLInputElement>('password')
-const connectionStatus = $<HTMLSpanElement>('connection-status')
-const factsSection = $<HTMLDivElement>('facts')
-const factList = $<HTMLDivElement>('fact-list')
-const sendButton = $<HTMLButtonElement>('send')
-const receipt = $<HTMLDivElement>('receipt')
+const baseUrlInput = $('baseUrl')
+const usernameInput = $('username')
+const passwordInput = $('password')
+const connectionStatus = $('connection-status')
+const factsSection = $('facts')
+const factList = $('fact-list')
+const sendButton = $('send')
+const receipt = $('receipt')
 
-let facts: Fact[] = []
+let facts = []
 
-function currentSettings(): Settings {
+function currentSettings() {
   let baseUrl = baseUrlInput.value.trim().replace(/\/+$/, '')
   // A URL without a scheme ("localhost:4242") makes fetch throw before any
   // connection attempt — normalize rather than error.
@@ -31,12 +31,13 @@ function currentSettings(): Settings {
   }
 }
 
-function setStatus(el: HTMLElement, ok: boolean | null, message: string): void {
+/** @param {HTMLElement} el @param {boolean | null} ok @param {string} message */
+function setStatus(el, ok, message) {
   el.textContent = message
   el.className = ok === null ? 'status' : ok ? 'status ok' : 'status error'
 }
 
-async function init(): Promise<void> {
+async function init() {
   const settings = await window.me.loadSettings()
   baseUrlInput.value = settings.baseUrl
   usernameInput.value = settings.username
@@ -44,7 +45,7 @@ async function init(): Promise<void> {
   renderMounts(await window.me.mountsState())
 }
 
-$<HTMLButtonElement>('test').addEventListener('click', async () => {
+$('test').addEventListener('click', async () => {
   setStatus(connectionStatus, null, 'Testing…')
   const settings = currentSettings()
   const result = await window.me.testConnection(settings)
@@ -52,12 +53,12 @@ $<HTMLButtonElement>('test').addEventListener('click', async () => {
   if (result.ok) await window.me.saveSettings(settings)
 })
 
-const streamToggle = $<HTMLInputElement>('stream-toggle')
-const tier1Toggle = $<HTMLInputElement>('tier1-toggle')
-const streamStatus = $<HTMLSpanElement>('stream-status')
-const grantsStatus = $<HTMLSpanElement>('grants-status')
+const streamToggle = $('stream-toggle')
+const tier1Toggle = $('tier1-toggle')
+const streamStatus = $('stream-status')
+const grantsStatus = $('grants-status')
 
-async function applyStream(): Promise<void> {
+async function applyStream() {
   const settings = currentSettings()
   await window.me.saveSettings(settings)
   const state = await window.me.setStream(settings, streamToggle.checked, tier1Toggle.checked)
@@ -71,19 +72,19 @@ tier1Toggle.addEventListener('change', async () => {
   await applyStream()
 })
 
-$<HTMLButtonElement>('grants').addEventListener('click', async () => {
+$('grants').addEventListener('click', async () => {
   setStatus(grantsStatus, null, 'checking (this may prompt)…')
   const states = await window.me.grantStates()
   const granted = states.filter((g) => g.state === 'granted').map((g) => g.app)
   const denied = states.filter((g) => g.state === 'denied').map((g) => g.app)
-  const parts: string[] = []
+  const parts = []
   if (granted.length) parts.push(`granted: ${granted.join(', ')}`)
   if (denied.length) parts.push(`DENIED: ${denied.join(', ')}`)
   if (!parts.length) parts.push('none of the supported apps are running')
   setStatus(grantsStatus, denied.length === 0 ? (granted.length ? true : null) : false, parts.join(' · '))
 })
 
-$<HTMLButtonElement>('open-settings').addEventListener('click', () => void window.me.openAutomationSettings())
+$('open-settings').addEventListener('click', () => void window.me.openAutomationSettings())
 
 // Reflect the stream's latest heartbeat while the window is open.
 setInterval(async () => {
@@ -100,19 +101,10 @@ setInterval(async () => {
   }
 }, 5000)
 
-$<HTMLButtonElement>('scan').addEventListener('click', async () => {
+$('scan').addEventListener('click', async () => {
   factList.innerHTML = ''
   receipt.innerHTML = ''
-  factsSection.hidden = false
-  factList.textContent = 'Scanning…'
-  try {
-    facts = await window.me.scan({ browserHistory: $<HTMLInputElement>('history-toggle').checked })
-  } catch (e) {
-    factList.textContent = `Scan failed: ${e instanceof Error ? e.message : String(e)}`
-    sendButton.disabled = true
-    return
-  }
-  factList.textContent = ''
+  facts = await window.me.scan({ browserHistory: $('history-toggle').checked })
   factsSection.hidden = false
   if (facts.length === 0) {
     factList.textContent = 'Nothing found to report.'
@@ -140,28 +132,15 @@ $<HTMLButtonElement>('scan').addEventListener('click', async () => {
 
 sendButton.addEventListener('click', async () => {
   const checkedIds = new Set(
-    [...factList.querySelectorAll<HTMLInputElement>('input[type=checkbox]:checked')].map((c) => c.dataset['factId']),
+    [...factList.querySelectorAll('input[type=checkbox]:checked')].map((c) => c.dataset['factId']),
   )
   const selected = facts.filter((f) => checkedIds.has(f.id))
   if (selected.length === 0) return
   sendButton.disabled = true
-  receipt.textContent = `Sending ${selected.length} fact(s)… (a first scan can take a minute)`
+  receipt.textContent = `Sending ${selected.length} fact(s)…`
   const settings = currentSettings()
   await window.me.saveSettings(settings)
-  let results: SendResult[]
-  try {
-    results = await window.me.sendFacts(settings, selected)
-  } catch (e) {
-    // Anything that escapes the send path lands here rather than leaving the
-    // button dead and the user guessing.
-    receipt.innerHTML = ''
-    const line = document.createElement('div')
-    line.className = 'status error'
-    line.textContent = `Send failed: ${e instanceof Error ? e.message : String(e)}`
-    receipt.append(line)
-    sendButton.disabled = false
-    return
-  }
+  const results = await window.me.sendFacts(settings, selected)
   receipt.innerHTML = ''
   for (const r of results) {
     const line = document.createElement('div')
@@ -180,12 +159,13 @@ sendButton.addEventListener('click', async () => {
 // Local files: pick folders → the main process rewrites the compose override →
 // Apply recreates the assistant container with them mounted under /local.
 
-const mountList = $<HTMLDivElement>('mount-list')
-const mountAdd = $<HTMLButtonElement>('mount-add')
-const mountApply = $<HTMLButtonElement>('mount-apply')
-const mountStatus = $<HTMLSpanElement>('mount-status')
+const mountList = $('mount-list')
+const mountAdd = $('mount-add')
+const mountApply = $('mount-apply')
+const mountStatus = $('mount-status')
 
-function renderMounts(state: MountsState): void {
+/** @param {import('./types').MountsState} state */
+function renderMounts(state) {
   mountList.innerHTML = ''
   mountAdd.disabled = !state.supported
   mountApply.disabled = !state.supported
