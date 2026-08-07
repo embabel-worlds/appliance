@@ -134,6 +134,9 @@ async function ask(settings, request) {
   return {
     ok: true,
     answer: payload.answer ?? null,
+    // Why there is no answer, when the appliance can tell — a model that spent
+    // its budget thinking rather than writing, most often.
+    note: payload.note ?? null,
     unresolvedCitations: payload.unresolvedCitations ?? 0,
     filters: payload.filters ?? {},
     sources: (payload.sources ?? []).map((s) => ({ ...s, where: resolveSource(s.uri) })),

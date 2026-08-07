@@ -652,7 +652,16 @@ async function runAsk() {
   if (result.unresolvedCitations > 0) counts.push(`${result.unresolvedCitations} unverifiable citation(s) removed`)
   setStatus(askStatus, result.unresolvedCitations === 0, counts.join(' · '))
 
-  if (result.answer) renderAnswer(result.answer)
+  if (result.answer) {
+    renderAnswer(result.answer)
+  } else if (result.note) {
+    // An empty panel tells the user nothing; the appliance knows why and said so.
+    askAnswer.innerHTML = ''
+    const line = document.createElement('div')
+    line.className = 'status error'
+    line.textContent = result.note
+    askAnswer.append(line)
+  }
   for (const source of result.sources) askSources.append(renderSource(source))
 }
 
