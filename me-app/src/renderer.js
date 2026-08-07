@@ -43,6 +43,8 @@ async function init() {
   baseUrlInput.value = settings.baseUrl
   usernameInput.value = settings.username
   passwordInput.value = settings.password
+  verbsSee.checked = Boolean(settings.verbs?.see)
+  verbsAct.checked = Boolean(settings.verbs?.act)
   renderMounts(await window.me.mountsState())
   // The indexing watcher runs in the background across window closes and app
   // relaunches — say what it's up to whenever the panel opens.
@@ -115,6 +117,25 @@ $('grants').addEventListener('click', async () => {
 })
 
 $('open-settings').addEventListener('click', () => void window.me.openAutomationSettings())
+
+// What the assistant may ask this machine to do, by GROUP — persisted, and the
+// outbox loop starts, stops and republishes its catalog with it immediately.
+const verbsSee = $('verbs-see')
+const verbsAct = $('verbs-act')
+const verbsStatus = $('verbs-status')
+
+async function applyVerbs() {
+  const settings = currentSettings()
+  await window.me.saveSettings(settings)
+  const groups = { see: verbsSee.checked, act: verbsAct.checked }
+  const state = await window.me.setVerbs(settings, groups)
+  const on = Object.entries(groups).filter(([, v]) => v).map(([g]) => g)
+  setStatus(verbsStatus, state.running ? true : null,
+    state.running ? `listening for assistant requests (${on.join(', ')})` : 'not listening')
+}
+
+verbsSee.addEventListener('change', applyVerbs)
+verbsAct.addEventListener('change', applyVerbs)
 
 // Reflect the stream's latest heartbeat while the window is open.
 setInterval(async () => {

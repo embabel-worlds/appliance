@@ -294,10 +294,28 @@
             Also read the browser tab I'm on and what's playing
           </label>
         </div>
+        <div class="row">
+          <label class="check">
+            <input type="checkbox" id="verbs-see" />
+            Let my assistant LOOK at this Mac when I ask — what I'm doing, what tabs are open
+          </label>
+        </div>
+        <div class="row">
+          <label class="check">
+            <input type="checkbox" id="verbs-act" />
+            Let my assistant DO small things here — focus a tab, open a link, copy text, notify me
+          </label>
+        </div>
+        <div class="row">
+          <span id="verbs-status" class="status"></span>
+        </div>
         <p class="hint">
           The second one asks macOS for permission the first time it reads each app
           ("Embabel Me wants to control Google Chrome"). macOS asks only once — if you
-          decline, re-enable it in System Settings.
+          decline, re-enable it in System Settings. The last two let your assistant reach
+          this machine when you ask it to ("do I have a tab open with…", "copy that").
+          It can only ever ask for things this app publishes — never run code here —
+          and answers carry the least it can: tab titles and sites, never full URLs.
         </p>
         <div class="row">
           <span id="stream-status" class="status"></span>

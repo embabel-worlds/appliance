@@ -221,12 +221,12 @@ async function isRunning(appName) {
 
 /**
  * Run one AppleScript, distinguishing "denied" from "nothing to report".
- * @param {string} script
+ * @param {string} script @param {number} [timeout]
  * @returns {Promise<{ value?: string, denied?: boolean }>}
  */
-async function osascript(script) {
+async function osascript(script, timeout = 5000) {
   try {
-    const { stdout } = await run('osascript', ['-e', script], { timeout: 5000 })
+    const { stdout } = await run('osascript', ['-e', script], { timeout })
     const value = stdout.trim()
     return value ? { value } : {}
   } catch (e) {
@@ -294,8 +294,152 @@ async function nowPlaying() {
 }
 
 // ---------------------------------------------------------------------------
+// Open tabs — ON DEMAND, for the "find my tab" verb. Deliberately not part of
+// the ambient stream: enumerating every tab is a bigger read than the active-
+// tab probe, so it happens only when the user asks a question that needs it,
+// is answered, and is discarded. Same Automation grant as tier 1 — macOS
+// grants per target app, not per verb.
+// ---------------------------------------------------------------------------
+
+/** @param {{ app: string, chromium: boolean }} browser */
+function tabEnumScript(browser) {
+  const titleOf = browser.chromium ? 'title of tab ti of window wi' : 'name of tab ti of window wi'
+  return (
+    `set d to character id 9\n` +
+    `set out to ""\n` +
+    `tell application "${browser.app}"\n` +
+    `  repeat with wi from 1 to count of windows\n` +
+    `    repeat with ti from 1 to count of tabs of window wi\n` +
+    `      set out to out & wi & d & ti & d & (URL of tab ti of window wi) & d & (${titleOf}) & linefeed\n` +
+    `    end repeat\n` +
+    `  end repeat\n` +
+    `end tell\n` +
+    `return out`
+  )
+}
+
+/**
+ * Every open tab of every running, granted browser.
+ * @returns {Promise<{ tabs: Array<{ browser: string, window: number, tab: number, url: string, title: string }>, denied: string[] }>}
+ */
+async function listTabs() {
+  const tabs = []
+  const denied = []
+  for (const browser of BROWSERS) {
+    if (!(await isRunning(browser.proc))) continue
+    // Ten seconds, not five: a browser hoarding hundreds of tabs answers slowly.
+    const { value, denied: refused } = await osascript(tabEnumScript(browser), 10_000)
+    if (refused) {
+      denied.push(browser.app)
+      continue
+    }
+    for (const line of (value ?? '').split('\n')) {
+      // window \t tab \t url \t title — the title may itself contain tabs.
+      const parts = line.split('\t')
+      if (parts.length < 4) continue
+      tabs.push({
+        browser: browser.app,
+        window: Number(parts[0]),
+        tab: Number(parts[1]),
+        url: parts[2],
+        title: parts.slice(3).join('\t').trim(),
+      })
+    }
+  }
+  return { tabs, denied }
+}
+
+/**
+ * Bring one enumerated tab to the front. [ref] is "app|window|tab" from a
+ * listTabs row — indexes go stale when windows close, so failure is a normal
+ * answer, not an exception.
+ * @param {string} ref
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+async function focusTab(ref) {
+  const [app, windowIndex, tabIndex] = ref.split('|')
+  const browser = BROWSERS.find((b) => b.app === app)
+  if (!browser || !/^\d+$/.test(windowIndex ?? '') || !/^\d+$/.test(tabIndex ?? '')) {
+    return { ok: false, error: 'unknown tab reference' }
+  }
+  const select = browser.chromium
+    ? `set active tab index of window ${windowIndex} to ${tabIndex}`
+    : `tell window ${windowIndex} to set current tab to tab ${tabIndex}`
+  const script =
+    `tell application "${app}"\n` +
+    `  ${select}\n` +
+    `  set index of window ${windowIndex} to 1\n` +
+    `  activate\n` +
+    `end tell\n` +
+    `return "ok"` // focusing produces no output, and silence must not read as success
+  const { value, denied } = await osascript(script)
+  if (denied) return { ok: false, error: `Automation permission refused for ${app}` }
+  if (value !== 'ok') return { ok: false, error: 'the tab or window is no longer there' }
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
 
 /** @type {SensorPlatform} */
+/**
+ * Applications the user has open right now, most-recently-used first where the
+ * OS reports it. `lsappinfo` needs no permission at all — the same reason the
+ * frontmost-app read uses it rather than System Events.
+ */
+async function runningApps() {
+  try {
+    // `visibleProcessList` is exactly the windowed applications, in one call and
+    // with no permission — daemons, helpers and agents never appear, so there is
+    // nothing to filter out and no per-app round trip to make.
+    const { stdout } = await run('/bin/sh', ['-c', 'lsappinfo visibleProcessList'])
+    const names = []
+    for (const match of stdout.matchAll(/ASN:[^\s"]*-"([^"]+)"/g)) {
+      // The ASN carries the process name with underscores for spaces.
+      const name = match[1].replace(/_/g, ' ').trim()
+      if (name && !names.includes(name)) names.push(name)
+    }
+    return names
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The machine's own situation: power, screen, displays. Every part is a plain
+ * read with no permission attached, and together they answer "is this a good
+ * moment, and where is this person working".
+ */
+async function machineState() {
+  const state = {}
+  try {
+    const { stdout } = await run('pmset', ['-g', 'batt'])
+    state.onBattery = stdout.includes("'Battery Power'")
+    const percent = stdout.match(/(\d+)%/)
+    if (percent) state.batteryPercent = Number(percent[1])
+    if (/charging/i.test(stdout)) state.charging = !/discharging/i.test(stdout)
+  } catch {
+    /* a desktop without a battery answers nothing here, which is itself true */
+  }
+  try {
+    const { stdout } = await run('/bin/sh', ['-c', 'system_profiler SPDisplaysDataType 2>/dev/null | grep -c Resolution'])
+    const displays = Number(stdout.trim())
+    if (Number.isFinite(displays) && displays > 0) state.displays = displays
+  } catch {
+    /* ignore */
+  }
+  const [locked, idle, mode] = await Promise.all([screenLocked(), idleSeconds(), focusMode()])
+  if (locked !== undefined) state.screenLocked = locked
+  if (idle !== undefined) state.idleSeconds = Math.round(idle)
+  if (mode) state.focusMode = mode
+  return state
+}
+
+/** Speak text aloud through the system voice. */
+async function speak(text) {
+  await run('say', [text], { timeout: 30_000 })
+  return { ok: true }
+}
+
 const macos = {
   id: 'macos',
   displayName: 'macOS',
@@ -339,6 +483,10 @@ const macos = {
     return sample
   },
 
+  runningApps,
+  machineState,
+  speak,
+
   async grantStates() {
     const targets = [
       ...BROWSERS.map((b) => ({ name: b.app, proc: b.proc })),
@@ -356,6 +504,9 @@ const macos = {
     }
     return states
   },
+
+  listTabs,
+  focusTab,
 }
 
 module.exports = { macos }

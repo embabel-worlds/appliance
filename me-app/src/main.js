@@ -10,6 +10,7 @@ const path = require('node:path')
 const fs = require('node:fs')
 const api = require('./api')
 const chat = require('./chat')
+const outbox = require('./outbox')
 const indexer = require('./indexer')
 const mounts = require('./mounts')
 const documents = require('./documents')
@@ -24,7 +25,12 @@ let window = null
 let tray = null
 
 /** @type {Settings} */
-const DEFAULTS = { baseUrl: 'http://localhost:4242', username: '', password: '' }
+// `verbs`: standing consent, BY GROUP, for what the assistant may ask this
+// machine to do (see verbs.js). The outbox loop runs while any group is on.
+const DEFAULTS = {
+  baseUrl: 'http://localhost:4242', username: '', password: '',
+  verbs: { see: false, act: false },
+}
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
 const logFile = () => path.join(app.getPath('userData'), 'me-app.log')
@@ -42,10 +48,14 @@ function loadSettings() {
   }
 }
 
-/** @param {Settings} settings */
+/**
+ * Merge-save: callers pass the fields they know about (the renderer's form
+ * knows url/user/password), and flags owned elsewhere (tabVerbs) survive.
+ * @param {Partial<Settings>} settings
+ */
 function saveSettings(settings) {
   fs.mkdirSync(app.getPath('userData'), { recursive: true })
-  fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2))
+  fs.writeFileSync(settingsFile(), JSON.stringify({ ...loadSettings(), ...settings }, null, 2))
 }
 
 function createWindow() {
@@ -116,6 +126,12 @@ void app.whenReady().then(() => {
     indexer.start(saved)
   }
 
+  // Standing consent survives restarts: resume listening (and republish the
+  // catalog) for whatever groups the user left enabled.
+  if (saved.username.trim() && Object.values(saved.verbs ?? {}).some(Boolean)) {
+    outbox.start(saved, log)
+  }
+
   // Presence transitions, delivered rather than polled. Registered once, after
   // ready (powerMonitor is unavailable before it); each is a no-op while the
   // stream is off.
@@ -128,8 +144,12 @@ void app.whenReady().then(() => {
 // Keep running in the menu bar when the window closes.
 app.on('window-all-closed', () => {})
 
-// The chat SSE stream has no listener once the app is going down.
-app.on('before-quit', () => chat.stop())
+// The chat SSE stream and the outbox loop have no listener once the app is
+// going down.
+app.on('before-quit', () => {
+  chat.stop()
+  outbox.stop()
+})
 
 /**
  * Log to a FILE as well as the console. `./me.py` launches this app detached
@@ -203,6 +223,18 @@ handle('chat:open', (settings) => {
 })
 handle('chat:send', (settings, text) => chat.send(settings, text))
 handle('chat:history', (settings) => chat.history(settings))
+
+// Effect verbs: the outbox loop (outbox.js) that lets the assistant ask this
+// machine things — gated on the consent toggle, which is persisted so the
+// answer survives restarts.
+handle('verbs:set', (settings, groups) => {
+  const next = { ...settings, verbs: { ...DEFAULTS.verbs, ...groups } }
+  saveSettings(next)
+  if (Object.values(next.verbs).some(Boolean)) outbox.start(next, log)
+  else outbox.stop()
+  return outbox.state()
+})
+ipcMain.handle('verbs:state', () => outbox.state())
 
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the

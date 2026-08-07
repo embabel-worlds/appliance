@@ -36,6 +36,15 @@
  *
  * @property {string | null} automationSettingsUrl
  *   Deep link to the OS pane where the user fixes a refusal, or null if none exists.
+ *
+ * @property {() => Promise<{ tabs: Array<{ browser: string, window: number, tab: number, url: string, title: string }>, denied: string[] }>} listTabs
+ *   Every open tab of every running, granted browser — ON DEMAND only (the
+ *   "find my tab" verb), never ambient. Empty on platforms without a browser
+ *   scripting surface.
+ *
+ * @property {(ref: string) => Promise<{ ok: boolean, error?: string }>} focusTab
+ *   Bring a listTabs row ("app|window|tab") to the front. Stale indexes are a
+ *   normal failure, not an exception.
  */
 
 module.exports = {}

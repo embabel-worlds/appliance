@@ -24,6 +24,14 @@ const unsupported = {
   async grantStates() {
     return []
   },
+
+  async listTabs() {
+    return { tabs: [], denied: [] }
+  },
+
+  async focusTab(_ref) {
+    return { ok: false, error: 'not implemented on this platform' }
+  },
 }
 
 /** @returns {SensorPlatform} */
