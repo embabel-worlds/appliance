@@ -43,9 +43,13 @@ function createWindow(): void {
     return
   }
   window = new BrowserWindow({
-    width: 800,
-    height: 700,
+    width: 860,
+    height: 760,
     title: 'Embabel Me',
+    // The console's surface runs to the edges: black chrome, inset traffic
+    // lights, no grey title strip cutting across the aurora.
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
