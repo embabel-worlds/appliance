@@ -188,13 +188,69 @@ def print_worlds_surfaces(base: str) -> None:
     print()
 
 
-def launch_me_app(base: str) -> None:
+def me_app_settings_file() -> str | None:
+    """Where the Me app keeps its settings — Electron's per-app userData directory,
+    named for the app itself (`app.setName('Embabel Me')`). Only the platforms the
+    app runs on are mapped; anywhere else, seeding is silently skipped."""
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Application Support", "Embabel Me", "settings.json")
+    if sys.platform.startswith("linux"):
+        config = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+        return os.path.join(config, "Embabel Me", "settings.json")
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        return os.path.join(appdata, "Embabel Me", "settings.json") if appdata else None
+    return None
+
+
+def seed_me_app_settings(base: str, username: str | None) -> None:
+    """Hand the Me app what setup already established: which door to talk to, and
+    who the user is. Retyping a URL and username the wizard just set up is pure
+    friction — and the URL is worth seeding even at the default, because a
+    non-default ASSISTANT_PORT would otherwise leave the app pointed at nothing.
+
+    NEVER the password. Setup knows it, but a wizard silently writing a credential
+    to a file the user did not choose is a different act from that user typing it
+    into an app they can see — one keystroke of theirs is a fair price for that
+    line staying honest.
+
+    Only fills what is MISSING: an existing setting is the user's own answer, and
+    a later run must not overwrite it with an assumption."""
+    path = me_app_settings_file()
+    if path is None:
+        return
+    try:
+        current = {}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                current = json.load(f)
+        if not isinstance(current, dict):
+            return  # a settings file we do not recognise is not ours to rewrite
+        seeded = dict(current)
+        if not seeded.get("baseUrl"):
+            seeded["baseUrl"] = base
+        if username and not seeded.get("username"):
+            seeded["username"] = username
+        if seeded == current:
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(seeded, f, indent=2)
+    except (OSError, ValueError):
+        # Seeding is a courtesy; the app asks for these anyway. Never fail setup
+        # over a settings file.
+        pass
+
+
+def launch_me_app(base: str, username: str | None = None) -> None:
     """Me onboarding ends in the Me app, the way worlds onboarding ends at the
     console: the appliance thinks, the app senses, and a new user should meet
     both. The app is plain JavaScript on Electron — no build step — so `npm
     install` (run here on first use, for Electron itself) is the whole cost."""
     if not os.path.isdir(ME_APP_DIR):
         return  # a checkout without the app (or a remote setup) — nothing to offer
+    seed_me_app_settings(base, username)
     print("\n  ── The Me app " + "─" * 47)
     print("  Your appliance thinks; the Me app senses. It sits in your menu bar,")
     print(f"  reads local signals, and sends only what you approve to {base}.")
@@ -219,8 +275,8 @@ def launch_me_app(base: str) -> None:
     # chatter has no business in the terminal being handed back.
     subprocess.Popen([npm, "start"], cwd=ME_APP_DIR, start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print('  Starting — look for "Me" in your menu bar. Sign in with the account')
-    print("  you just created, and it will offer its first scan.")
+    print('  Starting — look for "Me" in your menu bar. The door and your username')
+    print("  are filled in already; enter your password and it will offer its first scan.")
 
 
 def container_base_url(container: str) -> str | None:
@@ -647,7 +703,7 @@ def main() -> int:
         if service == "worlds":
             print_worlds_surfaces(base)
         elif service == "assistant":
-            launch_me_app(base)
+            launch_me_app(base, username)
         return 0
     except AlreadySetUp as e:
         # Not a failure: the appliance is up and configured. For the Me door,
@@ -656,6 +712,8 @@ def main() -> int:
             follower.terminate()
         print(f"\n  {e}\n")
         if container and door_service(container) == "assistant":
+            # Already set up, so no wizard ran and no username was minted here —
+            # anything the app already has stays untouched.
             launch_me_app(base)
         return 0
     except SetupError as e:
