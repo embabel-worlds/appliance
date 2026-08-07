@@ -22,6 +22,9 @@ services:
       - "127.0.0.1:${NEO4J_BROWSER_PORT:-4243}:7474"   # browser
       - "127.0.0.1:${NEO4J_BOLT_PORT:-4244}:7687"      # bolt, for cypher-shell
     environment:
+      # Same zone as the doors (setup.py writes TZ to .env): cypher's datetime()
+      # and the graph's logs should tell the same time the assistant does.
+      - TZ=${TZ:-Etc/UTC}
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-embabel-assistant}
       # Advertise the HOST-published Bolt port. The browser on 4243 runs in the
       # user's browser and connects over Bolt from the host, and it pre-fills its

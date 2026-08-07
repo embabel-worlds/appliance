@@ -39,6 +39,10 @@ services:
       # remapped port leaves every code-mode call dialling nothing. Moving the
       # appliance to another port therefore moves both sides together.
       - SERVER_PORT=${ASSISTANT_PORT:-4242}
+      # The image runs UTC unless told otherwise, and a wrong zone skews every
+      # "now" the assistant utters and every schedule it keeps. setup.py detects
+      # the host's zone and writes TZ into .env; the JVM honors the variable.
+      - TZ=${TZ:-Etc/UTC}
       # Neo4j on the compose network — the in-container Bolt port, not the 7891
       # host mapping a workstation checkout uses.
       - NEO4J_HOST=neo4j

@@ -38,6 +38,8 @@ services:
       - "127.0.0.1:${WORLDS_PORT:-4342}:${WORLDS_PORT:-4342}"
     environment:
       - SERVER_PORT=${WORLDS_PORT:-4342}
+      # Host timezone, from .env (setup.py writes it) — see the Me door's note.
+      - TZ=${TZ:-Etc/UTC}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j
