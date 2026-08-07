@@ -23,6 +23,9 @@
  * @typedef {object} ConnectionResult
  * @property {boolean} ok
  * @property {string} message
+ * @property {string} [action]  What to do about a failure, when we can tell.
+ * @property {string} [url]     Where that action lives, if anywhere.
+ * @property {string} [state]   ok | no-docker | docker-stopped | not-running
  */
 
 /**

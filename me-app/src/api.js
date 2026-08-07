@@ -14,6 +14,8 @@
 /** @typedef {import('./types').SendResult} SendResult */
 /** @typedef {import('./types').Settings} Settings */
 
+const { diagnose } = require('./appliance')
+
 const SOURCE = 'me-app'
 
 /** @param {Settings} settings */
@@ -65,7 +67,10 @@ async function testConnection(settings) {
       signal: AbortSignal.timeout(5000),
     })
   } catch (e) {
-    return { ok: false, message: `Cannot reach ${settings.baseUrl}: ${errorMessage(e)}` }
+    // Unreachable is the interesting case: "connection refused" is true and
+    // useless, whereas "Docker is not installed" is the actual next step.
+    const why = await diagnose(settings.baseUrl)
+    return { ok: false, message: why.message, action: why.action, url: why.url, state: why.state }
   }
   if (res.status === 401 || res.status === 403) {
     return { ok: false, message: 'Connected, but the username/password was rejected.' }

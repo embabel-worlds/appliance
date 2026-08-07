@@ -354,6 +354,12 @@ handle('grants:state', () => platform.grantStates())
 // macOS prompts for Automation exactly once; after a refusal the only route
 // back is System Settings, so the app must be able to open the right pane. On
 // platforms with no such consent broker the URL is null and this is a no-op.
+// Only http(s): an IPC channel that opens arbitrary URL schemes is a way to
+// launch anything on the user's machine from the renderer.
+ipcMain.handle('shell:open-external', async (_e, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) await shell.openExternal(url)
+})
+
 ipcMain.handle('grants:open-settings', async () => {
   if (platform.automationSettingsUrl) await shell.openExternal(platform.automationSettingsUrl)
 })

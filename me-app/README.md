@@ -136,6 +136,21 @@ cannot script other applications.
 
 `./me.py` opens the packaged app when it finds one and falls back to `npm start`.
 
+## If there is no appliance yet
+
+The app does not install or start the appliance — it talks to one that is already
+running. When it cannot reach it, it says which of the three things is actually
+wrong, because they have different fixes:
+
+| What it says | What to do |
+|---|---|
+| Docker is not installed | Install Docker Desktop (there is a button), enable Model Runner, then `./me.py` |
+| Docker is installed but not running | Start Docker Desktop, then `./me.py` |
+| Docker is running, but nothing answered | The appliance is not started: `./me.py` |
+
+"Connection refused" is true for all three and useful for none, which is why the
+app probes rather than reporting the socket error.
+
 ## When something goes wrong
 
 The app logs to a file as well as the console, because `./me.py` starts it

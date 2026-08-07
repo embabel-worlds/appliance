@@ -14,6 +14,7 @@ const api = {
   streamState: () => ipcRenderer.invoke('stream:state'),
   grantStates: () => ipcRenderer.invoke('grants:state'),
   openAutomationSettings: () => ipcRenderer.invoke('grants:open-settings'),
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   mountsState: () => ipcRenderer.invoke('mounts:state'),
   addMount: () => ipcRenderer.invoke('mounts:add'),
   removeMount: (host) => ipcRenderer.invoke('mounts:remove', host),
