@@ -1,8 +1,16 @@
 # Embabel Me — sensor app (spike)
 
 The Me side of the appliance/sensor architecture in [DISCOVERY.md](../DISCOVERY.md):
-a small native app that reads local macOS signals and **sends** them to your own
+a small native app that reads local signals and **sends** them to your own
 appliance. The appliance thinks; this app senses.
+
+macOS is the implemented platform. Everything OS-specific lives behind the
+`SensorPlatform` seam in [`src/platform/`](src/platform): `common.ts` holds the
+readers whose logic is identical everywhere and whose only OS-specific part is
+where the files live (JetBrains recents, VS Code folders, Chromium history),
+`macos.ts` holds the Mac-specific ones, and `windows.ts`/`linux.ts` implement
+what already works while naming exactly what each still needs. `process.platform`
+is read in one place.
 
 ## Run it
 
@@ -28,11 +36,23 @@ receipt. Against an older image without the sensor endpoint, fact sending falls
 back to `POST /api/v1/memory/remember`. Nothing is read beyond the listed
 sources; nothing is sent without the button press.
 
-There is also an opt-in **ambient presence stream**: every 30 seconds, send
-whether you're active at the keyboard (idle time via `ioreg` — no permissions
-needed, no app names, no content). Each push replaces the previous one in the
-appliance's in-memory context layer — a heartbeat for the attention system, not
-a stored history. It requires the sensor endpoint (assistant `me` branch).
+There is also an opt-in **ambient focus stream** — what you're doing right now,
+in two tiers:
+
+- **Tier 0, no permission prompt at all**: frontmost app (`lsappinfo`), screen
+  lock, Focus/Do-Not-Disturb mode, keyboard idle. Samples every 5 seconds
+  (~32ms per sample).
+- **Tier 1, one macOS Automation grant per app**: the active browser tab (title
+  and host — never the full URL) and what's playing. Probed only when the
+  frontmost app changes, or every ~20s as a refresh, because each probe is an
+  AppleScript round-trip. macOS prompts once per target app; if you decline,
+  the app says so and links straight to the right System Settings pane.
+
+Lock, unlock, sleep and wake are delivered as events rather than polled, so
+"gone" is never a tick late. A tick only *sends* when the picture changed, with
+a ~3-minute heartbeat otherwise. Each push replaces the previous one in the
+appliance's in-memory context layer — a live view for the attention system, not
+a stored history. Requires the sensor endpoint (assistant `me` branch).
 
 **Browser history is opt-in** — tick "Include browser history" before scanning and
 the sensor also reports most-visited sites, which news outlets you read (with the
