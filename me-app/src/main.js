@@ -245,6 +245,7 @@ ipcMain.handle('verbs:state', () => outbox.state())
 handle('models:list', (settings) => api.listModels(settings))
 handle('models:chat', (settings) => api.chatModel(settings))
 handle('models:in-use', (settings) => api.modelsInUse(settings))
+handle('models:loaded', async () => Object.fromEntries(await api.loadedLocalModels()))
 handle('models:set-chat', (settings, model) => {
   log(`[me-app] chat model -> ${model || '(follow default)'}`)
   return api.setChatModel(settings, model)

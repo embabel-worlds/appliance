@@ -228,6 +228,7 @@ async function ingestDocumentUrl(settings, url) {
 }
 
 module.exports = {
+  loadedLocalModels,
   modelsInUse,
   getWorldConfig,
   setChatModel,
@@ -354,4 +355,35 @@ async function modelsInUse(settings) {
   } catch (e) {
     return { ok: false, message: errorMessage(e) }
   }
+}
+
+/**
+ * Which local models are LOADED, from LM Studio's own view.
+ *
+ * A model being listed does not mean it can answer: LM Studio advertises every
+ * model in the library, but one that is not loaded replies "Model has not
+ * started loading" to any request. Sixteen of seventeen entries in a picker
+ * being duds is not a menu, it is a trap — so the app asks the question the
+ * appliance cannot (it is on the host side of the boundary, and this endpoint
+ * is LM Studio's own, not the OpenAI-compatible one).
+ *
+ * Returns a Map of model id → true when loaded. Empty when LM Studio is absent
+ * or the endpoint is unknown to it, in which case the UI simply says nothing.
+ */
+async function loadedLocalModels() {
+  for (const base of ['http://127.0.0.1:1234', 'http://localhost:1234']) {
+    try {
+      const res = await fetch(`${base}/api/v0/models`, { signal: AbortSignal.timeout(2500) })
+      if (!res.ok) continue
+      const body = await readJson(res)
+      const loaded = new Map()
+      for (const m of body?.data ?? []) {
+        if (m?.id) loaded.set(m.id, m.state === 'loaded')
+      }
+      return loaded
+    } catch {
+      /* try the next spelling, then give up quietly */
+    }
+  }
+  return new Map()
 }

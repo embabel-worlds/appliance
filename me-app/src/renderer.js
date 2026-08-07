@@ -686,6 +686,9 @@ const LOCAL_PROVIDERS = new Set(['LM Studio', 'Ollama'])
 const modelsStatus = $('models-status')
 const roleList = $('role-list')
 
+/** LM Studio's view of which local models can actually answer right now. */
+let loadedLocal = {}
+
 /** Group models so the user's own hardware is not lost among the hosted ones. */
 function fillModelOptions(select, models) {
   for (const group of ['LM Studio', 'Ollama']) {
@@ -716,16 +719,22 @@ async function loadModels() {
   setStatus(modelsStatus, null, 'Loading…')
   roleList.innerHTML = ''
   const settings = currentSettings()
-  const [listed, roles] = await Promise.all([window.me.listModels(settings), window.me.getRoles(settings)])
+  const [listed, roles, loaded] = await Promise.all([
+    window.me.listModels(settings),
+    window.me.getRoles(settings),
+    window.me.loadedModels(),
+  ])
+  loadedLocal = loaded ?? {}
   if (!listed.ok) {
     setStatus(modelsStatus, false, listed.message)
     return
   }
   const local = listed.models.filter((m) => LOCAL_PROVIDERS.has(m.provider))
+  const ready = local.filter((m) => loadedLocal[m.name]).length
   setStatus(
     modelsStatus,
     true,
-    `${listed.models.length} model(s) · ${local.length} on this Mac · default ${listed.default}`,
+    `${listed.models.length} model(s) · ${local.length} on this Mac (${ready} loaded) · default ${listed.default}`,
   )
 
   // Chat first: it is what people mean by "the model", and it is live.
