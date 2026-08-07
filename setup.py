@@ -243,6 +243,22 @@ def seed_me_app_settings(base: str, username: str | None) -> None:
         pass
 
 
+def packaged_me_app() -> str | None:
+    """The built app, if this machine has one — installed, or sitting in the repo's
+    own release directory after `npm run package`. Returns a path `open -a` takes."""
+    if sys.platform != "darwin":
+        return None
+    candidates = [
+        "/Applications/Embabel Me.app",
+        os.path.expanduser("~/Applications/Embabel Me.app"),
+    ]
+    release = os.path.join(ME_APP_DIR, "release")
+    if os.path.isdir(release):
+        for entry in sorted(os.listdir(release)):
+            candidates.append(os.path.join(release, entry, "Embabel Me.app"))
+    return next((c for c in candidates if os.path.isdir(c)), None)
+
+
 def launch_me_app(base: str, username: str | None = None) -> None:
     """Me onboarding ends in the Me app, the way worlds onboarding ends at the
     console: the appliance thinks, the app senses, and a new user should meet
@@ -254,6 +270,22 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     print("\n  ── The Me app " + "─" * 47)
     print("  Your appliance thinks; the Me app senses. It sits in your menu bar,")
     print(f"  reads local signals, and sends only what you approve to {base}.")
+    # A packaged build wins when there is one: it carries the app's own identity,
+    # so macOS names IT in permission prompts ("Embabel Me wants to control Google
+    # Chrome") instead of naming Electron, and the user gets no terminal, no npm,
+    # and no build step. `npm start` stays the developer path.
+    packaged = packaged_me_app()
+    if packaged:
+        answer = input("  Start it now? [Y/n]: ").strip().lower()
+        if answer not in ("", "y", "yes"):
+            print(f'  Whenever you like:  open -a "{packaged}"')
+            return
+        subprocess.Popen(["open", "-a", packaged], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print('  Starting — look for "Me" in your menu bar. The door and your username')
+        print("  are filled in already; enter your password and it will offer its first scan.")
+        return
+
     npm = shutil.which("npm")
     if npm is None:
         print("  It needs Node.js (https://nodejs.org). Once that is installed:")
@@ -303,6 +335,47 @@ def _compose(door: str, *argv: str, capture: bool = False):
         raise SetupError(f"docker compose failed: {e}")
 
 
+def host_timezone() -> str | None:
+    """The host's IANA zone name (e.g. Australia/Sydney), or None if unknowable.
+    /etc/localtime is a symlink into a zoneinfo tree on macOS and most Linuxes;
+    Debian-family systems also write the name to /etc/timezone."""
+    try:
+        target = os.readlink("/etc/localtime")
+        if "zoneinfo/" in target:
+            return target.split("zoneinfo/", 1)[1]
+    except OSError:
+        pass
+    try:
+        with open("/etc/timezone") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def ensure_timezone() -> None:
+    """Hand the containers the host's timezone. The images default to UTC, which
+    puts every "now" the assistant utters — and every schedule it keeps — hours
+    off for most of the planet. Compose interpolates TZ from the shell or .env;
+    detect the zone once and write it to .env if the operator hasn't chosen one
+    (either kind of existing choice wins and is never rewritten)."""
+    if os.environ.get("TZ"):
+        return  # exported in the shell — compose sees it directly
+    if os.path.exists(".env"):
+        with open(".env") as f:
+            if any(line.strip().startswith("TZ=") for line in f):
+                return
+    zone = host_timezone()
+    if not zone:
+        return  # undetectable: the containers stay on UTC, as before
+    with open(".env", "a") as f:
+        f.write(
+            "\n# Host timezone, detected by setup.py — without it the containers run UTC\n"
+            "# and the assistant's clock is hours off. Edit or remove freely.\n"
+            f"TZ={zone}\n"
+        )
+    print(f"  Wrote TZ={zone} to .env — the appliance will keep your local time.")
+
+
 def fresh_wipe() -> None:
     """--fresh: delete the whole appliance state after saying exactly what dies.
     Both door files merged, so every service and volume in the project goes,
@@ -324,11 +397,16 @@ def ensure_door(door: str) -> bool:
     caller then follows the container log, because the first boot is a designed
     experience (the operator console), not a thing to hide.
 
+    Also the moment the host's timezone reaches .env: it must exist before the
+    `up -d` below, and `up -d` then applies it — compose sees the changed
+    environment and recreates the door, so a UTC container heals on re-run.
+
     ALWAYS runs `compose up -d`, even when the door is already up. "The door
     container is running" does NOT mean "this compose file is applied": a service
     added since the last run (the console was, once) would never be created, and
     the operator sees a service in their YAML with nothing behind it. `up -d`
     is idempotent — it reconciles and leaves running containers alone."""
+    ensure_timezone()
     doors = running_doors()
     other = next(((svc, name) for svc, name in doors.items() if svc != DOOR_SERVICE[door]), None)
     if other:

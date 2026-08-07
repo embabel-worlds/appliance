@@ -112,6 +112,28 @@ fact per folder so the assistant knows where its new files live.
 `node -e "require('./src/platform').platform.scan({browserHistory:true}).then(console.log)"`
 includes the history facts.
 
+## Building a real app
+
+```bash
+npm run package     # release/mac-*/Embabel Me.app — for trying it locally
+npm run dist        # a DMG as well, for handing to someone else
+```
+
+This matters beyond tidiness: unpackaged, the app runs inside Electron's own
+bundle, so macOS names **Electron** in permission prompts and in the app menu.
+Packaged, it has its own identity — `com.embabel.me` — and the prompt reads
+"Embabel Me wants to control Google Chrome", which is the only version of that
+sentence a user can act on.
+
+Signing is ad-hoc: no Apple Developer membership needed, and enough for a stable
+TCC identity across launches of the same build. Rebuilds change the code hash, so
+expect macOS to ask again after one (`tccutil reset AppleEvents com.embabel.me`
+clears the slate). Handing the DMG to someone else needs Developer ID signing and
+notarization; the App Store is closed to us regardless, since sandboxed apps
+cannot script other applications.
+
+`./me.py` opens the packaged app when it finds one and falls back to `npm start`.
+
 ## When something goes wrong
 
 The app logs to a file as well as the console, because `./me.py` starts it

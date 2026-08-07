@@ -1,15 +1,60 @@
 {
   "name": "embabel-me-app",
   "version": "0.0.1",
-  "description": "Embabel Me sensor app — reads local macOS signals and sends them to your appliance",
+  "description": "Embabel Me sensor app \u2014 reads local macOS signals and sends them to your appliance",
   "main": "src/main.js",
   "scripts": {
     "prestart": "node -e \"require('fs').existsSync('node_modules/electron') || process.exit(1)\" || npm install",
     "start": "electron .",
-    "smoke": "node -e \"require('./src/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\""
+    "smoke": "node -e \"require('./src/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\"",
+    "package": "electron-builder --mac --dir",
+    "dist": "electron-builder --mac"
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.embabel.me",
+    "productName": "Embabel Me",
+    "copyright": "Copyright \u00a9 Embabel",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "index.html",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Embabel Me reads the tab you are viewing and what is playing, and sends only that to your own appliance.",
+        "LSUIElement": false
+      },
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Embabel Me"
+    }
   }
 }
