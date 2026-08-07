@@ -27,12 +27,28 @@ const errorMessage = (e) => {
 }
 
 /** @param {Settings} settings @param {string} path @param {unknown} body */
-async function post(settings, path, body) {
+/**
+ * Facts are slower than they look: each batch resolves entities and projects
+ * graph edges server-side, so a first scan of a dozen long facts can outlast a
+ * conversational timeout. Generous here, tight everywhere else.
+ */
+const FACTS_TIMEOUT_MS = 120_000
+
+/** Parse a JSON body without letting a non-JSON one throw past the caller. */
+async function readJson(res) {
+  try {
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+async function post(settings, path, body, timeoutMs = 15000) {
   return fetch(`${settings.baseUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: auth(settings) },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
 }
 
@@ -67,10 +83,12 @@ async function testConnection(settings) {
 async function sendFacts(settings, facts) {
   let res
   try {
-    res = await post(settings, '/api/v1/sensor/events', {
-      source: SOURCE,
-      events: facts.map((f) => ({ kind: 'fact', label: f.label, text: f.text })),
-    })
+    res = await post(
+      settings,
+      '/api/v1/sensor/events',
+      { source: SOURCE, events: facts.map((f) => ({ kind: 'fact', label: f.label, text: f.text })) },
+      FACTS_TIMEOUT_MS,
+    )
   } catch (e) {
     const message = errorMessage(e)
     return facts.map((f) => ({ id: f.id, label: f.label, ok: false, message }))
@@ -80,7 +98,10 @@ async function sendFacts(settings, facts) {
     const message = `HTTP ${res.status}`
     return facts.map((f) => ({ id: f.id, label: f.label, ok: false, message }))
   }
-  const body = await res.json()
+  const body = await readJson(res)
+  if (!body?.receipts) {
+    return facts.map((f) => ({ id: f.id, label: f.label, ok: false, message: 'sent, but the reply was unreadable' }))
+  }
   return facts.map((f, i) => {
     const receipt = body.receipts[i]
     const ok = receipt?.status === 'stored' || receipt?.status === 'duplicate'
@@ -98,7 +119,7 @@ async function sendFactsLegacy(settings, facts) {
   const results = []
   for (const fact of facts) {
     try {
-      const res = await post(settings, '/api/v1/memory/remember', { text: fact.text })
+      const res = await post(settings, '/api/v1/memory/remember', { text: fact.text }, FACTS_TIMEOUT_MS)
       results.push({ id: fact.id, label: fact.label, ok: res.ok, message: res.ok ? 'stored' : `HTTP ${res.status}` })
     } catch (e) {
       results.push({ id: fact.id, label: fact.label, ok: false, message: errorMessage(e) })
@@ -145,8 +166,8 @@ async function sendFocus(settings, sample) {
   if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
   // Echo the server's own rendering of what it understood, so the UI shows what
   // was actually communicated rather than what we hoped to communicate.
-  const body = await res.json()
-  return { ok: true, message: body.receipts?.[0]?.detail ?? (working ? 'active' : 'idle') }
+  const body = await readJson(res)
+  return { ok: true, message: body?.receipts?.[0]?.detail ?? (working ? 'active' : 'idle') }
 }
 
 module.exports = { testConnection, sendFacts, sendFocus }

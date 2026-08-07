@@ -104,8 +104,16 @@ setInterval(async () => {
 $('scan').addEventListener('click', async () => {
   factList.innerHTML = ''
   receipt.innerHTML = ''
-  facts = await window.me.scan({ browserHistory: $('history-toggle').checked })
   factsSection.hidden = false
+  factList.textContent = 'Scanning…'
+  try {
+    facts = await window.me.scan({ browserHistory: $('history-toggle').checked })
+  } catch (e) {
+    factList.textContent = `Scan failed: ${e instanceof Error ? e.message : String(e)}`
+    sendButton.disabled = true
+    return
+  }
+  factList.textContent = ''
   if (facts.length === 0) {
     factList.textContent = 'Nothing found to report.'
     sendButton.disabled = true
@@ -137,10 +145,23 @@ sendButton.addEventListener('click', async () => {
   const selected = facts.filter((f) => checkedIds.has(f.id))
   if (selected.length === 0) return
   sendButton.disabled = true
-  receipt.textContent = `Sending ${selected.length} fact(s)…`
+  receipt.textContent = `Sending ${selected.length} fact(s)… (a first scan can take a minute)`
   const settings = currentSettings()
   await window.me.saveSettings(settings)
-  const results = await window.me.sendFacts(settings, selected)
+  let results
+  try {
+    results = await window.me.sendFacts(settings, selected)
+  } catch (e) {
+    // Anything escaping the send path lands here rather than leaving the button
+    // dead and the user guessing.
+    receipt.innerHTML = ''
+    const line = document.createElement('div')
+    line.className = 'status error'
+    line.textContent = `Send failed: ${e instanceof Error ? e.message : String(e)}`
+    receipt.append(line)
+    sendButton.disabled = false
+    return
+  }
   receipt.innerHTML = ''
   for (const r of results) {
     const line = document.createElement('div')

@@ -24,6 +24,7 @@ let tray = null
 const DEFAULTS = { baseUrl: 'http://localhost:4242', username: '', password: '' }
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
+const logFile = () => path.join(app.getPath('userData'), 'me-app.log')
 
 /** @returns {Settings} */
 function loadSettings() {
@@ -114,14 +115,53 @@ void app.whenReady().then(() => {
 // Keep running in the menu bar when the window closes.
 app.on('window-all-closed', () => {})
 
+/**
+ * Log to a FILE as well as the console. `./me.py` launches this app detached
+ * with its output sent to /dev/null — correct, since Electron's chatter has no
+ * business in the terminal being handed back — so the console is not a
+ * diagnostic channel for anyone who started the app the normal way, and a
+ * failure nobody can see is the same as no failure report at all.
+ */
+function log(line) {
+  const stamped = `${new Date().toISOString()} ${line}\n`
+  process.stdout.write(stamped)
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true })
+    fs.appendFileSync(logFile(), stamped)
+  } catch {
+    /* logging must never be the thing that breaks the app */
+  }
+}
+
+/**
+ * Wrap an IPC handler so a thrown error is LOGGED and rethrown with a legible
+ * message. Unwrapped, a rejection reaches the renderer as an opaque "Error
+ * invoking remote method" — which is how a failed send ends up looking like a
+ * UI that simply stopped, the worst failure mode for the one button that moves
+ * the user's data.
+ */
+function handle(channel, fn) {
+  ipcMain.handle(channel, async (_e, ...args) => {
+    try {
+      return await fn(...args)
+    } catch (e) {
+      log(`[me-app] ${channel} failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`)
+      throw new Error(`${channel}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  })
+}
+
 ipcMain.handle('settings:load', () => loadSettings())
 ipcMain.handle('settings:save', (_e, settings) => {
   saveSettings(settings)
   return true
 })
-ipcMain.handle('connection:test', (_e, settings) => api.testConnection(settings))
-ipcMain.handle('scan:run', (_e, options) => platform.scan(options))
-ipcMain.handle('facts:send', (_e, settings, facts) => api.sendFacts(settings, facts))
+handle('connection:test', (settings) => api.testConnection(settings))
+handle('scan:run', (options) => platform.scan(options))
+handle('facts:send', (settings, facts) => {
+  log(`[me-app] sending ${facts.length} fact(s) to ${settings.baseUrl}`)
+  return api.sendFacts(settings, facts)
+})
 
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the
@@ -219,6 +259,7 @@ async function streamTick(settings) {
     ticksSinceSend = 0
     const result = await api.sendFocus(settings, sample)
     streamState.lastMessage = result.ok ? `sent: ${result.message}` : `error: ${result.message}`
+    if (!result.ok) log(`[me-app] focus push failed: ${result.message}`)
   } catch (e) {
     streamState.lastMessage = `error: ${e instanceof Error ? e.message : String(e)}`
   }
@@ -262,7 +303,7 @@ ipcMain.handle('stream:set', (_e, settings, enabled, tier1) => {
 })
 
 ipcMain.handle('stream:state', () => ({ ...streamState }))
-ipcMain.handle('grants:state', () => platform.grantStates())
+handle('grants:state', () => platform.grantStates())
 
 // macOS prompts for Automation exactly once; after a refusal the only route
 // back is System Settings, so the app must be able to open the right pane. On

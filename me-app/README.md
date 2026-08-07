@@ -81,6 +81,25 @@ files; removing every folder deletes it again.
 `node -e "require('./src/platform').platform.scan({browserHistory:true}).then(console.log)"`
 includes the history facts.
 
+## When something goes wrong
+
+The app logs to a file as well as the console, because `./me.py` starts it
+detached and the console then goes nowhere:
+
+```bash
+tail -f ~/Library/Application\ Support/Embabel\ Me/me-app.log
+```
+
+Failed sends, failed scans and failed focus pushes all land there with a stack.
+The appliance's own side of the same story:
+
+```bash
+docker compose logs -f assistant | grep "\[sensor\]"
+```
+
+If a batch never appears in the appliance log AND nothing appears in this one,
+the request never left the app.
+
 ## Design notes
 
 - **Outbound-only.** The app is a client of the appliance API and never listens
