@@ -25,7 +25,11 @@ const settingsFile = (): string => path.join(app.getPath('userData'), 'settings.
 
 function loadSettings(): Settings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Partial<Settings>) }
+    const loaded = { ...DEFAULTS, ...(JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Partial<Settings>) }
+    // A blank URL can get saved (e.g. toggling the stream before filling the
+    // form); never let it shadow the default on the next launch.
+    if (!loaded.baseUrl.trim()) loaded.baseUrl = DEFAULTS.baseUrl
+    return loaded
   } catch {
     return { ...DEFAULTS }
   }
@@ -59,7 +63,21 @@ function createWindow(): void {
   })
 }
 
+app.setName('Embabel Me')
+
 void app.whenReady().then(() => {
+  // Named application menu: standard roles so ⌘Q/⌘C/⌘V work and menus carry
+  // the app name. (The bold app-menu title itself still reads "Electron" in
+  // dev — that comes from the binary's Info.plist and changes when the app is
+  // packaged under its own bundle.)
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { label: 'Embabel Me', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
+      { role: 'editMenu' },
+      { role: 'windowMenu' },
+    ]),
+  )
+
   // Menu-bar presence: an empty template image plus a text title renders as
   // plain "Me" in the menu bar — no icon asset needed for the spike.
   tray = new Tray(nativeImage.createEmpty())
