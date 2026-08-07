@@ -76,6 +76,48 @@ Because the doors share one graph and one data volume, two rules hold:
 2. **`EMBABEL_VERSION` and the embedding model move both doors together** — they
    are set once, in `.env` and `infra.yml`, deliberately.
 
+## The Me app — a sensor for your Mac
+
+![Embabel Me](images/me_electron.png)
+
+The appliance thinks; the Me app senses. It runs natively on your Mac — outside
+Docker, where a container cannot go — reads local signals, and **sends** what you
+approve to your own appliance. It is a client of the appliance's API and never
+listens on a port; nothing routes anywhere else.
+
+```bash
+cd me-app
+npm install
+npm start          # "Me" appears in the menu bar
+```
+
+Point it at your Me door (`http://localhost:4242`) with your appliance login, and
+it offers two things:
+
+**Scan → review → send.** Every fact is shown before anything leaves the machine
+and is individually deselectable. What it reads needs no special permission: the
+Dock (the apps you keep at hand, in order), your default browser and mail app,
+recent JetBrains projects and open VS Code folders, installed applications.
+Optionally — off by default — your browser history: most-visited sites, which
+news outlets you read *with the headlines you actually opened*, and recent
+searches. Facts land in your assistant's memory as propositions, so it can answer
+"what do you know about my machine?" and "what kind of news do I read?" from
+evidence rather than a guess.
+
+**Ambient streaming**, opt-in, in two tiers. Tier 0 needs no permission at all —
+frontmost app, active or idle, screen lock, Focus mode — and samples every few
+seconds. Tier 1 asks macOS for permission per app ("Embabel Me wants to control
+Google Chrome") and adds the browser tab you are on and what is playing. This
+feeds the assistant's sense of *right now*: it lives in memory, replaced on each
+push, never written to the graph, and is what lets the assistant know not to
+interrupt you.
+
+The app is **optional and additive**: the appliance is fully functional without
+it. It is also a spike — unpackaged, so macOS prompts currently say "Electron"
+rather than "Embabel Me". See [me-app/README.md](me-app/README.md) for the
+platform seam (macOS is implemented; Windows and Linux are stubbed with their
+gaps named) and the design rules behind the permission tiers.
+
 ## Ports — the 42 block
 
 `4242` is the one to remember; the rest count up from it.
