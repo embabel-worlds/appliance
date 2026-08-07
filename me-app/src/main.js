@@ -5,10 +5,11 @@
 // to the appliance) happens here in the main process; the renderer only gets
 // the narrow IPC surface defined in preload.js.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerMonitor, shell, dialog } = require('electron')
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, powerMonitor, shell, dialog, Notification } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const api = require('./api')
+const appliance = require('./appliance')
 const chat = require('./chat')
 const outbox = require('./outbox')
 const indexer = require('./indexer')
@@ -90,31 +91,85 @@ function createWindow() {
 
 app.setName('Embabel Me')
 
-void app.whenReady().then(() => {
-  // Named application menu: standard roles so ⌘Q/⌘C/⌘V work and menus carry
-  // the app name. (The bold app-menu title itself still reads "Electron" in
-  // dev — that comes from the binary's Info.plist and changes when the app is
-  // packaged under its own bundle.)
+// ── The menus: where maintenance lives ──────────────────────────────────────
+// The Appliance panel folds away once connected, so anything only reachable
+// there is invisible in daily use. Update sits in BOTH menus — the application
+// menu and the "Me" tray menu — because the tray is present even with every
+// window closed, which is exactly when an update is least disruptive.
+
+let updating = false
+
+/** Build (or rebuild — the update item's state changes) both menus. */
+function buildMenus() {
+  const updateItem = updating
+    ? { label: 'Updating Appliance…', enabled: false }
+    : { label: 'Update Appliance', click: () => void runMenuUpdate() }
+  // Standard roles so ⌘Q/⌘C/⌘V work and menus carry the app name. (The bold
+  // app-menu title itself still reads "Electron" in dev — that comes from the
+  // binary's Info.plist and changes when the app is packaged.)
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { label: 'Embabel Me', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
+      {
+        label: 'Embabel Me',
+        submenu: [
+          { role: 'about', label: 'About Embabel Me' },
+          { type: 'separator' },
+          { ...updateItem },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
       { role: 'editMenu' },
       { role: 'windowMenu' },
     ]),
   )
+  tray?.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Open Embabel Me', click: createWindow },
+      { type: 'separator' },
+      { ...updateItem },
+      { label: 'About Embabel Me', click: () => app.showAboutPanel() },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ]),
+  )
+}
+
+/** Update from a menu: narrated by notifications — there may be no window. */
+async function runMenuUpdate() {
+  if (updating) return
+  updating = true
+  buildMenus()
+  tray?.setTitle('Me ↺')
+  log('[me-app] appliance update requested (menu)')
+  new Notification({ title: 'Embabel appliance', body: 'Updating — pulling the checkout and images…' }).show()
+  const result = await appliance.update()
+  log(`[me-app] appliance update: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
+  updating = false
+  buildMenus()
+  tray?.setTitle('Me')
+  new Notification({
+    title: result.ok ? 'Embabel appliance updated' : 'Appliance update failed',
+    body: result.message,
+  }).show()
+}
+
+void app.whenReady().then(() => {
+  // The About box: the mark, the version, and who made it.
+  app.setAboutPanelOptions({
+    applicationName: 'Embabel Me',
+    applicationVersion: require('../package.json').version,
+    copyright: '© Embabel 2026',
+    credits: 'The sensor side of your appliance.\nThis app senses; the appliance thinks.',
+    iconPath: path.join(__dirname, '..', 'resources', 'embabel.png'),
+  })
 
   // Menu-bar presence: an empty template image plus a text title renders as
   // plain "Me" in the menu bar — no icon asset needed for the spike.
   tray = new Tray(nativeImage.createEmpty())
   tray.setTitle('Me')
   tray.setToolTip('Embabel Me')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Open Embabel Me', click: createWindow },
-      { type: 'separator' },
-      { label: 'Quit', click: () => app.quit() },
-    ]),
-  )
+  buildMenus()
 
   createWindow()
   app.on('activate', createWindow)
@@ -196,6 +251,15 @@ ipcMain.handle('settings:save', (_e, settings) => {
   return true
 })
 handle('connection:test', (settings) => api.testConnection(settings))
+// Update = git fast-forward + compose pull + up (appliance.js). Long-running
+// and serialized by the renderer's disabled button; a second call while one
+// runs would just queue harmlessly behind the docker CLI anyway.
+handle('appliance:update', async () => {
+  log('[me-app] appliance update requested')
+  const result = await appliance.update()
+  log(`[me-app] appliance update: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
+  return result
+})
 handle('scan:run', (options) => platform.scan(options))
 handle('facts:send', async (settings, facts) => {
   // Say WHICH facts, by label, and what the appliance made of each — that is

@@ -8,6 +8,7 @@ const api = {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   testConnection: (settings) => ipcRenderer.invoke('connection:test', settings),
+  updateAppliance: () => ipcRenderer.invoke('appliance:update'),
   scan: (options) => ipcRenderer.invoke('scan:run', options),
   sendFacts: (settings, facts) => ipcRenderer.invoke('facts:send', settings, facts),
   setStream: (settings, enabled, tier1) => ipcRenderer.invoke('stream:set', settings, enabled, tier1),

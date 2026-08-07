@@ -85,6 +85,18 @@ $('test').addEventListener('click', async () => {
   }
 })
 
+// Update: fast-forward the checkout, pull newer images, restart what changed.
+// Minutes-long on a real update, so the button narrates and stays down.
+const updateButton = $('update')
+const updateStatus = $('update-status')
+updateButton.addEventListener('click', async () => {
+  updateButton.disabled = true
+  setStatus(updateStatus, null, 'updating — pulling the checkout and images…')
+  const result = await window.me.updateAppliance()
+  setStatus(updateStatus, result.ok, result.message)
+  updateButton.disabled = false
+})
+
 const streamToggle = $('stream-toggle')
 const tier1Toggle = $('tier1-toggle')
 const streamStatus = $('stream-status')

@@ -144,6 +144,11 @@
 
     .masthead-row { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
 
+    /* The mark, small: its own black glow disappears into the page's black,
+       so it sits there like it was drawn on. */
+    .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .brand .mark { width: 52px; height: 52px; flex: none; border-radius: 10px; }
+
     /* The connection pill: a light that tells you the truth at a glance, and
        opens the full form when it doesn't. */
     .pill {
@@ -291,12 +296,15 @@
   <div class="console">
     <header class="masthead">
       <div class="masthead-row">
-        <div>
-          <h1>Embabel Me</h1>
-          <p>
-            Reads signals from this Mac and sends only what you approve to your own
-            appliance. Nothing leaves this machine except to you.
-          </p>
+        <div class="brand">
+          <img class="mark" src="resources/embabel.png" alt="" aria-hidden="true" />
+          <div>
+            <h1>Embabel Me</h1>
+            <p>
+              Reads signals from this Mac and sends only what you approve to your own
+              appliance. Nothing leaves this machine except to you.
+            </p>
+          </div>
         </div>
         <!-- Connection is STATUS, not a task: once it works nobody looks at it
              again, so it collapses to a pill and the tabs take the top of the
@@ -354,6 +362,14 @@
         <!-- Where a failure explains itself: which of Docker-missing,
              Docker-stopped or appliance-not-started actually happened. -->
         <div class="row" id="connection-advice"></div>
+        <div class="row">
+          <button id="update">Update appliance</button>
+          <span id="update-status" class="status"></span>
+        </div>
+        <p class="hint">
+          Fast-forwards the appliance checkout, pulls newer images, and restarts only
+          what changed — your data, graph and shared folders ride through untouched.
+        </p>
       </div>
     </section>
 
