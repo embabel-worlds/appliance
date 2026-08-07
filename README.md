@@ -8,6 +8,19 @@ Your data and your code stay on your machine. The assistant talks to the model p
 
 ## Quick start
 
+One line, once the repo is public — it checks Docker, downloads the appliance
+into `~/embabel-me`, and hands straight off to setup:
+
+```bash
+curl -fsSL https://get.embabel.com/me | sh
+```
+
+It installs nothing globally and needs no root. Read it first if you like —
+[install.sh](install.sh) is deliberately short. While the repo is private, pass a
+token: `EMBABEL_TOKEN=$(gh auth token) sh install.sh`.
+
+Or clone it yourself:
+
 ```bash
 git clone https://github.com/embabel/appliance.git && cd appliance
 
@@ -338,6 +351,7 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | JVM memory. |
 | `NEO4J_PASSWORD` | `embabel-assistant` | Change before the appliance is anything but local. |
 | `NEO4J_HEAP` | `2G` | Raise for a large knowledge graph. |
+| `TZ` | your host's zone (written by `setup.py`; `Etc/UTC` if undetectable) | The containers' — and so the assistant's — clock. Set it yourself only to override the detected zone (IANA name, e.g. `Australia/Sydney`). |
 
 ---
 
