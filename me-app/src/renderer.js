@@ -422,10 +422,19 @@ function renderSource(source) {
   title.className = 'title'
   title.textContent = source.title || source.where.label
   head.append(n, title)
-  if (source.ingestedAt) {
+  // Show the date the user is actually filtering on, and SAY which it is —
+  // "modified 3 Mar" and "ingested 3 Mar" mean very different things.
+  const field = $('ask-datefield').value
+  const shown =
+    field === 'created' ? ['created', source.createdAt]
+    : field === 'ingested' ? ['ingested', source.ingestedAt]
+    : ['modified', source.modifiedAt]
+  const stamp = shown[1] ?? source.modifiedAt ?? source.ingestedAt
+  if (stamp) {
     const meta = document.createElement('span')
     meta.className = 'meta'
-    meta.textContent = new Date(source.ingestedAt).toLocaleDateString()
+    const label = shown[1] ? shown[0] : source.modifiedAt ? 'modified' : 'ingested'
+    meta.textContent = `${label} ${new Date(stamp).toLocaleDateString()}`
     head.append(meta)
   }
   card.append(head)
@@ -485,8 +494,10 @@ async function runAsk() {
   try {
     result = await window.me.askDocuments(settings, {
       question,
+      dateField: $('ask-datefield').value,
       from: $('ask-from').value || undefined,
       to: $('ask-to').value || undefined,
+      topK: Number($('ask-topk').value) || undefined,
     })
   } catch (e) {
     setStatus(askStatus, false, `Ask failed: ${e instanceof Error ? e.message : String(e)}`)

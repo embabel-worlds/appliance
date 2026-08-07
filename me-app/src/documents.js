@@ -95,6 +95,7 @@ const tildeify = (p) => p.replace(require('node:os').homedir(), '~')
 async function ask(settings, request) {
   const body = {
     question: request.question,
+    dateField: request.dateField || undefined,
     from: request.from || undefined,
     to: request.to || undefined,
     topK: request.topK || undefined,
