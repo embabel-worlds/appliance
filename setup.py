@@ -10,6 +10,9 @@ container (Me or Worlds), its port, and its setup token by itself.
 If OPENAI_API_KEY or ANTHROPIC_API_KEY is already exported in your shell, the provider
 step uses it instead of asking. `--ignore-env` always asks.
 
+Forgot the password? `--reset-password` recreates the operator account and keeps
+every piece of data — see reset_credentials for how and why that is sound.
+
 This client is deliberately thin. It does not know what the steps ARE — it asks the
 appliance (`GET /api/v1/setup`) and renders whatever it describes, so when the appliance
 gains a step this client picks it up without changing. If you would rather drive the API
@@ -42,9 +45,23 @@ DOOR_SERVICES = ("assistant", "worlds")
 # `./setup.py worlds` ride these to make first run a single command.
 DOOR_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
 DOOR_SERVICE = {"me": "assistant", "worlds": "worlds"}
+# Operator mounts, written by the Me app's "Local files" panel: host folders the
+# assistant may index, bind-mounted read-only under /local. Plain `docker compose
+# up` merges this file by compose convention, but the explicit -f list used below
+# switches that convention OFF, so it must be re-included by hand — for the me
+# door only, because it overrides the `assistant` service, which the worlds file
+# does not define (merging it there would fabricate an image-less service).
+OVERRIDE_FILE = "docker-compose.override.yml"
+# The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
+# build step). Me onboarding ends by offering to start it.
+ME_APP_DIR = "me-app"
 TOKEN_PATTERN = re.compile(r"Setup token:\s*([0-9a-f]{32,})")
 # How long to keep watching a booting container for its token before asking.
 BOOT_WAIT_SECONDS = 120
+# Where the appliance keeps its operator account, inside the container: the
+# credential file (bcrypt hashes) and the setup record. --reset-password
+# deletes exactly these two; everything else on the volume is data.
+ADMIN_DIR = "/data/embabel/assistant/admin"
 
 # Provider -> the variable that provider's key lives in, mirroring ProviderValidator's
 # PROVIDERS map on the server. If a provider is added there and not here, nothing breaks:
@@ -92,7 +109,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
         if e.code == 410:
             raise AlreadySetUp(
                 "This appliance is already set up. Sign in at " + base +
-                "\n(To start over you would have to delete the data volume, which erases everything.)"
+                "\n(Forgot the password? --reset-password recreates the account and keeps all data.)"
             )
         if e.code == 401:
             raise TokenRejected(f"The setup token was not accepted.\n{detail}")
@@ -171,6 +188,41 @@ def print_worlds_surfaces(base: str) -> None:
     print()
 
 
+def launch_me_app(base: str) -> None:
+    """Me onboarding ends in the Me app, the way worlds onboarding ends at the
+    console: the appliance thinks, the app senses, and a new user should meet
+    both. The app is plain JavaScript on Electron — no build step — so `npm
+    install` (run here on first use, for Electron itself) is the whole cost."""
+    if not os.path.isdir(ME_APP_DIR):
+        return  # a checkout without the app (or a remote setup) — nothing to offer
+    print("\n  ── The Me app " + "─" * 47)
+    print("  Your appliance thinks; the Me app senses. It sits in your menu bar,")
+    print(f"  reads local signals, and sends only what you approve to {base}.")
+    npm = shutil.which("npm")
+    if npm is None:
+        print("  It needs Node.js (https://nodejs.org). Once that is installed:")
+        print("      cd me-app && npm start")
+        return
+    answer = input("  Start it now? [Y/n]: ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        print("  Whenever you like:  cd me-app && npm start")
+        return
+    if not os.path.isdir(os.path.join(ME_APP_DIR, "node_modules", "electron")):
+        # The app's one dependency, dev-time only. Foreground, so a failure is
+        # visible and a slow download narrates itself instead of hanging mute.
+        print("  First run — fetching Electron (npm install)…")
+        run = subprocess.run([npm, "install"], cwd=ME_APP_DIR)
+        if run.returncode != 0:
+            print("  npm install failed — fix the error above, then: cd me-app && npm start")
+            return
+    # Detached, output dropped: the app outlives this wizard, and Electron's
+    # chatter has no business in the terminal being handed back.
+    subprocess.Popen([npm, "start"], cwd=ME_APP_DIR, start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print('  Starting — look for "Me" in your menu bar. Sign in with the account')
+    print("  you just created, and it will offer its first scan.")
+
+
 def container_base_url(container: str) -> str | None:
     """The door's URL from its own SERVER_PORT. The compose files keep the host and
     container ports equal by design, so the container's port IS the published one."""
@@ -185,7 +237,10 @@ def container_base_url(container: str) -> str | None:
 def _compose(door: str, *argv: str, capture: bool = False):
     """docker compose against the door's file, from the appliance directory.
     capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
-    cmd = ["docker", "compose", "-f", DOOR_COMPOSE[door], *argv]
+    cmd = ["docker", "compose", "-f", DOOR_COMPOSE[door]]
+    if door == "me" and os.path.exists(OVERRIDE_FILE):
+        cmd += ["-f", OVERRIDE_FILE]
+    cmd += argv
     try:
         return subprocess.run(cmd, capture_output=capture, text=True)
     except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
@@ -247,6 +302,49 @@ def ensure_door(door: str) -> bool:
         raise SetupError(f"docker compose up failed for the {door} door.")
     print()
     return True
+
+
+def reset_credentials(container: str, base: str) -> None:
+    """Forgotten password: reopen first-run setup WITHOUT touching the data.
+
+    The operator account lives in two small files under the volume's admin
+    directory — the credential hashes and the completed-setup record. The
+    appliance refuses to reopen setup over the API by design (410 Gone,
+    forever), but whoever controls docker on this host already owns the
+    appliance, so host-side recovery is honest: delete those two files, restart
+    the container, and the normal wizard runs again. The graph, documents and
+    memories live elsewhere on the volume and are untouched."""
+    print("  Resetting the operator account: this deletes the username/password")
+    print("  and walks first-run setup again. Everything the appliance knows —")
+    print("  graph, documents, memories — is kept. Have your model-provider key")
+    print("  handy (or exported); the wizard verifies it again.")
+    answer = input("  Reset the account and re-run setup? [y/N]: ").strip().lower()
+    if answer not in ("y", "yes"):
+        raise SetupError("Not reset — nothing was touched.")
+    run = _docker("exec", container, "rm", "-f",
+                  f"{ADMIN_DIR}/.credentials.yml", f"{ADMIN_DIR}/.setup.json")
+    if run is None or run.returncode != 0:
+        detail = run.stderr.strip() if run is not None else "docker is not available"
+        raise SetupError(f"Could not remove the account files from {container}:\n{detail}")
+    print("  Account removed — restarting the appliance to reopen setup…")
+    restart = _docker("restart", container, timeout=180)
+    if restart is None or restart.returncode != 0:
+        raise SetupError(f"docker restart {container} failed.")
+    # Hand back to the wizard only once setup is actually answering again;
+    # otherwise the token (still in the old log) is found instantly and the
+    # first API call lands on a container that is mid-boot.
+    deadline = time.monotonic() + BOOT_WAIT_SECONDS
+    print("  Waiting for the appliance to come back…\n")
+    while True:
+        state = probe(base)  # AlreadySetUp here would mean the files came back
+        if state == "pending":
+            return
+        if time.monotonic() >= deadline:
+            raise SetupError(
+                f"The appliance did not come back within {BOOT_WAIT_SECONDS}s.\n"
+                f"Watch it with:  docker logs -f {container}"
+            )
+        time.sleep(3)
 
 
 def token_from_logs(container: str) -> str | None:
@@ -481,6 +579,9 @@ def main() -> int:
                              "(default: whichever door is already up)")
     parser.add_argument("--fresh", action="store_true",
                         help="DELETE all appliance state first (asks for confirmation), then start fresh")
+    parser.add_argument("--reset-password", action="store_true",
+                        help="forgot the password: recreate the operator account "
+                             "(asks for confirmation) and keep all data")
     parser.add_argument("--url", default=None,
                         help=f"appliance base URL (default: detected from the running door, else {DEFAULT_BASE})")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
@@ -507,6 +608,12 @@ def main() -> int:
 
         container = find_door_container(args.door)
         base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
+        if args.reset_password:
+            if not container:
+                raise SetupError(
+                    "No door is running to reset. Start one first:  ./me.py  or  ./worlds.py"
+                )
+            reset_credentials(container, base)
         if container:
             print(f"  Setting up {container} at {base}\n")
 
@@ -536,8 +643,20 @@ def main() -> int:
         username = done.get("signInAs")
         print(f"\n  Done. Sign in at {base}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
-        if container and door_service(container) == "worlds":
+        service = door_service(container) if container else None
+        if service == "worlds":
             print_worlds_surfaces(base)
+        elif service == "assistant":
+            launch_me_app(base)
+        return 0
+    except AlreadySetUp as e:
+        # Not a failure: the appliance is up and configured. For the Me door,
+        # re-running ./me.py is how people come back — so still end at the app.
+        if follower:
+            follower.terminate()
+        print(f"\n  {e}\n")
+        if container and door_service(container) == "assistant":
+            launch_me_app(base)
         return 0
     except SetupError as e:
         if follower:

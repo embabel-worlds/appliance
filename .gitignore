@@ -1,6 +1,10 @@
 # Your configuration — holds API keys. Never commit it.
 .env
 
+# Which of your folders are shared into the assistant (written by the Me app's
+# "Local files" panel). Absolute host paths — this machine's business, like .env.
+docker-compose.override.yml
+
 # Editor and OS noise. An operator clones this repo and runs it; anything their
 # tooling drops here is theirs, not ours.
 .idea/

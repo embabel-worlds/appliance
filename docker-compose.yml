@@ -12,7 +12,10 @@
 # PULL-ONLY BY DESIGN. Every service is an `image:` — no `build:` anywhere, no
 # bind mount of a file next to this one, and no path outside this repo. These
 # compose files and `.env` are the only things you hold; everything else is an
-# image pull.
+# image pull. The ONE sanctioned exception is docker-compose.override.yml:
+# generated (never tracked) by the Me app's "Local files" panel, it bind-mounts
+# folders YOU picked, read-only, under /local in the assistant — compose merges
+# it into plain `up` by convention, and setup.py includes it explicitly.
 #
 # Ports bind to 127.0.0.1. Sign-in is a development-grade form login (see README —
 # "Who can log in"), so this must not be reachable from the network until that is

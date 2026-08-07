@@ -6,33 +6,11 @@
 // Same restraint as the console: low alpha, no interaction, pointer-events
 // none, and it stops entirely under prefers-reduced-motion.
 //
-// MUST stay import-free — like renderer.ts, this compiles to a plain browser
-// script and any import would emit a CommonJS preamble that throws.
-
-// NOT `Node`/`Snippet`: this file is import-free, so it is a global script, and
-// a bare `interface Node` MERGES with the DOM's global Node instead of
-// declaring a new type. Prefixed names keep them ours.
-interface GraphNode {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  r: number
-  hub: boolean
-  c: number[]
-}
-
-interface GraphSnippet {
-  text: string
-  x: number
-  y: number
-  vx: number
-  vy: number
-  phase: number
-}
+// Loaded straight off index.html as a plain browser script, like renderer.js —
+// no module system here, and nothing shared with the rest of the app.
 
 ;(() => {
-  const canvas = document.getElementById('graphbg') as HTMLCanvasElement | null
+  const canvas = document.getElementById('graphbg')
   if (!canvas) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -63,10 +41,13 @@ interface GraphSnippet {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
   const LINK = 240 // px at which two nodes acknowledge each other
   let raf = 0
-  let nodes: GraphNode[] = []
-  let snips: GraphSnippet[] = []
+  // Each node: { x, y, vx, vy, r, hub, c } — `hub` nodes render brighter, like
+  // an entity everything references; `c` is an [r, g, b] from the palette.
+  let nodes = []
+  // Each snippet: { text, x, y, vx, vy, phase } — phase drives the breathing.
+  let snips = []
 
-  const size = (): void => {
+  const size = () => {
     const dpr = Math.min(devicePixelRatio, 2)
     canvas.width = innerWidth * dpr
     canvas.height = innerHeight * dpr
@@ -75,7 +56,7 @@ interface GraphSnippet {
     const target = Math.round((innerWidth * innerHeight) / 14000)
     // Sparse on purpose: these are glimpses, not a wall of code.
     snips = Array.from({ length: innerWidth > 1100 ? 6 : 3 }, (_, i) => ({
-      text: SNIPPETS[(i + Math.floor(Math.random() * SNIPPETS.length)) % SNIPPETS.length]!,
+      text: SNIPPETS[(i + Math.floor(Math.random() * SNIPPETS.length)) % SNIPPETS.length],
       x: Math.random() * innerWidth,
       y: Math.random() * innerHeight,
       vx: (Math.random() - 0.5) * 0.1,
@@ -88,13 +69,12 @@ interface GraphSnippet {
       vx: (Math.random() - 0.5) * 0.22,
       vy: (Math.random() - 0.5) * 0.22,
       r: 1.1 + Math.random() * 2.2,
-      // A few nodes are "hubs" — brighter, like an entity everything references.
       hub: Math.random() < 0.16,
-      c: PALETTE[(Math.random() * PALETTE.length) | 0]!,
+      c: PALETTE[(Math.random() * PALETTE.length) | 0],
     }))
   }
 
-  const frame = (): void => {
+  const frame = () => {
     const w = innerWidth
     const h = innerHeight
     ctx.clearRect(0, 0, w, h)
@@ -110,14 +90,14 @@ interface GraphSnippet {
 
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i]!
-        const b = nodes[j]!
+        const a = nodes[i]
+        const b = nodes[j]
         const dx = a.x - b.x
         const dy = a.y - b.y
         const d = Math.hypot(dx, dy)
         if (d > LINK) continue
         const strength = (1 - d / LINK) ** 2
-        const mix = [0, 1, 2].map((k) => Math.round((a.c[k]! + b.c[k]!) / 2))
+        const mix = [0, 1, 2].map((k) => Math.round((a.c[k] + b.c[k]) / 2))
         ctx.strokeStyle = `rgba(${mix[0]}, ${mix[1]}, ${mix[2]}, ${0.55 * strength})`
         ctx.lineWidth = 1
         ctx.beginPath()
@@ -149,7 +129,7 @@ interface GraphSnippet {
       if (sn.y < -30) {
         sn.y = h + 30
         sn.x = Math.random() * w
-        sn.text = SNIPPETS[(Math.random() * SNIPPETS.length) | 0]!
+        sn.text = SNIPPETS[(Math.random() * SNIPPETS.length) | 0]
       }
       if (sn.x < -320) sn.x = w + 20
       if (sn.x > w + 320) sn.x = -20

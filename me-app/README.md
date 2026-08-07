@@ -5,10 +5,10 @@ a small native app that reads local signals and **sends** them to your own
 appliance. The appliance thinks; this app senses.
 
 macOS is the implemented platform. Everything OS-specific lives behind the
-`SensorPlatform` seam in [`src/platform/`](src/platform): `common.ts` holds the
+`SensorPlatform` seam in [`src/platform/`](src/platform): `common.js` holds the
 readers whose logic is identical everywhere and whose only OS-specific part is
 where the files live (JetBrains recents, VS Code folders, Chromium history),
-`macos.ts` holds the Mac-specific ones, and `windows.ts`/`linux.ts` implement
+`macos.js` holds the Mac-specific ones, and `windows.js`/`linux.js` implement
 what already works while naming exactly what each still needs. `process.platform`
 is read in one place.
 
@@ -16,9 +16,12 @@ is read in one place.
 
 ```bash
 cd me-app
-npm install
-npm start
+npm start        # the first run fetches Electron by itself
 ```
+
+(`../me.py` offers to do this for you at the end of setup.) The app is plain
+JavaScript with no build step — Electron is the only thing `npm` fetches, and
+there is nothing to compile.
 
 Requires the Me door up (`../me.py`) and your appliance username/password.
 
@@ -75,7 +78,7 @@ of its graph. The file is gitignored and never touches the tracked compose
 files; removing every folder deletes it again.
 
 `npm run smoke` prints what a scan would gather without starting the UI;
-`node -e "require('./dist/scanner').scan({browserHistory:true}).then(console.log)"`
+`node -e "require('./src/platform').platform.scan({browserHistory:true}).then(console.log)"`
 includes the history facts.
 
 ## Design notes
@@ -83,8 +86,12 @@ includes the history facts.
 - **Outbound-only.** The app is a client of the appliance API and never listens
   on a port. Future effect verbs (notify, open URL…) will ride the same
   direction via long-polling an outbox — the appliance never calls the host.
-- **Zero runtime dependencies.** Binary plists are read via `plutil`; HTTP is
-  Node's built-in fetch. `electron` and `typescript` are dev-time only.
+- **Zero dependencies beyond Electron, and no build step.** Binary plists are
+  read via `plutil`; HTTP is Node's built-in fetch; the source is plain
+  JavaScript that Electron runs directly, so a fresh checkout needs nothing but
+  `npm start` — no compiler to have, no compiled output to go stale. The shapes
+  that would have been TypeScript interfaces live as JSDoc typedefs in
+  [`src/types.js`](src/types.js) and [`src/platform/types.js`](src/platform/types.js).
 - Settings (including the password) are stored locally in the app's userData
   directory. Fine for a spike; a real release moves the credential to the
   macOS Keychain.

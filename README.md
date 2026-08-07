@@ -85,14 +85,16 @@ Docker, where a container cannot go — reads local signals, and **sends** what 
 approve to your own appliance. It is a client of the appliance's API and never
 listens on a port; nothing routes anywhere else.
 
+`./me.py` offers to start it at the end of setup (and again on every re-run).
+By hand:
+
 ```bash
 cd me-app
-npm install
-npm start          # "Me" appears in the menu bar
+npm start          # "Me" appears in the menu bar; the first run fetches Electron itself
 ```
 
 Point it at your Me door (`http://localhost:4242`) with your appliance login, and
-it offers two things:
+it offers three things:
 
 **Scan → review → send.** Every fact is shown before anything leaves the machine
 and is individually deselectable. What it reads needs no special permission: the
@@ -111,6 +113,14 @@ Google Chrome") and adds the browser tab you are on and what is playing. This
 feeds the assistant's sense of *right now*: it lives in memory, replaced on each
 push, never written to the graph, and is what lets the assistant know not to
 interrupt you.
+
+**Local files.** Share folders — Documents, a projects directory — with the
+appliance so it can index what is in them. Each is bind-mounted **read-only**
+into the assistant container under `/local/<name>`; the panel writes a
+gitignored `docker-compose.override.yml` next to the compose files (the tracked
+files stay pull-only) and recreates the assistant container to apply it. The
+graph stays up throughout, and the panel tells the assistant where its new
+files live so you can just ask it to index them.
 
 The app is **optional and additive**: the appliance is fully functional without
 it. It is also a spike — unpackaged, so macOS prompts currently say "Electron"
@@ -341,6 +351,19 @@ from the container log. Once it completes, that API returns `410 Gone` permanent
 is no second chance to create an administrator, with or without the token.
 
 Ports still bind to `127.0.0.1` by default. Change that deliberately.
+
+### Forgot the password?
+
+```bash
+./setup.py --reset-password
+```
+
+Recreates the operator account — it deletes the credential and setup-record files
+from the data volume, restarts the door, and walks first-run setup again. Everything
+the appliance knows (graph, documents, memories) is kept; have your model-provider
+key handy, because the wizard verifies it again. This works from the host on purpose:
+the appliance never reopens setup over the API, but whoever controls Docker on the
+host already owns the appliance.
 
 ### Starting over
 

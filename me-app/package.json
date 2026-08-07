@@ -2,17 +2,14 @@
   "name": "embabel-me-app",
   "version": "0.0.1",
   "description": "Embabel Me sensor app — reads local macOS signals and sends them to your appliance",
-  "main": "dist/main.js",
+  "main": "src/main.js",
   "scripts": {
-    "build": "tsc",
-    "postbuild": "node -e \"for (const f of ['renderer','graph']) { const s=require('fs').readFileSync('dist/'+f+'.js','utf8'); if (/\\bexports\\b/.test(s)) { console.error('dist/'+f+'.js references exports — browser scripts must compile plain. Remove its imports (see src/global.d.ts).'); process.exit(1) } }\"",
-    "start": "npm run build && electron .",
-    "smoke": "npm run build && node -e \"require('./dist/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\""
+    "prestart": "node -e \"require('fs').existsSync('node_modules/electron') || process.exit(1)\" || npm install",
+    "start": "electron .",
+    "smoke": "node -e \"require('./src/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\""
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "electron": "^33.0.0",
-    "typescript": "^5.6.0"
+    "electron": "^33.0.0"
   }
 }
