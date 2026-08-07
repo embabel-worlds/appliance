@@ -168,12 +168,20 @@ Every mechanism here belongs to the appliance (`/api/v1/config/models` and
 `/api/v1/config/llm-roles`); the app adds a picker and the knowledge of which
 models are yours.
 
-Two different behaviours, worth knowing before you wonder why nothing happened:
+The **appliance default** — used by anything with no role of its own — is at the
+top of the same tab. It is a different kind of setting: read at boot, so changing
+it writes `EMBABEL_MODELS_DEFAULT_LLM` into `docker-compose.override.yml` and
+restarts the assistant. The graph and everything it remembers stay up; only the
+app container is recreated.
+
+Three behaviours, worth knowing before you wonder why nothing happened:
 
 - **Changing a role takes effect immediately.** The world re-reads its config on
   every access, so the next piece of work uses the new model. No restart.
 - **A newly-started local model needs a restart.** The appliance registers models
   at boot, so a model you load in LM Studio afterwards is invisible until then.
+- **Changing the appliance default restarts it**, for the same reason — and the
+  tab says so on the button rather than leaving you to discover it.
 
 For the appliance to see local models at all it must address them as the host
 rather than as itself — `LMSTUDIO_BASE_URL` and `OLLAMA_BASE_URL` default to

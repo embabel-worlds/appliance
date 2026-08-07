@@ -686,6 +686,32 @@ const LOCAL_PROVIDERS = new Set(['LM Studio', 'Ollama'])
 const modelsStatus = $('models-status')
 const roleList = $('role-list')
 
+/** Group models so the user's own hardware is not lost among the hosted ones. */
+function fillModelOptions(select, models) {
+  for (const group of ['LM Studio', 'Ollama']) {
+    const inGroup = models.filter((m) => m.provider === group)
+    if (inGroup.length === 0) continue
+    const optgroup = document.createElement('optgroup')
+    optgroup.label = `${group} — on this Mac`
+    for (const model of inGroup) {
+      const option = document.createElement('option')
+      option.value = model.name
+      option.textContent = model.name
+      optgroup.append(option)
+    }
+    select.append(optgroup)
+  }
+  const hosted = document.createElement('optgroup')
+  hosted.label = 'Hosted — billed to your key'
+  for (const model of models.filter((m) => !LOCAL_PROVIDERS.has(m.provider))) {
+    const option = document.createElement('option')
+    option.value = model.name
+    option.textContent = `${model.name} (${model.provider})`
+    hosted.append(option)
+  }
+  select.append(hosted)
+}
+
 async function loadModels() {
   setStatus(modelsStatus, null, 'Loading…')
   roleList.innerHTML = ''
@@ -701,6 +727,20 @@ async function loadModels() {
     true,
     `${listed.models.length} model(s) · ${local.length} on this Mac · default ${listed.default}`,
   )
+
+  // The appliance-wide default, which is a different KIND of setting: it is read
+  // at boot, so changing it restarts. Offering it beside the live role pickers
+  // without saying so would be the same trap as a picker that silently does
+  // nothing.
+  const defaultSelect = $('default-model')
+  const currentDefault = (await window.me.getDefaultModel()).model
+  defaultSelect.innerHTML = ''
+  const shipped = document.createElement('option')
+  shipped.value = ''
+  shipped.textContent = `— as shipped (${listed.default}) —`
+  defaultSelect.append(shipped)
+  fillModelOptions(defaultSelect, listed.models)
+  defaultSelect.value = currentDefault
 
   for (const [roleId, description] of ROLES) {
     const row = document.createElement('div')
@@ -721,29 +761,7 @@ async function loadModels() {
     inherit.value = ''
     inherit.textContent = `— appliance default —`
     select.append(inherit)
-    // Grouped, so the user's own models are not lost among the hosted ones.
-    for (const group of ['LM Studio', 'Ollama']) {
-      const models = listed.models.filter((m) => m.provider === group)
-      if (models.length === 0) continue
-      const optgroup = document.createElement('optgroup')
-      optgroup.label = `${group} — on this Mac`
-      for (const model of models) {
-        const option = document.createElement('option')
-        option.value = model.name
-        option.textContent = model.name
-        optgroup.append(option)
-      }
-      select.append(optgroup)
-    }
-    const hostedGroup = document.createElement('optgroup')
-    hostedGroup.label = 'Hosted — billed to your key'
-    for (const model of listed.models.filter((m) => !LOCAL_PROVIDERS.has(m.provider))) {
-      const option = document.createElement('option')
-      option.value = model.name
-      option.textContent = `${model.name} (${model.provider})`
-      hostedGroup.append(option)
-    }
-    select.append(hostedGroup)
+    fillModelOptions(select, listed.models)
     select.value = roles.roles?.[roleId]?.model ?? ''
 
     const badge = document.createElement('span')
@@ -769,6 +787,22 @@ async function loadModels() {
     roleList.append(row)
   }
 }
+
+$('default-apply').addEventListener('click', async () => {
+  const button = $('default-apply')
+  const chosen = $('default-model').value
+  button.disabled = true
+  setStatus(modelsStatus, null, 'Applying and restarting the appliance…')
+  const result = await window.me.setDefaultModel(chosen)
+  button.disabled = false
+  if (!result.ok) {
+    setStatus(modelsStatus, false, result.message)
+    return
+  }
+  setStatus(modelsStatus, true, chosen ? `default is now ${chosen}` : 'default restored')
+  // The appliance has just restarted, so what it reports has changed.
+  setTimeout(() => void loadModels(), 4000)
+})
 
 $('models-refresh').addEventListener('click', () => void loadModels())
 

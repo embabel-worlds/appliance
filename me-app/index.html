@@ -442,6 +442,18 @@
           <button id="models-refresh">Refresh</button>
           <span id="models-status" class="status"></span>
         </div>
+        <div class="role">
+          <div class="what">
+            <div class="name">appliance default</div>
+            <div class="says">Used by anything with no role of its own</div>
+          </div>
+          <select id="default-model"></select>
+          <button id="default-apply">Apply — restarts the appliance</button>
+        </div>
+        <p class="hint" id="default-note">
+          The default is set at boot, so changing it restarts the appliance — your graph
+          and everything it remembers stay up. Role changes below need no restart.
+        </p>
         <div id="role-list"></div>
       </div>
     </section>

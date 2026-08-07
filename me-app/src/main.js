@@ -14,6 +14,9 @@ const outbox = require('./outbox')
 const indexer = require('./indexer')
 const mounts = require('./mounts')
 const documents = require('./documents')
+
+/** The appliance's own property name for its default model. */
+const DEFAULT_LLM_KEY = 'EMBABEL_MODELS_DEFAULT_LLM'
 const { platform } = require('./platform')
 
 /** @typedef {import('./types').Settings} Settings */
@@ -240,6 +243,16 @@ ipcMain.handle('verbs:state', () => outbox.state())
 // the appliance can index them. All the actual work — the override file, the
 // container recreate — lives in mounts.js; this is just the IPC skin.
 handle('models:list', (settings) => api.listModels(settings))
+handle('models:default', () => ({ model: mounts.state().env?.[DEFAULT_LLM_KEY] ?? '' }))
+handle('models:set-default', async (model) => {
+  // A BOOT-time setting: model beans are built during startup, so this lands in
+  // the override file and the appliance restarts to pick it up. The role picker
+  // is live; this one costs a restart, and the UI says so.
+  log(`[me-app] appliance default model -> ${model || '(cleared)'}`)
+  const state = mounts.setEnv(DEFAULT_LLM_KEY, model)
+  if (!state.supported) return { ok: false, message: state.message }
+  return mounts.apply()
+})
 handle('models:roles', (settings) => api.getRoles(settings))
 handle('models:set-role', (settings, roleId, model) => {
   log(`[me-app] set role ${roleId} -> ${model || '(cleared)'}`)

@@ -47,41 +47,63 @@ function applianceDir() {
 // ignores YAML comments, so the override file stays the single source of truth
 // for BOTH what is mounted and what the user opted into indexing.
 const MOUNT_LINE = /^\s*-\s*"(.+):(\/local\/[^:"]+):ro"(\s*# index)?\s*$/
+// Environment the app sets on the assistant service — today the appliance-wide
+// default model. Same file because compose merges ONE override by convention;
+// two files would need two -f flags and would not survive a plain `up`.
+const ENV_LINE = /^\s*-\s*([A-Z0-9_]+)=(.*)$/
 
-/** @param {string} dir @returns {LocalMount[]} */
+/**
+ * Everything the app owns in the override file. BOTH halves are read together
+ * because write() rewrites the whole file: reading only mounts and writing back
+ * would silently drop the environment, and vice versa.
+ * @param {string} dir @returns {{ mounts: LocalMount[], env: Record<string,string> }}
+ */
 function read(dir) {
   const file = path.join(dir, OVERRIDE)
-  if (!fs.existsSync(file)) return []
+  if (!fs.existsSync(file)) return { mounts: [], env: {} }
   const text = fs.readFileSync(file, 'utf8')
   if (!text.startsWith(MARKER)) {
     throw new Error(`${OVERRIDE} exists but was not written by this panel — edit or remove it yourself.`)
   }
   const mounts = []
+  /** @type {Record<string,string>} */
+  const env = {}
   for (const line of text.split('\n')) {
-    const match = MOUNT_LINE.exec(line)
-    if (match) mounts.push({ host: match[1], target: match[2], index: !!match[3] })
+    const mount = MOUNT_LINE.exec(line)
+    if (mount) {
+      mounts.push({ host: mount[1], target: mount[2], index: !!mount[3] })
+      continue
+    }
+    const variable = ENV_LINE.exec(line)
+    if (variable) env[variable[1]] = variable[2]
   }
-  return mounts
+  return { mounts, env }
 }
 
-/** @param {string} dir @param {LocalMount[]} mounts */
-function write(dir, mounts) {
+/** @param {string} dir @param {LocalMount[]} mounts @param {Record<string,string>} env */
+function write(dir, mounts, env = {}) {
   const file = path.join(dir, OVERRIDE)
-  if (mounts.length === 0) {
-    // No mounts is NO FILE, not an empty override: `services: assistant: {}`
-    // would still merge, and plain `up` should see exactly what is shared.
+  const entries = Object.entries(env).filter(([, v]) => v !== '' && v != null)
+  if (mounts.length === 0 && entries.length === 0) {
+    // Nothing to say is NO FILE, not an empty override: `services: assistant: {}`
+    // would still merge, and plain `up` should see exactly what is set.
     if (fs.existsSync(file)) fs.rmSync(file)
     return
   }
-  const lines = mounts.map((m) => `      - "${m.host}:${m.target}:ro"${m.index ? ' # index' : ''}`).join('\n')
+  const volumes = mounts.length
+    ? `    volumes:\n${mounts.map((m) => `      - "${m.host}:${m.target}:ro"${m.index ? ' # index' : ''}`).join('\n')}\n`
+    : ''
+  const environment = entries.length
+    ? `    environment:\n${entries.map(([k, v]) => `      - ${k}=${v}`).join('\n')}\n`
+    : ''
   fs.writeFileSync(
     file,
-    `${MARKER} — the "Local files" panel rewrites this file; don't edit it by hand.\n` +
+    `${MARKER} — the Local files and Models panels rewrite this file; don't edit it by hand.\n` +
       `# Folders below are visible READ-ONLY inside the assistant container under\n` +
-      `# ${MOUNT_ROOT}, for indexing. Plain \`docker compose up\` merges this file by\n` +
-      `# convention; setup.py includes it explicitly. Gitignored — these paths are\n` +
-      `# this machine's business.\n` +
-      `services:\n  assistant:\n    volumes:\n${lines}\n`,
+      `# ${MOUNT_ROOT}, for indexing. Any environment below is appliance settings the\n` +
+      `# app manages. Plain \`docker compose up\` merges this file by convention;\n` +
+      `# setup.py includes it explicitly. Gitignored — this is this machine's business.\n` +
+      `services:\n  assistant:\n${volumes}${environment}`,
   )
 }
 
@@ -94,12 +116,14 @@ function state() {
       message: 'Appliance checkout not found — run the app from the repo (me-app/).',
       dir: null,
       mounts: [],
+      env: {},
     }
   }
   try {
-    return { supported: true, message: '', dir, mounts: read(dir) }
+    const { mounts, env } = read(dir)
+    return { supported: true, message: '', dir, mounts, env }
   } catch (e) {
-    return { supported: false, message: e instanceof Error ? e.message : String(e), dir, mounts: [] }
+    return { supported: false, message: e instanceof Error ? e.message : String(e), dir, mounts: [], env: {} }
   }
 }
 
@@ -133,7 +157,7 @@ function add(hosts) {
     taken.add(target)
     mounts.push({ host, target, index: false })
   }
-  write(current.dir, mounts)
+  write(current.dir, mounts, current.env)
   return { ...current, mounts }
 }
 
@@ -142,7 +166,7 @@ function remove(host) {
   const current = state()
   if (!current.supported || !current.dir) return current
   const mounts = current.mounts.filter((m) => m.host !== host)
-  write(current.dir, mounts)
+  write(current.dir, mounts, current.env)
   return { ...current, mounts }
 }
 
@@ -155,7 +179,7 @@ function setIndex(host, index) {
   const current = state()
   if (!current.supported || !current.dir) return current
   const mounts = current.mounts.map((m) => (m.host === host ? { ...m, index } : m))
-  write(current.dir, mounts)
+  write(current.dir, mounts, current.env)
   return { ...current, mounts }
 }
 
@@ -186,6 +210,27 @@ async function isLive(target) {
     applianceDir() ?? '.',
   )
   return run.ok && run.out.split('\n').map((l) => l.trim()).includes(target)
+}
+
+/**
+ * Set (or clear, with an empty value) one appliance environment variable the app
+ * manages — today the appliance-wide default model.
+ *
+ * This is a BOOT-TIME setting, unlike an LLM role: model beans are built during
+ * startup from the provider configuration, so the value lands in the override
+ * file and takes effect on the next `apply()`. Saying so is the whole reason
+ * this is separate from the role picker, which is live.
+ *
+ * @param {string} key @param {string} value @returns {MountsState}
+ */
+function setEnv(key, value) {
+  const current = state()
+  if (!current.supported || !current.dir) return current
+  const env = { ...current.env }
+  if (value) env[key] = value
+  else delete env[key]
+  write(current.dir, current.mounts, env)
+  return state()
 }
 
 /**
@@ -236,4 +281,5 @@ async function apply() {
   }
 }
 
-module.exports = { applianceDir, state, add, remove, setIndex, isLive, apply }
+module.exports = {
+  setEnv, applianceDir, state, add, remove, setIndex, isLive, apply }
