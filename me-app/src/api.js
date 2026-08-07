@@ -228,6 +228,7 @@ async function ingestDocumentUrl(settings, url) {
 }
 
 module.exports = {
+  modelsInUse,
   getWorldConfig,
   setChatModel,
   chatModel,
@@ -334,4 +335,23 @@ async function chatModel(settings) {
   if (chat.model) return { model: chat.model, via: 'pinned' }
   if (chat.role) return { model: roles.roles?.[chat.role]?.model ?? '', via: `role ${chat.role}`, role: chat.role }
   return { model: '', via: 'the default' }
+}
+
+/**
+ * Which models are actually in use, and whether any is hosted. The appliance
+ * resolves this — role-versus-model precedence lives there, and a banner making
+ * a privacy claim must not be computed from a second, drifting copy of the rules.
+ */
+async function modelsInUse(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/models/in-use`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const body = await readJson(res)
+    return { ok: true, ...body }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
 }

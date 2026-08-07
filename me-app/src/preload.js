@@ -19,6 +19,7 @@ const api = {
   listModels: (settings) => ipcRenderer.invoke('models:list', settings),
   getDefaultModel: () => ipcRenderer.invoke('models:default'),
   chatModel: (settings) => ipcRenderer.invoke('models:chat', settings),
+  modelsInUse: (settings) => ipcRenderer.invoke('models:in-use', settings),
   setChatModel: (settings, model) => ipcRenderer.invoke('models:set-chat', settings, model),
   setDefaultModel: (model) => ipcRenderer.invoke('models:set-default', model),
   getRoles: (settings) => ipcRenderer.invoke('models:roles', settings),

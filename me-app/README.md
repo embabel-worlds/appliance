@@ -157,6 +157,21 @@ Finder**: `/local/Documents/paper.pdf` inside the container is
 their URL instead. A citation you can open is verification; one you can only read
 is decoration.
 
+## What runs where
+
+A banner sits above every tab saying whether anything you type reaches a model
+provider. Green when it does not — *"Fully private — nothing leaves this Mac"* —
+amber and specific when it does, naming the surface and the provider rather than
+gesturing at "some data".
+
+It is computed by the appliance (`GET /api/v1/models/in-use`), not here: role
+resolution and per-world overrides live there, and a privacy claim computed twice
+eventually disagrees with itself. The Chat and Documents tabs each name the model
+that answered them, so you never have to hold the whole picture in your head.
+
+When a model on this machine could do the talking, the banner offers **Go fully
+local** — one click, no restart.
+
 ## Models
 
 The **Models** tab says which model does what: chat, everyday work, code, document

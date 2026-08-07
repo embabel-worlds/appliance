@@ -749,6 +749,7 @@ async function loadModels() {
     const result = await window.me.setChatModel(currentSettings(), chatSelect.value)
     markChat()
     setStatus(modelsStatus, result.ok, result.ok ? `${result.message} — no restart` : result.message)
+    void refreshPrivacy()
   }
 
   // The appliance-wide default, which is a different KIND of setting: it is read
@@ -804,6 +805,7 @@ async function loadModels() {
         result.ok,
         result.ok ? `${roleId}: ${result.message} — in effect now, no restart` : result.message,
       )
+      void refreshPrivacy()
     })
 
     row.append(what, select, badge)
@@ -845,7 +847,10 @@ $('default-apply').addEventListener('click', async () => {
       ? `${chosen || 'default'} in effect — the assistant restarted`
       : 'the assistant has not come back yet; press Refresh in a moment',
   )
-  if (back) void loadModels()
+  if (back) {
+    void loadModels()
+    void refreshPrivacy()
+  }
 })
 
 $('models-refresh').addEventListener('click', () => void loadModels())
@@ -861,3 +866,124 @@ for (const tab of document.querySelectorAll('.tab')) {
     }
   })
 }
+
+
+// ---------------------------------------------------------------------------
+// What runs where.
+//
+// Everything else in this app stays on the machine by construction. The model
+// provider is the ONE place a user's words can leave, and it is invisible in
+// config — so it is stated at the top of the window, always, and each surface
+// says which model answered it.
+//
+// The appliance decides what counts as local: that is a privacy claim, and a
+// claim computed twice eventually disagrees with itself.
+// ---------------------------------------------------------------------------
+
+const privacyBar = $('privacy')
+const privacyHeadline = $('privacy-headline')
+const privacySub = $('privacy-sub')
+const privacyCta = $('privacy-golocal')
+let privacyDetailOpen = false
+let lastInUse = null
+
+/** Copy worth reading. The all-local case is the product's whole promise, so it
+ *  gets to sound like it; the cloud case stays specific rather than scolding. */
+function privacyWords(inUse) {
+  if (inUse.allLocal) {
+    return {
+      headline: 'Fully private — nothing leaves this Mac',
+      sub: 'Your words, your documents and your memory never reach a model provider. No tokens billed, and it works offline.',
+    }
+  }
+  const cloud = inUse.models.filter((m) => m.model && !m.local)
+  const providers = inUse.cloudProviders.join(' and ')
+  const surfaces = cloud.map((m) => m.purpose.split(' —')[0]).join(' and ')
+  return {
+    headline: `Your data stays here — ${surfaces.toLowerCase()} ${cloud.length > 1 ? 'go' : 'goes'} to ${providers}`,
+    sub: 'Documents, memory and everything this app senses stay on the machine. Only the prompt reaches the provider, on your own key.',
+  }
+}
+
+async function refreshPrivacy() {
+  const settings = currentSettings()
+  if (!settings.username || !settings.password) return
+  const inUse = await window.me.modelsInUse(settings)
+  if (!inUse.ok) return
+  lastInUse = inUse
+  privacyBar.hidden = false
+  privacyBar.classList.toggle('cloud', !inUse.allLocal)
+  const words = privacyWords(inUse)
+  privacyHeadline.textContent = words.headline
+  privacySub.textContent = words.sub
+
+  // The offer, not just the warning: if a model on this machine could do the
+  // talking, one click makes it so.
+  const localAvailable = await firstLocalModel(settings)
+  privacyCta.hidden = inUse.allLocal || !localAvailable
+  privacyCta.dataset['model'] = localAvailable ?? ''
+
+  renderPrivacyDetail(inUse)
+
+  const label = (m) => (m.model ? `${m.model}${m.local ? ' · on this Mac' : ` · ${m.provider}`}` : 'not set')
+  const chat = inUse.models.find((m) => m.purpose.startsWith('Chat'))
+  const docs = inUse.models.find((m) => m.purpose.startsWith('Documents'))
+  const chatLine = document.getElementById('chat-model-line')
+  if (chatLine && chat) {
+    chatLine.textContent = `model: ${label(chat)}`
+    chatLine.className = chat.local ? 'status ok' : 'status'
+  }
+  const askLine = document.getElementById('ask-model')
+  if (askLine && docs) {
+    askLine.textContent = `answered by: ${label(docs)}`
+    askLine.className = docs.local ? 'status ok' : 'status'
+  }
+}
+
+/** A local model to offer, or null if this machine is running none. */
+async function firstLocalModel(settings) {
+  const listed = await window.me.listModels(settings)
+  if (!listed.ok) return null
+  const local = listed.models.filter((m) => LOCAL_PROVIDERS.has(m.provider))
+  // Prefer something built for conversation over an embedding model.
+  const chatty = local.find((m) => !/embed/i.test(m.name)) ?? local[0]
+  return chatty?.name ?? null
+}
+
+function renderPrivacyDetail(inUse) {
+  document.getElementById('privacy-detail-panel')?.remove()
+  if (!privacyDetailOpen) return
+  const panel = document.createElement('div')
+  panel.id = 'privacy-detail-panel'
+  panel.className = 'privacy-detail'
+  for (const m of inUse.models) {
+    const line = document.createElement('div')
+    line.textContent = `${m.local ? '●' : '○'} ${m.purpose}: ${m.model ?? 'not set'}${m.provider ? ` (${m.provider})` : ''}`
+    line.style.color = m.local ? 'var(--lit)' : 'var(--mid)'
+    panel.append(line)
+  }
+  privacyBar.after(panel)
+}
+
+$('privacy-golocal').addEventListener('click', async () => {
+  const model = privacyCta.dataset['model']
+  if (!model) return
+  privacyCta.disabled = true
+  privacyCta.textContent = 'Switching…'
+  const result = await window.me.setChatModel(currentSettings(), model)
+  privacyCta.disabled = false
+  privacyCta.textContent = 'Go fully local'
+  if (result.ok) {
+    await refreshPrivacy()
+    if (typeof modelsLoaded !== 'undefined' && modelsLoaded) void loadModels()
+  }
+})
+
+$('privacy-detail').addEventListener('click', async () => {
+  privacyDetailOpen = !privacyDetailOpen
+  await refreshPrivacy()
+})
+
+// Recompute whenever something could have changed it: at startup, after a model
+// change, and when the Models tab is opened.
+setTimeout(() => void refreshPrivacy(), 1500)

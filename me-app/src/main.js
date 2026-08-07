@@ -244,6 +244,7 @@ ipcMain.handle('verbs:state', () => outbox.state())
 // container recreate — lives in mounts.js; this is just the IPC skin.
 handle('models:list', (settings) => api.listModels(settings))
 handle('models:chat', (settings) => api.chatModel(settings))
+handle('models:in-use', (settings) => api.modelsInUse(settings))
 handle('models:set-chat', (settings, model) => {
   log(`[me-app] chat model -> ${model || '(follow default)'}`)
   return api.setChatModel(settings, model)

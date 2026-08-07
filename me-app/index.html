@@ -221,6 +221,53 @@
     .chat-working { font-family: var(--mono); font-size: 12px; color: var(--mid); padding: 2px 1px; }
     .chat-empty { color: var(--faint); font-size: 13px; padding: 6px 1px; }
 
+    /* The claim this whole product rests on, said out loud. Green when every word
+       stays on the machine; amber and specific when some of it does not. */
+    .privacy {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
+      padding: 13px 16px; border-radius: 6px; position: relative; overflow: hidden;
+      border: 1px solid rgba(62, 207, 142, 0.45);
+      background:
+        radial-gradient(600px 90px at 10% 50%, rgba(62, 207, 142, 0.16), transparent 70%),
+        rgba(62, 207, 142, 0.06);
+      color: var(--lit);
+    }
+    /* A slow sweep of light — alive, not blinking. Off under reduced motion. */
+    .privacy::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.07) 50%, transparent 70%);
+      transform: translateX(-100%);
+      animation: sweep 7s ease-in-out infinite;
+    }
+    @keyframes sweep { 0%, 60% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+    @media (prefers-reduced-motion: reduce) { .privacy::after { animation: none; } }
+
+    .privacy-shield { flex: none; display: flex; align-items: center; }
+    .privacy-words { min-width: 0; }
+    .privacy-headline { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+    .privacy-sub { font-size: 12.5px; color: var(--mid); margin-top: 2px; }
+    .privacy-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
+    .privacy-more { font-size: 11px; padding: 4px 10px; background: transparent;
+      border-color: var(--rule); color: var(--mid); }
+    .privacy-cta {
+      font-size: 12px; padding: 5px 12px; font-weight: 600;
+      background: rgba(62, 207, 142, 0.16); border-color: rgba(62, 207, 142, 0.5); color: var(--lit);
+    }
+    .privacy-cta:hover { background: var(--lit); border-color: var(--lit); color: #04140c;
+      box-shadow: 0 0 18px rgba(62, 207, 142, 0.45); }
+
+    /* Somewhere else's computer is in the loop: amber, and it names names. */
+    .privacy.cloud {
+      border-color: rgba(220, 170, 55, 0.45); color: #dcaa37;
+      background:
+        radial-gradient(600px 90px at 10% 50%, rgba(220, 170, 55, 0.14), transparent 70%),
+        rgba(220, 170, 55, 0.05);
+    }
+    .privacy.cloud #privacy-tick { display: none; }
+
+    .privacy-detail { font-size: 12.5px; color: var(--mid); margin: -8px 0 16px; padding: 0 16px; }
+    .privacy-detail div { padding: 2px 0; font-family: var(--mono); font-size: 12px; }
+
     .role {
       display: flex; gap: 10px; align-items: center; padding: 9px 12px; margin-bottom: 8px;
       border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
@@ -259,6 +306,27 @@
         </button>
       </div>
     </header>
+
+    <!-- The one thing that genuinely leaves this machine is what goes to a model
+         provider. It is invisible in config, so it is stated here, always. -->
+    <div id="privacy" class="privacy" hidden>
+      <div class="privacy-shield" aria-hidden="true">
+        <svg viewBox="0 0 24 28" width="26" height="30">
+          <path d="M12 1 L23 5 v10 c0 7-5 11-11 12 C6 26 1 22 1 15 V5 Z"
+                fill="none" stroke="currentColor" stroke-width="1.6" />
+          <path id="privacy-tick" d="M7 14 l3.5 3.5 L17 10" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="privacy-words">
+        <div id="privacy-headline" class="privacy-headline"></div>
+        <div id="privacy-sub" class="privacy-sub"></div>
+      </div>
+      <div class="privacy-actions">
+        <button id="privacy-golocal" class="privacy-cta" hidden>Go fully local</button>
+        <button id="privacy-detail" class="privacy-more">details</button>
+      </div>
+    </div>
 
     <nav class="tabs" role="tablist">
       <button class="tab is-on" role="tab" data-tab="sensor">Sensor</button>
@@ -420,6 +488,7 @@
           not when your appliance happened to index it. A document whose source never
           carried that date is excluded by a date filter rather than guessed at.
         </p>
+        <div class="row"><span id="ask-model" class="status"></span></div>
         <div id="ask-status" class="status"></div>
         <div id="ask-answer" class="answer"></div>
         <div id="ask-sources"></div>
@@ -482,6 +551,7 @@
                  autocapitalize="off" autocorrect="off" />
           <button id="chat-send" class="primary">Send</button>
         </div>
+        <div class="row"><span id="chat-model-line" class="status"></span></div>
         <div id="chat-status" class="status"></div>
       </div>
     </section>
