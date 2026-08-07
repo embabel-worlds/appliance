@@ -61,8 +61,12 @@ $('test').addEventListener('click', async () => {
   setStatus(connectionStatus, result.ok, result.message)
   if (result.ok) {
     await window.me.saveSettings(settings)
+    setPill(true, settings.baseUrl.replace(/^https?:\/\//, ''))
+    // Nothing more to do here: fold the form away and let the tabs have the room.
+    connPanel.hidden = true
     return
   }
+  setPill(false, 'not connected')
   // A failure the app can explain is worth more screen than one it can't:
   // "connection refused" is a dead end, "Docker is not installed" is a path.
   if (result.action && advice) {
@@ -312,12 +316,48 @@ mountApply.addEventListener('click', async () => {
   mountApply.disabled = false
 })
 
-void init()
+void init().then(async () => {
+  // A silent probe with what was saved, so the pill starts out truthful and the
+  // form only appears when it is actually needed.
+  const settings = currentSettings()
+  if (!settings.username || !settings.password) {
+    setPill(null, 'not connected')
+    connPanel.hidden = false
+    return
+  }
+  const result = await window.me.testConnection(settings)
+  setPill(result.ok, result.ok ? settings.baseUrl.replace(/^https?:\/\//, '') : 'not connected')
+  if (!result.ok) {
+    connPanel.hidden = false
+    setStatus(connectionStatus, false, result.message)
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Tabs. The sensor and the documents are different jobs; showing both at once
 // is what made this window read as a settings screen.
 // ---------------------------------------------------------------------------
+
+// The connection pill: shows the state, and is the way to the form. Hidden
+// behind it because a working connection is something you check, not something
+// you do — and the tabs deserve the top of the window.
+const connPill = $('conn-pill')
+const connPanel = $('conn-panel')
+const connDot = $('conn-dot')
+const connPillText = $('conn-pill-text')
+
+connPill.addEventListener('click', () => {
+  connPanel.hidden = !connPanel.hidden
+})
+
+/** Reflect a connection attempt on the pill, so the collapsed state still tells the truth. */
+function setPill(ok, text) {
+  connPill.classList.toggle('ok', ok === true)
+  // null is "we have not tried yet" — grey, not red. An app that shouts failure
+  // before it has attempted anything trains people to ignore it.
+  connPill.classList.toggle('error', ok === false)
+  connPillText.textContent = text
+}
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.addEventListener('click', () => {

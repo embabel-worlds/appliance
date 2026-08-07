@@ -64,7 +64,7 @@
     .console { width: 100%; max-width: 900px; margin: 0 auto;
       padding: 46px clamp(16px, 3vw, 26px) 60px; }
 
-    .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 22px; }
+    .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 14px; }
     .masthead h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 760; letter-spacing: -0.02em; }
     .masthead p { color: var(--mid); font-size: 13px; margin-top: 4px; }
 
@@ -142,9 +142,24 @@
     .mount .target { font-family: var(--mono); font-size: 12px; color: var(--faint); }
     .hint code { font-family: var(--mono); font-size: 11.5px; color: #c7d2ff; }
 
+    .masthead-row { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
+
+    /* The connection pill: a light that tells you the truth at a glance, and
+       opens the full form when it doesn't. */
+    .pill {
+      display: flex; align-items: center; gap: 7px; flex: none;
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 5px 11px; border-radius: 999px; background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--rule); color: var(--mid);
+    }
+    .pill:hover { background: rgba(98, 95, 255, 0.16); border-color: var(--rule); box-shadow: none; color: var(--ink); }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+    .pill.ok .dot { background: var(--lit); box-shadow: 0 0 7px rgba(62, 207, 142, 0.6); }
+    .pill.error .dot { background: var(--alert); box-shadow: 0 0 7px rgba(248, 113, 113, 0.5); }
+
     /* Tabs: the sensor and the documents are different jobs, and showing both
        at once is what made this window feel like a settings screen. */
-    .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid rgba(230, 230, 230, 0.14); }
+    .tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid rgba(230, 230, 230, 0.14); }
     .tab {
       font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em;
       background: none; border: none; border-bottom: 2px solid transparent; color: var(--faint);
@@ -200,14 +215,30 @@
 
   <div class="console">
     <header class="masthead">
-      <h1>Embabel Me</h1>
-      <p>
-        Reads signals from this Mac and sends only what you approve to your own
-        appliance. Nothing leaves this machine except to you.
-      </p>
+      <div class="masthead-row">
+        <div>
+          <h1>Embabel Me</h1>
+          <p>
+            Reads signals from this Mac and sends only what you approve to your own
+            appliance. Nothing leaves this machine except to you.
+          </p>
+        </div>
+        <!-- Connection is STATUS, not a task: once it works nobody looks at it
+             again, so it collapses to a pill and the tabs take the top of the
+             window instead — which is also where more of them will fit. -->
+        <button id="conn-pill" class="pill" title="Appliance connection">
+          <span class="dot" id="conn-dot"></span><span id="conn-pill-text">not connected</span>
+        </button>
+      </div>
     </header>
 
-    <section class="panel">
+    <nav class="tabs" role="tablist">
+      <button class="tab is-on" role="tab" data-tab="sensor">Sensor</button>
+      <button class="tab" role="tab" data-tab="documents">Documents</button>
+    </nav>
+
+
+    <section class="panel" id="conn-panel" hidden>
       <h2>Appliance</h2>
       <div class="panel-body">
         <div class="row">
@@ -228,11 +259,6 @@
         <div class="row" id="connection-advice"></div>
       </div>
     </section>
-
-    <nav class="tabs" role="tablist">
-      <button class="tab is-on" role="tab" data-tab="sensor">Sensor</button>
-      <button class="tab" role="tab" data-tab="documents">Documents</button>
-    </nav>
 
     <div class="tabpanel" data-panel="sensor">
     <section class="panel">
