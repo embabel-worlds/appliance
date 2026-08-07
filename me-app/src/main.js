@@ -243,6 +243,11 @@ ipcMain.handle('verbs:state', () => outbox.state())
 // the appliance can index them. All the actual work — the override file, the
 // container recreate — lives in mounts.js; this is just the IPC skin.
 handle('models:list', (settings) => api.listModels(settings))
+handle('models:chat', (settings) => api.chatModel(settings))
+handle('models:set-chat', (settings, model) => {
+  log(`[me-app] chat model -> ${model || '(follow default)'}`)
+  return api.setChatModel(settings, model)
+})
 handle('models:default', () => ({ model: mounts.state().env?.[DEFAULT_LLM_KEY] ?? '' }))
 handle('models:set-default', async (model) => {
   // A BOOT-time setting: model beans are built during startup, so this lands in

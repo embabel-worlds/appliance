@@ -728,6 +728,29 @@ async function loadModels() {
     `${listed.models.length} model(s) · ${local.length} on this Mac · default ${listed.default}`,
   )
 
+  // Chat first: it is what people mean by "the model", and it is live.
+  const chatSelect = $('chat-model')
+  const chatBadge = $('chat-badge')
+  const chat = await window.me.chatModel(settings)
+  chatSelect.innerHTML = ''
+  const followDefault = document.createElement('option')
+  followDefault.value = ''
+  followDefault.textContent = '— follow the default —'
+  chatSelect.append(followDefault)
+  fillModelOptions(chatSelect, listed.models)
+  chatSelect.value = chat.model || ''
+  const markChat = () => {
+    const chosen = listed.models.find((m) => m.name === chatSelect.value)
+    chatBadge.textContent = chosen && LOCAL_PROVIDERS.has(chosen.provider) ? 'local' : ''
+  }
+  markChat()
+  chatSelect.onchange = async () => {
+    setStatus(modelsStatus, null, 'Setting the chat model…')
+    const result = await window.me.setChatModel(currentSettings(), chatSelect.value)
+    markChat()
+    setStatus(modelsStatus, result.ok, result.ok ? `${result.message} — no restart` : result.message)
+  }
+
   // The appliance-wide default, which is a different KIND of setting: it is read
   // at boot, so changing it restarts. Offering it beside the live role pickers
   // without saying so would be the same trap as a picker that silently does
@@ -788,6 +811,17 @@ async function loadModels() {
   }
 }
 
+/** Poll until the appliance answers again, up to ~90s. */
+async function waitForAppliance() {
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 3000))
+    const probe = await window.me.testConnection(currentSettings())
+    // Any answer means it is serving — including one that rejects credentials.
+    if (probe.ok || probe.state === undefined) return true
+  }
+  return false
+}
+
 $('default-apply').addEventListener('click', async () => {
   const button = $('default-apply')
   const chosen = $('default-model').value
@@ -799,9 +833,19 @@ $('default-apply').addEventListener('click', async () => {
     setStatus(modelsStatus, false, result.message)
     return
   }
-  setStatus(modelsStatus, true, chosen ? `default is now ${chosen}` : 'default restored')
-  // The appliance has just restarted, so what it reports has changed.
-  setTimeout(() => void loadModels(), 4000)
+  // The appliance is DOWN for a few seconds now. Say so, and wait for it to
+  // answer again rather than guessing at a delay — a picker that looks finished
+  // while the thing behind it is still restarting is how "it didn't work" starts.
+  setStatus(modelsStatus, null, 'Restarting the assistant…')
+  const back = await waitForAppliance()
+  setStatus(
+    modelsStatus,
+    back,
+    back
+      ? `${chosen || 'default'} in effect — the assistant restarted`
+      : 'the assistant has not come back yet; press Refresh in a moment',
+  )
+  if (back) void loadModels()
 })
 
 $('models-refresh').addEventListener('click', () => void loadModels())

@@ -444,15 +444,23 @@
         </div>
         <div class="role">
           <div class="what">
-            <div class="name">appliance default</div>
-            <div class="says">Used by anything with no role of its own</div>
+            <div class="name">chat</div>
+            <div class="says">The model you talk to — takes effect on your next message</div>
+          </div>
+          <select id="chat-model"></select>
+          <span id="chat-badge" class="local"></span>
+        </div>
+        <div class="role">
+          <div class="what">
+            <div class="name">default</div>
+            <div class="says">Everything with no model of its own, chat included</div>
           </div>
           <select id="default-model"></select>
-          <button id="default-apply">Apply — restarts the appliance</button>
+          <button id="default-apply">Apply — restarts</button>
         </div>
         <p class="hint" id="default-note">
-          The default is set at boot, so changing it restarts the appliance — your graph
-          and everything it remembers stay up. Role changes below need no restart.
+          The default is read at boot, so changing it restarts the assistant: the graph
+          and everything it remembers stay up. Everything else here is live.
         </p>
         <div id="role-list"></div>
       </div>

@@ -228,6 +228,9 @@ async function ingestDocumentUrl(settings, url) {
 }
 
 module.exports = {
+  getWorldConfig,
+  setChatModel,
+  chatModel,
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl }
@@ -289,4 +292,46 @@ async function setRole(settings, roleId, model) {
   } catch (e) {
     return { ok: false, message: errorMessage(e) }
   }
+}
+
+/** The world's own config — needed to know HOW chat is currently pinned. */
+async function getWorldConfig(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/config`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, config: {} }
+    return { ok: true, message: '', config: (await readJson(res)) ?? {} }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), config: {} }
+  }
+}
+
+/**
+ * Point CHAT at a model — the setting people mean by "change the model".
+ *
+ * One call, because the appliance owns the rule that makes this fiddly: a chat
+ * config pinned to a ROLE ignores any model written beside it, so the server
+ * clears the role as it sets the model. The app deliberately does not
+ * re-implement that precedence; it would drift.
+ */
+async function setChatModel(settings, model) {
+  try {
+    const res = await post(settings, '/api/v1/config/chat-model', { model }, 15000, 'PUT')
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const body = await readJson(res)
+    return { ok: true, message: body?.inherited ? 'chat follows the default again' : `chat → ${body?.model}` }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** What chat is pinned to right now: an explicit model, a role, or inherited. */
+async function chatModel(settings) {
+  const [world, roles] = await Promise.all([getWorldConfig(settings), getRoles(settings)])
+  const chat = world.config?.chat ?? {}
+  if (chat.model) return { model: chat.model, via: 'pinned' }
+  if (chat.role) return { model: roles.roles?.[chat.role]?.model ?? '', via: `role ${chat.role}`, role: chat.role }
+  return { model: '', via: 'the default' }
 }
