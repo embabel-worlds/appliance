@@ -200,7 +200,21 @@ ipcMain.handle('mounts:add', async () => {
   return picked.canceled ? mounts.state() : mounts.add(picked.filePaths)
 })
 ipcMain.handle('mounts:remove', (_e, host) => mounts.remove(host))
-ipcMain.handle('mounts:set-index', (_e, host, index) => mounts.setIndex(host, index))
+ipcMain.handle('mounts:set-index', async (_e, host, index) => {
+  const state = mounts.setIndex(host, index)
+  // Ticking an ALREADY-MOUNTED folder needs no Apply and no restart: the files
+  // are visible in the container right now, so the watcher starts straight
+  // away. Only a freshly added folder waits for Apply to create its mount.
+  if (index) {
+    const saved = loadSettings()
+    const mount = state.mounts.find((m) => m.host === host)
+    if (saved.username.trim() && mount && (await mounts.isLive(mount.target))) {
+      log(`[me-app] index ticked for ${mount.target} — mount is live, starting the watcher`)
+      indexer.start(saved)
+    }
+  }
+  return state
+})
 ipcMain.handle('mounts:apply', () => mounts.apply())
 
 // Opt-in indexing of ticked folders (indexer.js, embabel/appliance#10). start

@@ -174,6 +174,21 @@ const docker = (args, cwd) =>
 const tail = (out) => (out.length > 300 ? `…${out.slice(-300)}` : out)
 
 /**
+ * True when the running assistant container already carries this mount — the
+ * distinction that lets an "index contents" tick start indexing IMMEDIATELY
+ * (the files are visible in the container right now), while a freshly added
+ * folder still waits for Apply to create its mount.
+ * @param {string} target @returns {Promise<boolean>}
+ */
+async function isLive(target) {
+  const run = await docker(
+    ['inspect', 'embabel-assistant', '--format', '{{range .Mounts}}{{.Destination}}\n{{end}}'],
+    applianceDir() ?? '.',
+  )
+  return run.ok && run.out.split('\n').map((l) => l.trim()).includes(target)
+}
+
+/**
  * Recreate the assistant with the current mounts, provisioning every world so
  * virtual Cypher can walk them (see provision.js). `up -d` reconciles: compose
  * sees the changed volume list and recreates just the assistant; the graph —
@@ -221,4 +236,4 @@ async function apply() {
   }
 }
 
-module.exports = { applianceDir, state, add, remove, setIndex, apply }
+module.exports = { applianceDir, state, add, remove, setIndex, isLive, apply }

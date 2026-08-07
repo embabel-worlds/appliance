@@ -66,7 +66,7 @@
 
     .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 22px; }
     .masthead h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 760; letter-spacing: -0.02em; }
-    .masthead p { color: var(--mid); font-size: 13px; margin-top: 4px; max-width: 62ch; }
+    .masthead p { color: var(--mid); font-size: 13px; margin-top: 4px; }
 
     .panel {
       background: rgba(11, 16, 30, 0.44);
@@ -115,7 +115,12 @@
     .status.error { color: var(--alert); }
 
     label.check { font-size: 13px; display: flex; align-items: center; gap: 7px; cursor: pointer; }
-    .hint { font-size: 12px; color: var(--faint); margin: 2px 0 10px; max-width: 64ch; }
+    .hint { font-size: 12px; color: var(--faint); margin: 2px 0 10px; }
+
+    /* A button or status sharing a row with captioned fields sits on the
+       INPUT line, not centered against the taller caption+input stack. */
+    .row .inline-action { align-self: flex-end; }
+    .row .inline-status { align-self: flex-end; padding-bottom: 7px; }
 
     .fact {
       display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 8px;
@@ -168,10 +173,8 @@
           <label class="field">Password
             <input type="password" id="password" />
           </label>
-        </div>
-        <div class="row">
-          <button id="test">Connect</button>
-          <span id="connection-status" class="status"></span>
+          <button id="test" class="inline-action">Connect</button>
+          <span id="connection-status" class="status inline-status"></span>
         </div>
       </div>
     </section>

@@ -99,7 +99,10 @@ with at most one file redone. Ingestion is sequential with a duty cycle
 presence sensing: screen locked or idle → full tilt, actively working → ~25%
 duty. Sweeps run every 15 minutes (sooner with a backlog), capped at 200
 ingests per sweep and 30&nbsp;MB per file, with honest truncation reported.
-Unticking every folder stops the watcher. Design: appliance issue #10.
+Unticking every folder stops the watcher. Ticking a folder that is ALREADY
+mounted starts indexing immediately — no Apply, no restart; only a freshly
+added folder needs Apply first, because its mount does not exist until the
+container is recreated. Design: appliance issue #10.
 
 The override file is gitignored and never touches the tracked compose files;
 removing every folder deletes it again. Before the restart, the panel sends one

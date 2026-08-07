@@ -47,7 +47,7 @@ async function init() {
   // relaunches — say what it's up to whenever the panel opens.
   const indexing = await window.me.indexingState()
   if (indexing.enabled) {
-    if (indexing.running) followIndexing({ message: 'indexing' })
+    if (indexing.running) followIndexing('')
     else if (indexing.message) setStatus(mountStatus, indexing.failed === 0, indexing.message)
   }
 }
@@ -214,7 +214,13 @@ function renderMounts(state) {
     const tick = document.createElement('input')
     tick.type = 'checkbox'
     tick.checked = mount.index
-    tick.addEventListener('change', async () => renderMounts(await window.me.setMountIndex(mount.host, tick.checked)))
+    tick.addEventListener('change', async () => {
+      const ticked = tick.checked
+      renderMounts(await window.me.setMountIndex(mount.host, ticked))
+      // An already-mounted folder starts indexing on tick, no Apply needed —
+      // the main process kicks the watcher when the mount is live. Show it.
+      if (ticked && (await window.me.indexingState()).enabled) followIndexing('')
+    })
     index.append(tick, document.createTextNode('index contents'))
     const remove = document.createElement('button')
     remove.textContent = 'Remove'
@@ -225,22 +231,22 @@ function renderMounts(state) {
 }
 
 /**
- * Follow an indexing run to its end, narrating progress in the status line.
- * @param {import('./types').ConnectionResult} applied — the Apply result the final message builds on
+ * Follow an indexing sweep to its end, narrating progress in the status line.
+ * @param {string} prefix — context for the final line (e.g. the Apply result), or ''
  */
-function followIndexing(applied) {
+function followIndexing(prefix) {
   const poll = setInterval(async () => {
     const s = await window.me.indexingState()
     if (s.running) {
       const progress =
-        s.phase === 'waiting' ? 'waiting for the appliance to come back…'
+        s.phase === 'waiting' ? 'waiting for the appliance…'
         : s.phase === 'scanning' ? 'checking what changed…'
         : `indexing ${s.done}/${s.total}${s.currentFile ? ` — ${s.currentFile}` : ''}`
       setStatus(mountStatus, null, progress)
       return
     }
     clearInterval(poll)
-    setStatus(mountStatus, s.failed === 0, `${applied.message} · ${s.message}`)
+    setStatus(mountStatus, s.failed === 0, prefix ? `${prefix} · ${s.message}` : s.message)
     mountApply.disabled = false
   }, 2000)
 }
@@ -281,7 +287,7 @@ mountApply.addEventListener('click', async () => {
   // server reads its own mount; nothing is uploaded). Progress via polling.
   if (result.ok && state.mounts.some((m) => m.index) && usernameInput.value.trim()) {
     await window.me.startIndexing(currentSettings())
-    followIndexing(result)
+    followIndexing(result.message)
     return // followIndexing re-enables the button when the run ends
   }
   mountApply.disabled = false
