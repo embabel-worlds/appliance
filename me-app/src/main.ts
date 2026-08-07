@@ -5,16 +5,12 @@
 // to the appliance) happens here in the main process; the renderer only gets
 // the narrow IPC surface defined in preload.ts.
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } from 'electron'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import * as scanner from './scanner'
 import * as api from './api'
-import type { Fact, ScanOptions, SendResult, Settings, StreamState } from './types'
-
-const run = promisify(execFile)
+import { platform } from './platform'
+import type { Fact, GrantState, ScanOptions, SendResult, Settings, StreamState } from './types'
 
 let window: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -104,34 +100,44 @@ ipcMain.handle('settings:save', (_e, settings: Settings): boolean => {
   return true
 })
 ipcMain.handle('connection:test', (_e, settings: Settings) => api.testConnection(settings))
-ipcMain.handle('scan:run', (_e, options: ScanOptions) => scanner.scan(options))
+ipcMain.handle('scan:run', (_e, options: ScanOptions) => platform.scan(options))
 ipcMain.handle('facts:send', (_e, settings: Settings, facts: Fact[]): Promise<SendResult[]> =>
   api.sendFacts(settings, facts),
 )
 
 // ---------------------------------------------------------------------------
-// Ambient presence stream: every STREAM_INTERVAL_MS, read keyboard idle time
-// (ioreg — no permissions needed) and push one context event. Each push
-// replaces the last server-side, so this is a heartbeat, not an accumulation.
+// The ambient focus stream.
+//
+// Polls every STREAM_INTERVAL_MS but SENDS only when something changed, with a
+// heartbeat every HEARTBEAT_TICKS so a long stretch in one app still refreshes
+// staleness server-side. Sampling is cheap; sending is not free (a request, a
+// merge, a nudge to every consumer of context), and a stream that repeats
+// itself teaches the appliance nothing.
 // ---------------------------------------------------------------------------
 
-const STREAM_INTERVAL_MS = 30_000
-const IDLE_THRESHOLD_SECONDS = 120
+const STREAM_INTERVAL_MS = 20_000
+const HEARTBEAT_TICKS = 9 // ~3 minutes even when nothing changes
 
 let streamTimer: NodeJS.Timeout | null = null
-const streamState: StreamState = { running: false, lastMessage: 'off', lastAt: null }
-
-/** Seconds since last keyboard/mouse input, via IOHIDSystem's HIDIdleTime (nanoseconds). */
-async function idleSeconds(): Promise<number> {
-  const { stdout } = await run('ioreg', ['-c', 'IOHIDSystem'])
-  const nanos = Number(stdout.match(/"HIDIdleTime"\s*=\s*(\d+)/)?.[1] ?? 0)
-  return nanos / 1e9
-}
+let ticksSinceSend = 0
+let lastSignature = ''
+const streamState: StreamState = { running: false, lastMessage: 'off', lastAt: null, tier1: false, denied: [] }
 
 async function streamTick(settings: Settings): Promise<void> {
   try {
-    const idle = await idleSeconds()
-    const result = await api.sendPresence(settings, idle < IDLE_THRESHOLD_SECONDS)
+    const sample = await platform.sampleFocus(streamState.tier1)
+    streamState.denied = sample.denied
+    // Everything that would change what the appliance believes — deliberately
+    // NOT idle seconds, which change every tick and mean nothing on their own.
+    const signature = JSON.stringify([sample.app, sample.detail, sample.media, sample.focusMode, sample.locked, sample.active])
+    ticksSinceSend++
+    if (signature === lastSignature && ticksSinceSend < HEARTBEAT_TICKS) {
+      streamState.lastMessage = 'unchanged'
+      return
+    }
+    lastSignature = signature
+    ticksSinceSend = 0
+    const result = await api.sendFocus(settings, sample)
     streamState.lastMessage = result.ok ? `sent: ${result.message}` : `error: ${result.message}`
   } catch (e) {
     streamState.lastMessage = `error: ${e instanceof Error ? e.message : String(e)}`
@@ -139,19 +145,31 @@ async function streamTick(settings: Settings): Promise<void> {
   streamState.lastAt = new Date().toISOString()
 }
 
-ipcMain.handle('stream:set', (_e, settings: Settings, enabled: boolean): StreamState => {
+ipcMain.handle('stream:set', (_e, settings: Settings, enabled: boolean, tier1: boolean): StreamState => {
   if (streamTimer) {
     clearInterval(streamTimer)
     streamTimer = null
   }
   streamState.running = enabled
+  streamState.tier1 = tier1
+  // A changed tier means a changed picture: force the next tick to send.
+  lastSignature = ''
   if (enabled) {
     void streamTick(settings)
     streamTimer = setInterval(() => void streamTick(settings), STREAM_INTERVAL_MS)
   } else {
     streamState.lastMessage = 'off'
+    streamState.denied = []
   }
   return { ...streamState }
 })
 
 ipcMain.handle('stream:state', (): StreamState => ({ ...streamState }))
+ipcMain.handle('grants:state', (): Promise<GrantState[]> => platform.grantStates())
+
+// macOS prompts for Automation exactly once; after a refusal the only route
+// back is System Settings, so the app must be able to open the right pane. On
+// platforms with no such consent broker the URL is null and this is a no-op.
+ipcMain.handle('grants:open-settings', async (): Promise<void> => {
+  if (platform.automationSettingsUrl) await shell.openExternal(platform.automationSettingsUrl)
+})

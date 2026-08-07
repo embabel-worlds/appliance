@@ -38,6 +38,8 @@
     .fact strong { font-size: 13px; }
     .fact p { margin: 4px 0 0; font-size: 13px; opacity: 0.8; overflow-wrap: anywhere; }
     .summary { margin-top: 10px; font-size: 13px; font-weight: 600; }
+    label.check { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .hint { font-size: 12px; opacity: 0.6; margin: 2px 0 8px; max-width: 60ch; }
     #receipt { margin-top: 12px; }
   </style>
 </head>
@@ -67,11 +69,29 @@
   <section>
     <h2>Ambient</h2>
     <div class="row">
-      <label style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+      <label class="check">
         <input type="checkbox" id="stream-toggle" />
-        Stream presence (active/idle at keyboard, every 30s)
+        Stream what I'm doing — frontmost app, active/idle, screen lock, Focus mode
       </label>
+    </div>
+    <div class="row">
+      <label class="check">
+        <input type="checkbox" id="tier1-toggle" />
+        Also read the browser tab I'm on and what's playing
+      </label>
+    </div>
+    <p class="hint">
+      The second one asks macOS for permission the first time it reads each app
+      ("Embabel Me wants to control Google Chrome"). macOS asks only once — if you
+      decline, re-enable it in System Settings.
+    </p>
+    <div class="row">
       <span id="stream-status" class="status"></span>
+    </div>
+    <div class="row" id="grants-row">
+      <button id="grants">Check permissions</button>
+      <button id="open-settings">Open Automation settings</button>
+      <span id="grants-status" class="status"></span>
     </div>
   </section>
 
@@ -79,7 +99,7 @@
     <h2>Scan</h2>
     <div class="row">
       <button id="scan" class="primary">Scan this Mac</button>
-      <label style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+      <label class="check">
         <input type="checkbox" id="history-toggle" />
         Include browser history (top sites, news, searches)
       </label>

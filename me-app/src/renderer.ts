@@ -52,22 +52,50 @@ $<HTMLButtonElement>('test').addEventListener('click', async () => {
 })
 
 const streamToggle = $<HTMLInputElement>('stream-toggle')
+const tier1Toggle = $<HTMLInputElement>('tier1-toggle')
 const streamStatus = $<HTMLSpanElement>('stream-status')
+const grantsStatus = $<HTMLSpanElement>('grants-status')
 
-streamToggle.addEventListener('change', async () => {
+async function applyStream(): Promise<void> {
   const settings = currentSettings()
   await window.me.saveSettings(settings)
-  const state = await window.me.setStream(settings, streamToggle.checked)
-  setStatus(streamStatus, state.running ? true : null, state.running ? 'streaming' : 'off')
+  const state = await window.me.setStream(settings, streamToggle.checked, tier1Toggle.checked)
+  setStatus(streamStatus, state.running ? true : null, state.running ? 'streaming…' : 'off')
+}
+
+streamToggle.addEventListener('change', applyStream)
+tier1Toggle.addEventListener('change', async () => {
+  // Reading a tab or a track is meaningless without the stream that carries it.
+  if (tier1Toggle.checked) streamToggle.checked = true
+  await applyStream()
 })
+
+$<HTMLButtonElement>('grants').addEventListener('click', async () => {
+  setStatus(grantsStatus, null, 'checking (this may prompt)…')
+  const states = await window.me.grantStates()
+  const granted = states.filter((g) => g.state === 'granted').map((g) => g.app)
+  const denied = states.filter((g) => g.state === 'denied').map((g) => g.app)
+  const parts: string[] = []
+  if (granted.length) parts.push(`granted: ${granted.join(', ')}`)
+  if (denied.length) parts.push(`DENIED: ${denied.join(', ')}`)
+  if (!parts.length) parts.push('none of the supported apps are running')
+  setStatus(grantsStatus, denied.length === 0 ? (granted.length ? true : null) : false, parts.join(' · '))
+})
+
+$<HTMLButtonElement>('open-settings').addEventListener('click', () => void window.me.openAutomationSettings())
 
 // Reflect the stream's latest heartbeat while the window is open.
 setInterval(async () => {
   const state = await window.me.streamState()
-  if (state.running) {
-    const isError = state.lastMessage.startsWith('error')
-    setStatus(streamStatus, !isError, `${state.lastMessage}${state.lastAt ? ` at ${new Date(state.lastAt).toLocaleTimeString()}` : ''}`)
-    streamToggle.checked = true
+  if (!state.running) return
+  streamToggle.checked = true
+  tier1Toggle.checked = state.tier1
+  const isError = state.lastMessage.startsWith('error')
+  const when = state.lastAt ? ` at ${new Date(state.lastAt).toLocaleTimeString()}` : ''
+  setStatus(streamStatus, !isError, `${state.lastMessage}${when}`)
+  // A denied grant is silent at the OS level; say so, or the stream just looks thin.
+  if (state.denied.length > 0) {
+    setStatus(grantsStatus, false, `permission refused for ${state.denied.join(', ')} — grant it in System Settings`)
   }
 }, 5000)
 

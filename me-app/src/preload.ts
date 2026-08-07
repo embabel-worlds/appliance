@@ -10,8 +10,11 @@ const api: MeApi = {
   testConnection: (settings: Settings) => ipcRenderer.invoke('connection:test', settings),
   scan: (options: ScanOptions) => ipcRenderer.invoke('scan:run', options),
   sendFacts: (settings: Settings, facts: Fact[]) => ipcRenderer.invoke('facts:send', settings, facts),
-  setStream: (settings: Settings, enabled: boolean) => ipcRenderer.invoke('stream:set', settings, enabled),
+  setStream: (settings: Settings, enabled: boolean, tier1: boolean) =>
+    ipcRenderer.invoke('stream:set', settings, enabled, tier1),
   streamState: () => ipcRenderer.invoke('stream:state'),
+  grantStates: () => ipcRenderer.invoke('grants:state'),
+  openAutomationSettings: () => ipcRenderer.invoke('grants:open-settings'),
 }
 
 contextBridge.exposeInMainWorld('me', api)

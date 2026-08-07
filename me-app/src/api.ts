@@ -8,7 +8,7 @@
 // fact sending falls back to `/api/v1/memory/remember` — same destination
 // (DICE propositions), coarser receipts.
 
-import type { ConnectionResult, Fact, SendResult, Settings } from './types'
+import type { ConnectionResult, Fact, FocusSample, SendResult, Settings } from './types'
 
 const SOURCE = 'me-app'
 
@@ -96,18 +96,40 @@ async function sendFactsLegacy(settings: Settings, facts: Fact[]): Promise<SendR
   return results
 }
 
-/** Push one presence observation (the ambient stream). Requires the sensor endpoint. */
-export async function sendPresence(settings: Settings, active: boolean): Promise<ConnectionResult> {
+/**
+ * Push one focus observation (the ambient stream). Requires the sensor endpoint.
+ *
+ * WORKING is asserted only when the user is actually at the keyboard and the
+ * screen is unlocked — an idle desktop showing IntelliJ is not someone working,
+ * and claiming otherwise would corrupt the very interruption decisions this
+ * stream exists to inform.
+ */
+export async function sendFocus(settings: Settings, sample: FocusSample): Promise<ConnectionResult> {
+  const working = sample.active === true && sample.locked !== true
   let res: Response
   try {
     res = await post(settings, '/api/v1/sensor/events', {
       source: SOURCE,
-      events: [{ kind: 'context', stream: 'presence', activities: active ? ['WORKING'] : [] }],
+      events: [
+        {
+          kind: 'context',
+          stream: 'focus',
+          activities: working ? ['WORKING'] : [],
+          app: sample.app,
+          detail: sample.detail,
+          media: sample.media,
+          focusMode: sample.focusMode,
+          locked: sample.locked,
+        },
+      ],
     })
   } catch (e) {
     return { ok: false, message: errorMessage(e) }
   }
   if (res.status === 404) return { ok: false, message: 'This appliance version has no sensor endpoint — streaming needs a newer image.' }
   if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-  return { ok: true, message: active ? 'active at keyboard' : 'idle' }
+  // Echo the server's own rendering of what it understood, so the UI shows what
+  // was actually communicated rather than what we hoped to communicate.
+  const body = (await res.json()) as { receipts?: Array<{ detail: string | null }> }
+  return { ok: true, message: body.receipts?.[0]?.detail ?? (working ? 'active' : 'idle') }
 }
