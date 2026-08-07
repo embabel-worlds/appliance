@@ -5,6 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
+    "postbuild": "node -e \"const s=require('fs').readFileSync('dist/renderer.js','utf8'); if (/\\bexports\\b/.test(s)) { console.error('dist/renderer.js references exports — it must compile to a plain script. Remove imports from src/renderer.ts (see src/global.d.ts).'); process.exit(1) }\"",
     "start": "npm run build && electron .",
     "smoke": "npm run build && node -e \"require('./dist/scanner').scan().then(f => console.log(JSON.stringify(f, null, 2)))\""
   },

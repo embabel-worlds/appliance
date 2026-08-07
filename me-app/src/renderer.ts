@@ -1,13 +1,9 @@
 // Renderer: the consent surface. Scan → review (check/uncheck) → send → receipt.
-// Compiled to a plain script (no runtime imports), loaded by index.html.
-
-import type { Fact, MeApi, Settings } from './types'
-
-declare global {
-  interface Window {
-    me: MeApi
-  }
-}
+//
+// MUST stay import-free so tsc emits a plain script — see global.d.ts, which
+// supplies Fact/Settings/window.me from the global scope for exactly this
+// reason. An `import` here (even `import type`) reintroduces a CommonJS
+// preamble that throws in the renderer and silently disables every handler.
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 
