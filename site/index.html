@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Embabel Me — your assistant, on your machine</title>
+<meta name="description" content="A personal AI assistant that runs on your own computer. Your data never reaches us — not your documents, not your messages, not your questions." />
+<style>
+  /* The Worlds console's surface: the schematic drawn in light lines on black,
+     brand indigo #625fff as the ONE signal colour. Embabel is dark mode, period. */
+  :root {
+    --paper: #000; --card: #101828; --ink: #e6e6e6; --mid: #99a1af; --faint: #6a7282;
+    --rule: #1e2939; --signal: #625fff; --lit: #3ecf8e; --alert: #f87171;
+    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    color: var(--ink); font-family: var(--sans); line-height: 1.6;
+    background:
+      repeating-linear-gradient(0deg, rgba(230,230,230,.028) 0 1px, transparent 1px 44px),
+      repeating-linear-gradient(90deg, rgba(230,230,230,.028) 0 1px, transparent 1px 44px),
+      var(--paper);
+    background-attachment: fixed; min-height: 100vh; position: relative; overflow-x: hidden;
+  }
+  body::before {
+    content: ""; position: fixed; inset: -30%; z-index: -2; pointer-events: none;
+    background:
+      radial-gradient(1000px 640px at 22% 12%, rgba(98,95,255,.34), transparent 62%),
+      radial-gradient(880px 560px at 82% 18%, rgba(62,207,142,.13), transparent 58%),
+      radial-gradient(1300px 860px at 55% 95%, rgba(98,95,255,.20), transparent 62%);
+    animation: aurora 40s ease-in-out infinite alternate; filter: saturate(1.1);
+  }
+  @keyframes aurora {
+    0% { transform: translate3d(-3%,-2%,0) scale(1); }
+    50% { transform: translate3d(3%,2%,0) scale(1.06); }
+    100% { transform: translate3d(-2%,3%,0) scale(1.02); }
+  }
+  @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+  #graphbg { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 clamp(18px, 4vw, 28px); }
+  header.top { padding: 28px 0 0; }
+  .wordmark { font-family: var(--mono); font-size: 13px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--mid); }
+
+  .hero { padding: clamp(48px, 9vw, 96px) 0 clamp(32px, 5vw, 56px); }
+  h1 { font-size: clamp(38px, 7vw, 68px); line-height: 1.05; font-weight: 780;
+    letter-spacing: -.03em; max-width: 16ch; }
+  h1 em { font-style: normal; background: linear-gradient(100deg, #fafafa 20%, #c7d2ff 65%, #625fff 110%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .lede { font-size: clamp(17px, 2.2vw, 21px); color: var(--mid); max-width: 58ch; margin-top: 20px; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  .cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 34px; }
+  .btn {
+    font: inherit; font-size: 15px; font-weight: 600; padding: 12px 22px; border-radius: 4px;
+    border: 1px solid var(--signal); background: var(--signal); color: #fff; cursor: pointer;
+    text-decoration: none; display: inline-block; transition: box-shadow .15s, transform .15s;
+  }
+  .btn:hover { box-shadow: 0 0 26px rgba(98,95,255,.5); transform: translateY(-1px); }
+  .btn.ghost { background: rgba(98,95,255,.14); color: #c7d2ff; }
+  .cta-note { font-size: 13px; color: var(--faint); }
+
+  .cmd {
+    display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 13px 16px;
+    border: 1px solid var(--rule); border-radius: 4px; background: rgba(0,0,0,.55);
+    font-family: var(--mono); font-size: 13.5px; color: #c7d2ff; overflow-x: auto;
+  }
+  .cmd code { white-space: nowrap; }
+  .cmd button {
+    margin-left: auto; font: inherit; font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    padding: 5px 10px; border-radius: 3px; border: 1px solid var(--rule);
+    background: transparent; color: var(--mid); cursor: pointer; flex: none;
+  }
+  .cmd button:hover { color: var(--ink); border-color: var(--mid); }
+
+  section { padding: clamp(40px, 6vw, 72px) 0; border-top: 1px solid rgba(230,230,230,.10); }
+  h2 { font-size: clamp(24px, 3.4vw, 34px); font-weight: 700; letter-spacing: -.02em; }
+  h2 + p { color: var(--mid); margin-top: 12px; max-width: 62ch; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 30px; }
+  .panel { background: rgba(11,16,30,.44); border: 1px solid rgba(230,230,230,.18);
+    border-radius: 4px; padding: 20px; backdrop-filter: blur(2px); }
+  .panel h3 { font-family: var(--mono); font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .14em; color: #c7d2ff; font-weight: 500; }
+  .panel p { color: var(--mid); font-size: 14.5px; margin-top: 10px; }
+
+  figure { margin: 34px 0 0; }
+  figure img { width: 100%; border: 1px solid rgba(230,230,230,.18); border-radius: 6px; display: block; }
+  figcaption { color: var(--faint); font-size: 13px; margin-top: 10px; }
+
+  ul.facts { list-style: none; padding: 0; margin-top: 26px; display: grid; gap: 14px; }
+  ul.facts li { padding-left: 26px; position: relative; color: var(--mid); max-width: 70ch; }
+  ul.facts li::before { content: ""; position: absolute; left: 0; top: 9px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--lit); box-shadow: 0 0 8px rgba(62,207,142,.55); }
+  ul.facts strong { color: var(--ink); font-weight: 600; }
+
+  table.req { width: 100%; border-collapse: collapse; margin-top: 26px; font-size: 14.5px; }
+  table.req th, table.req td { text-align: left; padding: 11px 12px; border-bottom: 1px solid rgba(230,230,230,.10); vertical-align: top; }
+  table.req th { font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--faint); font-weight: 500; }
+  table.req td:first-child { color: var(--ink); white-space: nowrap; }
+  table.req td:last-child { color: var(--mid); }
+
+  footer { padding: 44px 0 70px; color: var(--faint); font-size: 13px;
+    border-top: 1px solid rgba(230,230,230,.10); }
+  footer a { color: var(--mid); }
+  a { color: #c7d2ff; }
+</style>
+</head>
+<body>
+<canvas id="graphbg" aria-hidden="true"></canvas>
+
+<div class="wrap">
+  <header class="top"><div class="wordmark">Embabel</div></header>
+
+  <div class="hero">
+    <h1>Your assistant. <em>On your machine.</em></h1>
+    <p class="lede">
+      Embabel Me is a personal AI assistant that runs on your own computer — it reads
+      your world, remembers what matters, and acts for you.
+      <strong>Your data never reaches us.</strong> Not your documents, not your messages,
+      not the questions you ask. There is no account on our servers, because there is no
+      server.
+    </p>
+
+    <div class="cta">
+      <a class="btn" id="primary-cta" href="#install">Install it</a>
+      <a class="btn ghost" href="#how">How it works</a>
+      <span class="cta-note" id="os-note"></span>
+    </div>
+
+    <div class="cmd">
+      <code id="install-cmd">curl -fsSL https://get.embabel.com/me | sh</code>
+      <button id="copy">Copy</button>
+    </div>
+
+    <figure>
+      <img src="../images/me_electron.png" alt="The Embabel Me app: appliance connection, ambient streaming toggles, and a scan of this Mac." />
+      <figcaption>The Me app: it reads local signals and sends only what you approve — to your own appliance.</figcaption>
+    </figure>
+  </div>
+
+  <section id="how">
+    <h2>Two halves, one machine</h2>
+    <p>The appliance thinks; the app senses. Both run on your computer, and they talk to each other over localhost.</p>
+    <div class="grid">
+      <div class="panel">
+        <h3>The appliance</h3>
+        <p>A knowledge graph, a memory and an agent runtime in Docker. It holds what it learns about you and answers from it — in a chat window, in your terminal, or through any MCP client.</p>
+      </div>
+      <div class="panel">
+        <h3>The app</h3>
+        <p>A menu-bar sensor. It notices what you work on, what you read, and whether now is a good time to interrupt — and sends only what you tick.</p>
+      </div>
+      <div class="panel">
+        <h3>Your model provider</h3>
+        <p>The one thing that leaves: prompts go to the provider <em>you</em> configure, with <em>your</em> key, directly. Nothing routes through Embabel.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <h2>What "private" means here</h2>
+    <p>Specifically, not as a slogan — every claim below is one you can check yourself.</p>
+    <ul class="facts">
+      <li><strong>Nothing you own is sent to us.</strong> No documents, messages, queries, credentials, file paths or even the names of the integrations you install.</li>
+      <li><strong>We collect counts, and say exactly which.</strong> How big the graph is, not what is in it. The complete field-by-field list is published, and you can print the exact JSON your machine last sent.</li>
+      <li><strong>The sensor talks only to your appliance.</strong> It is a client of your own machine's API. It never listens on a port, and has no route anywhere else.</li>
+      <li><strong>Ambient signals are not stored.</strong> What you are doing right now lives in memory, is replaced by the next reading, and is gone when the appliance restarts.</li>
+      <li><strong>You can delete anything.</strong> Your memory is rows in a database you own, on a disk you own.</li>
+    </ul>
+  </section>
+
+  <section id="install">
+    <h2>Getting started</h2>
+    <p>One command. It checks Docker, unpacks the appliance into <code>~/embabel-me</code>, and walks you through setup.</p>
+    <div class="cmd">
+      <code>curl -fsSL https://get.embabel.com/me | sh</code>
+    </div>
+    <p style="margin-top:16px">
+      Piping a script into a shell is a thing you should be suspicious of — so
+      <a href="https://github.com/embabel/appliance/blob/main/install.sh">read it first</a>.
+      It is deliberately short, installs nothing globally, needs no root, and writes only
+      inside that one directory.
+    </p>
+
+    <h2 style="margin-top:44px; font-size: 22px;">What you'll need</h2>
+    <table class="req">
+      <tr><th>What</th><th>Why, and what it costs</th></tr>
+      <tr>
+        <td>Docker Desktop</td>
+        <td>The appliance runs as containers. Free, and a sizeable download the first time. Model Runner must be enabled — embeddings run locally, on your machine.</td>
+      </tr>
+      <tr>
+        <td>A model provider key</td>
+        <td>Your own key from Anthropic or OpenAI. You pay them directly for what you use; we never see it or the traffic.</td>
+      </tr>
+      <tr>
+        <td>Disk and memory</td>
+        <td>Several gigabytes for images and the graph. It is a real system, running on your computer, and it is honest about that.</td>
+      </tr>
+      <tr>
+        <td>A Mac, for now</td>
+        <td>The appliance runs anywhere Docker does, including Linux servers. The sensor app is macOS today; Windows and Linux are mapped out.</td>
+      </tr>
+    </table>
+  </section>
+
+  <footer class="wrap" style="padding-left:0; padding-right:0">
+    Embabel · <a href="https://github.com/embabel/appliance">the appliance on GitHub</a> ·
+    <a href="https://github.com/embabel/appliance/blob/main/PHONE_HOME.md">exactly what is reported</a> ·
+    <a href="https://github.com/embabel/appliance/blob/main/install.sh">the install script</a>
+  </footer>
+</div>
+
+<script>
+// The product's own metaphor as the backdrop: a knowledge graph, alive. Sparse
+// nodes drift; edges appear between neighbours as they pass and fade as they
+// part. Restrained on purpose, and it stops under prefers-reduced-motion.
+(function () {
+  var canvas = document.getElementById('graphbg'), ctx = canvas.getContext('2d')
+  var PALETTE = [[98,95,255],[98,95,255],[167,120,255],[62,207,142],[199,210,255]]
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  var LINK = 240, nodes = [], raf = 0
+  function size() {
+    var dpr = Math.min(devicePixelRatio, 2)
+    canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    var target = Math.round((innerWidth * innerHeight) / 16000)
+    nodes = Array.from({ length: Math.min(Math.max(target, 36), 130) }, function () {
+      return {
+        x: Math.random() * innerWidth, y: Math.random() * innerHeight,
+        vx: (Math.random() - .5) * .2, vy: (Math.random() - .5) * .2,
+        r: 1.1 + Math.random() * 2.1, hub: Math.random() < .15,
+        c: PALETTE[(Math.random() * PALETTE.length) | 0],
+      }
+    })
+  }
+  function frame() {
+    var w = innerWidth, h = innerHeight
+    ctx.clearRect(0, 0, w, h)
+    for (var n of nodes) {
+      n.x += n.vx; n.y += n.vy
+      if (n.x < -20) n.x = w + 20; if (n.x > w + 20) n.x = -20
+      if (n.y < -20) n.y = h + 20; if (n.y > h + 20) n.y = -20
+    }
+    for (var i = 0; i < nodes.length; i++) for (var j = i + 1; j < nodes.length; j++) {
+      var a = nodes[i], b = nodes[j], d = Math.hypot(a.x - b.x, a.y - b.y)
+      if (d > LINK) continue
+      var s = Math.pow(1 - d / LINK, 2)
+      var m = [0,1,2].map(function (k) { return Math.round((a.c[k] + b.c[k]) / 2) })
+      ctx.strokeStyle = 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + (.5 * s) + ')'
+      ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+    }
+    for (var n2 of nodes) {
+      ctx.beginPath(); ctx.arc(n2.x, n2.y, n2.hub ? n2.r * 1.9 : n2.r, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(' + n2.c[0] + ',' + n2.c[1] + ',' + n2.c[2] + ',' + (n2.hub ? .85 : .65) + ')'
+      ctx.fill()
+      if (n2.hub) {
+        ctx.beginPath(); ctx.arc(n2.x, n2.y, n2.r * 5.5, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(' + n2.c[0] + ',' + n2.c[1] + ',' + n2.c[2] + ',0.16)'; ctx.fill()
+      }
+    }
+    raf = requestAnimationFrame(frame)
+  }
+  size(); addEventListener('resize', size)
+  if (reduced) frame(); else raf = requestAnimationFrame(frame)
+})();
+
+// Tell the visitor the truth about their own platform rather than offering a
+// Mac download to someone on Windows.
+(function () {
+  var note = document.getElementById('os-note'), cta = document.getElementById('primary-cta')
+  var p = navigator.platform + ' ' + navigator.userAgent
+  if (/Mac/i.test(p)) { note.textContent = 'macOS · the app and the appliance' }
+  else if (/Win/i.test(p)) { note.textContent = 'Windows · the appliance runs; the sensor app does not yet' }
+  else if (/Linux/i.test(p)) { note.textContent = 'Linux · the appliance runs; the sensor app does not yet' }
+  cta.setAttribute('href', '#install')
+})();
+
+document.getElementById('copy').addEventListener('click', function () {
+  var btn = this
+  navigator.clipboard.writeText(document.getElementById('install-cmd').textContent.trim()).then(function () {
+    btn.textContent = 'Copied'
+    setTimeout(function () { btn.textContent = 'Copy' }, 1600)
+  })
+});
+</script>
+</body>
+</html>
