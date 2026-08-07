@@ -58,6 +58,13 @@ services:
       - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
       - NEO4J_HTTP_PORT=${NEO4J_BROWSER_PORT:-4243}
       - NEO4J_BOLT_ADVERTISED_PORT=${NEO4J_BOLT_PORT:-4244}
+      # Models the user runs on their OWN machine, outside Docker. `localhost`
+      # inside this container is the container, so an LM Studio server the user
+      # can see in their browser is invisible here — it has to be addressed as
+      # the host. Docker Desktop proxies host.docker.internal through to the
+      # host loopback, so a server bound to 127.0.0.1 still answers; on Linux
+      # the extra_hosts entry below supplies the same name.
+      - EMBABEL_AGENT_PLATFORM_MODELS_LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:4242}
       # At least one of these is required — the assistant cannot answer without a
       # model provider. See .env.example.
