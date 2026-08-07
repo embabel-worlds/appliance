@@ -115,9 +115,11 @@ includes the history facts.
 ## Building a real app
 
 ```bash
-npm run package     # release/mac-*/Embabel Me.app — for trying it locally
-npm run dist        # a DMG as well, for handing to someone else
+../scripts/build-me-app.sh          # release/mac-*/Embabel Me.app
+../scripts/build-me-app.sh --dmg    # …and a DMG, for handing to someone else
 ```
+
+(`npm run package` / `npm run dist` do the same thing from in here.)
 
 This matters beyond tidiness: unpackaged, the app runs inside Electron's own
 bundle, so macOS names **Electron** in permission prompts and in the app menu.
