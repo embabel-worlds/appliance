@@ -765,28 +765,73 @@ function vcTemplate() {
 /** The folder name a mount is known by in the container — and therefore its tag. */
 const mountTag = (mount) => mount.target.split('/').pop() ?? ''
 
-let vcReady = false
-async function initQuery() {
-  if (vcReady) return
-  vcReady = true
-  // The tag choices are the folders this app itself mounted — the same names
-  // the appliance stamps as default tags at ingest.
-  const state = await window.me.mountsState()
+/**
+ * The universe of tags the corpus actually holds, with document counts — asked
+ * of the appliance itself, through the same execute endpoint the Run button
+ * uses. Null when the appliance cannot answer (older image, not reachable);
+ * the caller falls back to mount names, which is what this dropdown was
+ * before tags could also arrive by upload.
+ */
+async function tagUniverse(settings) {
+  let result
+  try {
+    result = await window.me.vcExecute(
+      settings,
+      'MATCH (d:Document) WHERE d.tags IS NOT NULL UNWIND d.tags AS tag ' +
+        'RETURN tag, count(*) AS docs ORDER BY toLower(tag)',
+    )
+  } catch {
+    return null
+  }
+  if (!result.ok || result.error) return null
+  return result.rows
+    .map((row) => ({ tag: String(row.tag ?? ''), docs: Number(row.docs) || 0 }))
+    .filter((t) => t.tag)
+}
+
+/**
+ * Rebuild the scope dropdown: every tag the corpus holds (counted), plus any
+ * mounted folder whose tag is not there yet — a shared-but-not-yet-indexed
+ * folder is still a scope the user is about to have. Keeps the current
+ * selection when it survives the rebuild.
+ */
+async function refreshTagOptions() {
+  const settings = currentSettings()
+  const [state, universe] = await Promise.all([window.me.mountsState(), tagUniverse(settings)])
+  const mounts = state.mounts ?? []
+  const options = (universe ?? []).map((t) => ({ value: t.tag, label: `tag: ${t.tag} · ${t.docs} doc(s)` }))
+  for (const mount of mounts) {
+    const tag = mountTag(mount)
+    if (tag && !options.some((o) => o.value === tag)) options.push({ value: tag, label: `tag: ${tag}` })
+  }
+  const previous = vcTag.value
+  vcTag.innerHTML = ''
   const none = document.createElement('option')
   none.value = ''
   none.textContent = 'all documents'
   vcTag.append(none)
-  const mounts = state.mounts ?? []
-  for (const mount of mounts) {
+  for (const { value, label } of options) {
     const option = document.createElement('option')
-    option.value = mountTag(mount)
-    option.textContent = `tag: ${option.value}`
+    option.value = value
+    option.textContent = label
     vcTag.append(option)
   }
-  // Default to the first folder being INDEXED — the one whose documents are in
-  // the knowledge base and therefore actually carry the tag.
   const indexed = mounts.find((m) => m.index) ?? mounts[0]
-  if (indexed) vcTag.value = mountTag(indexed)
+  const preferred =
+    (previous && options.some((o) => o.value === previous) && previous) ||
+    (indexed && options.some((o) => o.value === mountTag(indexed)) && mountTag(indexed)) ||
+    options[0]?.value ||
+    ''
+  vcTag.value = preferred
+}
+
+let vcReady = false
+async function initQuery() {
+  // The universe grows while the app is open (drop-to-ingest, the background
+  // indexer) — refresh the choices on every visit, not just the first.
+  await refreshTagOptions()
+  if (vcReady) return
+  vcReady = true
   vcCypher.value = vcTemplate()
 }
 
