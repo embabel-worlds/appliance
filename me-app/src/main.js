@@ -456,6 +456,11 @@ handle('vc:generate', (settings, question) => {
   log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
   return api.kgGenerate(settings, question)
 })
+handle('vc:lens-model', (settings) => api.lensModel(settings))
+handle('vc:set-lens-model', (settings, model) => {
+  log(`[me-app] text-to-cypher model → ${model || '(inherit default)'}`)
+  return api.setLensModel(settings, model)
+})
 
 // The advanced documents surface: verbatim virtual Cypher, run by the appliance.
 handle('vc:execute', (settings, cypher) => {

@@ -21,6 +21,8 @@ const api = {
   vcSchema: (settings) => ipcRenderer.invoke('vc:schema', settings),
   vcValidate: (settings, cypher) => ipcRenderer.invoke('vc:validate', settings, cypher),
   vcGenerate: (settings, question) => ipcRenderer.invoke('vc:generate', settings, question),
+  vcLensModel: (settings) => ipcRenderer.invoke('vc:lens-model', settings),
+  vcSetLensModel: (settings, model) => ipcRenderer.invoke('vc:set-lens-model', settings, model),
   openQueryStudio: () => ipcRenderer.invoke('query:popout'),
   uploadDocument: (settings, filename, bytes, tags) => ipcRenderer.invoke('docs:upload', settings, filename, bytes, tags),
   // Live narration of a retrieval loop, for as long as one is running. Returns an

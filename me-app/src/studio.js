@@ -697,6 +697,51 @@ askQuestion.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void generate()
 })
 
+// Which model writes the Cypher. Writing a good graph query against a large
+// schema is frontier-model work; the appliance's DEFAULT model is often a
+// small local one chosen for privacy and price, so this picker exists — the
+// per-world lensLlm override, live from the next generation, no restart.
+const lensModelSelect = $('lens-model')
+
+async function initLensModel() {
+  const [models, lens] = await Promise.all([
+    window.me.listModels(settings),
+    window.me.vcLensModel(settings),
+  ])
+  lensModelSelect.innerHTML = ''
+  const inherit = document.createElement('option')
+  inherit.value = ''
+  // NOT the appliance's general default model — text-to-Cypher has its own
+  // deployment default (assistant.lens.llm), which the server doesn't expose
+  // by name; naming the general default here would be a lie.
+  inherit.textContent = 'appliance default'
+  lensModelSelect.append(inherit)
+  if (models.ok) {
+    for (const m of models.models) {
+      const option = document.createElement('option')
+      option.value = m.name ?? m.model ?? String(m)
+      option.textContent = `${option.value}${m.provider ? ` · ${m.provider}` : ''}`
+      lensModelSelect.append(option)
+    }
+  }
+  if (lens.ok && lens.model && [...lensModelSelect.options].some((o) => o.value === lens.model)) {
+    lensModelSelect.value = lens.model
+  } else if (lens.ok && lens.model) {
+    // Configured to a model the provider list doesn't currently show — keep it
+    // selectable rather than silently displaying "default".
+    const option = document.createElement('option')
+    option.value = lens.model
+    option.textContent = lens.model
+    lensModelSelect.append(option)
+    lensModelSelect.value = lens.model
+  }
+}
+
+lensModelSelect.addEventListener('change', async () => {
+  const result = await window.me.vcSetLensModel(settings, lensModelSelect.value)
+  setStatus(askStatus, result.ok, result.ok ? `${result.message} — live from the next generation` : result.message)
+})
+
 // ---------------------------------------------------------------------------
 // Running, results, history.
 // ---------------------------------------------------------------------------
@@ -819,6 +864,7 @@ async function init() {
   renderHistory()
   void loadTagUniverse()
   void loadSchema()
+  void initLensModel()
 }
 
 void init()

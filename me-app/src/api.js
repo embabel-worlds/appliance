@@ -283,6 +283,37 @@ async function kgSchema(settings) {
 }
 
 /**
+ * The model that writes text-to-Cypher: the world's lensLlm override when set,
+ * else the deployment default. Read for display, written by the studio's model
+ * picker. LIVE — lensLlm is resolved per generation, no restart.
+ * @param {Settings} settings
+ */
+async function lensModel(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/config/llms`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const body = await readJson(res)
+    return { ok: true, model: body?.lensLlm?.model ?? null }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Point text-to-Cypher at a model, or clear (blank) to inherit the default. */
+async function setLensModel(settings, model) {
+  try {
+    const res = await post(settings, '/api/v1/config/llms/lensLlm', { model: model || null }, 20000, 'PUT')
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    return { ok: true, message: model ? `text-to-Cypher → ${model}` : 'text-to-Cypher inherits the default' }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
  * Text-to-Cypher, generation ONLY — the appliance writes the query for a plain-
  * English question and explains what executing it will do, without running it.
  * The two-phase console pattern: generate → display (editable) → execute.
@@ -500,7 +531,7 @@ module.exports = {
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
-  kgSchema, kgValidate, kgGenerate,
+  kgSchema, kgValidate, kgGenerate, lensModel, setLensModel,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------
