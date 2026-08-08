@@ -5,6 +5,8 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
   <title>Embabel Me — Query Studio</title>
+  <link rel="stylesheet" href="src/vendor/codemirror.css" />
+  <link rel="stylesheet" href="src/vendor/show-hint.css" />
   <style>
     /* Same skin as index.html — the studio is a second window of the SAME app,
        and it should read that way at a glance. */
@@ -99,9 +101,49 @@
     .cost.cheap { color: #3ecf8e; }
     .cost.dear { color: #f5a97f; }
 
-    #editor {
-      width: 100%; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
-      min-height: 240px; resize: vertical; white-space: pre; overflow-x: auto;
+    /* CodeMirror, reskinned to this surface. The default theme is a white page;
+       every color here is the app's own palette, not a borrowed theme. */
+    .CodeMirror {
+      height: auto; min-height: 240px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+      border: 1px solid var(--rule); border-radius: 3px; background: #0b1220; color: var(--ink);
+    }
+    .CodeMirror-focused { border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4); }
+    .CodeMirror-gutters { background: #0b1220; border-right: 1px solid var(--rule); }
+    .CodeMirror-linenumber { color: var(--faint); }
+    .CodeMirror-cursor { border-left-color: var(--ink); }
+    .CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: rgba(98, 95, 255, 0.25); }
+    .cm-s-default .cm-keyword { color: #a778ff; }
+    .cm-s-default .cm-atom { color: #3ecf8e; }
+    .cm-s-default .cm-number { color: #f5a97f; }
+    .cm-s-default .cm-string { color: #8fd3a7; }
+    .cm-s-default .cm-comment { color: var(--faint); font-style: italic; }
+    .cm-s-default .cm-variable, .cm-s-default .cm-variable-2, .cm-s-default .cm-def { color: #c7d2ff; }
+    .cm-s-default .cm-operator, .cm-s-default .cm-punctuation { color: var(--mid); }
+    .CodeMirror-hints {
+      background: #0b1220; border: 1px solid var(--rule); border-radius: 4px;
+      font-family: var(--mono); font-size: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); z-index: 20;
+    }
+    .CodeMirror-hint { color: var(--ink); }
+    li.CodeMirror-hint-active { background: var(--signal); color: #fff; }
+    .hint-kind { color: var(--faint); font-size: 10px; margin-left: 8px; }
+
+    /* Validation verdicts, under the editor. */
+    #verdict { margin-top: 8px; }
+    #verdict .violation { color: #ff6b6b; font-family: var(--mono); font-size: 12px; margin: 2px 0; }
+
+    /* The schema browser: every node type this world can reach. */
+    #schema-filter { width: 100%; margin-bottom: 8px; }
+    .schema-label { margin-bottom: 2px; }
+    .schema-label summary {
+      cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--ink);
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .schema-label summary .count { color: var(--faint); font-size: 10.5px; }
+    .schema-label .props { margin: 4px 0 8px 16px; font-family: var(--mono); font-size: 11px; color: var(--mid); }
+    .schema-label .prop-type { color: var(--faint); }
+    .schema-label .edges { margin: 0 0 8px 16px; font-family: var(--mono); font-size: 11px; color: #8fd3a7; }
+    .schema-label button.use {
+      font-size: 10.5px; padding: 1px 8px; margin-left: auto;
     }
     .results-table { border-collapse: collapse; font-size: 12.5px; display: block; overflow-x: auto; margin-top: 8px; max-height: 320px; overflow-y: auto; }
     .results-table th, .results-table td { border: 1px solid var(--rule); padding: 5px 9px; text-align: left; vertical-align: top; }
@@ -131,8 +173,9 @@
       <section class="panel">
         <h2>Target</h2>
         <p class="hint">
-          Virtual Cypher reaches more than documents. Pick what to search; the
-          composer writes the query, and everything it writes is yours to edit.
+          Or compose by hand: virtual Cypher reaches more than documents. Pick
+          what to search; the composer writes the query, and everything it — or
+          the Ask box — writes is yours to edit.
         </p>
         <div class="targets" id="targets"></div>
       </section>
@@ -225,6 +268,17 @@
       </section>
 
       <section class="panel">
+        <h2>Schema — every node type here</h2>
+        <p class="hint">
+          The world's reachable shape, virtual labels included — the same snapshot
+          validation and completion read. Open a label for its properties and
+          edges; <em>use</em> starts a query on it.
+        </p>
+        <input type="text" id="schema-filter" placeholder="filter labels…" />
+        <div id="schema"><p class="hint">Loading schema…</p></div>
+      </section>
+
+      <section class="panel">
         <h2>History</h2>
         <div id="history"><p class="hint">Queries you run land here.</p></div>
       </section>
@@ -232,14 +286,29 @@
 
     <div class="col">
       <section class="panel">
+        <h2>Ask — English in, Cypher out</h2>
+        <div class="row">
+          <input type="text" id="ask-question" class="grow"
+                 placeholder="which documents mention the renewal? · files about trip logistics · threads relevant to Ada…" />
+          <button id="generate" class="primary">Write the query</button>
+        </div>
+        <div class="row">
+          <span id="ask-status" class="status"></span>
+        </div>
+        <p class="hint" id="explain" hidden></p>
+      </section>
+
+      <section class="panel">
         <h2>Query</h2>
         <textarea id="editor" spellcheck="false"></textarea>
-        <div class="row">
+        <div class="row" style="margin-top:10px">
           <button id="run" class="primary">Run ⌘⏎</button>
           <button id="compose">Compose from controls</button>
           <button id="copy">Copy</button>
+          <span id="validity" class="status"></span>
           <span id="run-status" class="status"></span>
         </div>
+        <div id="verdict"></div>
       </section>
       <section class="panel">
         <h2>Results</h2>
@@ -247,6 +316,9 @@
       </section>
     </div>
   </main>
+  <script src="src/vendor/codemirror.js"></script>
+  <script src="src/vendor/cypher.js"></script>
+  <script src="src/vendor/show-hint.js"></script>
   <script src="src/graph.js"></script>
   <script src="src/studio.js"></script>
 </body>

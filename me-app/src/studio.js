@@ -15,8 +15,12 @@
 //  - Documents are ONE target. Files and email threads are relevance targets
 //    too, each with its own anchors, and the blank canvas is the whole graph.
 //
-// Everything composed is editable; the appliance applies the per-user scope
-// server-side, so an edited query can be wrong but not unsafe.
+// Three honesty guarantees come from using the appliance's own surfaces rather
+// than reimplementing them: the SCHEMA panel and completion read the same
+// snapshot the engine validates against; VALIDATION is the engine's strict
+// preflight run without execution, so "valid" here and "rejected" there can
+// never disagree; and the per-user scope is applied server-side, so an edited
+// query can be wrong but not unsafe.
 
 /** @param {string} id */
 const $ = (id) => document.getElementById(id)
@@ -45,15 +49,18 @@ const els = {
   aiTemperature: $('ai-temperature'),
   aiConfidence: $('ai-confidence'),
   aiFresh: $('ai-fresh'),
-  editor: $('editor'),
   run: $('run'),
   compose: $('compose'),
   copy: $('copy'),
+  validity: $('validity'),
+  verdict: $('verdict'),
   runStatus: $('run-status'),
   results: $('results'),
   history: $('history'),
   seekPanel: $('seek-panel'),
   narrowPanel: $('narrow-panel'),
+  schema: $('schema'),
+  schemaFilter: $('schema-filter'),
 }
 
 /** @param {HTMLElement} el @param {boolean | null} ok @param {string} message */
@@ -64,6 +71,258 @@ function setStatus(el, ok, message) {
 
 /** Cypher string-literal escape: backslashes first, then quotes. */
 const esc = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+
+// ---------------------------------------------------------------------------
+// The editor: CodeMirror over the textarea — Cypher highlighting, completion
+// from the schema, ⌘⏎ to run. Vendored like every other browser library here.
+// ---------------------------------------------------------------------------
+
+/* global CodeMirror */
+const cm = CodeMirror.fromTextArea($('editor'), {
+  mode: 'application/x-cypher-query',
+  lineNumbers: true,
+  viewportMargin: Infinity,
+  extraKeys: {
+    'Cmd-Enter': () => void run(),
+    'Ctrl-Enter': () => void run(),
+    'Ctrl-Space': 'autocomplete',
+  },
+})
+
+let handEdited = false
+let programmatic = false
+
+const editorText = () => cm.getValue()
+function setEditorText(text, { edited = false } = {}) {
+  programmatic = true
+  cm.setValue(text)
+  programmatic = false
+  handEdited = edited
+}
+
+cm.on('change', () => {
+  if (programmatic) return
+  handEdited = true
+  scheduleValidation()
+})
+
+// Completion opens as you type the characters that begin a completable thing —
+// a label after `(x:`, a relationship after `[:`, a property after `alias.`.
+cm.on('inputRead', (_cm, change) => {
+  if (change.origin !== '+input') return
+  const ch = change.text[change.text.length - 1]
+  if (/[:.']/.test(ch) || /\w/.test(ch)) {
+    const cursor = cm.getCursor()
+    const before = cm.getLine(cursor.line).slice(0, cursor.ch)
+    if (/(\(\s*\w*:\w*|\[\s*\w*:\w*|\w+\.\w*|via:\s*'\w*|ai:\s*\{\s*\w*)$/.test(before)) {
+      cm.showHint({ completeSingle: false })
+    }
+  }
+})
+
+// ---------------------------------------------------------------------------
+// The schema — fetched once from the appliance, driving BOTH the browser panel
+// and completion. Virtual labels included: this is the engine's own snapshot.
+// ---------------------------------------------------------------------------
+
+/** @type {{labels: Array<any>, relationships: Array<any>} | null} */
+let schema = null
+
+const VIA_VALUES = ['keyword', 'agentic-rag']
+const AI_KEYS = ['hint', 'model', 'temperature', 'confidence', 'fresh']
+const KEYWORDS = [
+  'MATCH', 'WHERE', 'RETURN', 'ORDER BY', 'LIMIT', 'WITH', 'DISTINCT', 'AND', 'OR', 'NOT',
+  'CONTAINS', 'STARTS WITH', 'ENDS WITH', 'IN', 'IS NULL', 'IS NOT NULL', 'count(', 'toLower(',
+  'ai.relevant(', 'ai.score(', 'ai.classify(',
+]
+
+/** alias → label, parsed from the query's own `(alias:Label` patterns. */
+function aliasMap(text) {
+  const map = {}
+  for (const m of text.matchAll(/\(\s*(\w+)\s*:\s*(\w+)/g)) map[m[1]] = m[2]
+  return map
+}
+
+function propertiesOf(label) {
+  return schema?.labels.find((l) => l.label === label)?.properties?.map((p) => p.name) ?? []
+}
+
+/** The custom hint: what fits HERE, from the schema, never a generic word list. */
+CodeMirror.registerHelper('hint', 'cypher', (editor) => {
+  const cursor = editor.getCursor()
+  const line = editor.getLine(cursor.line)
+  const before = line.slice(0, cursor.ch)
+
+  const found = (list, from) => ({
+    list,
+    from: CodeMirror.Pos(cursor.line, from),
+    to: CodeMirror.Pos(cursor.line, cursor.ch),
+  })
+
+  let m
+  // (x:Lab… or (:Lab… → labels
+  if ((m = before.match(/[([]\s*\w*:(\w*)$/)) && before.lastIndexOf('(') > before.lastIndexOf('[')) {
+    const stem = m[1]
+    const labels = (schema?.labels ?? []).map((l) => l.label)
+    return found(labels.filter((l) => l.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
+  }
+  // [r:REL… → relationship types
+  if ((m = before.match(/\[\s*\w*:(\w*)$/))) {
+    const stem = m[1]
+    const rels = [...new Set((schema?.relationships ?? []).map((r) => r.type))]
+    return found(rels.filter((r) => r.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
+  }
+  // via:'… → the mode selector's vocabulary
+  if ((m = before.match(/via:\s*'(\w*)$/))) {
+    const stem = m[1]
+    return found(VIA_VALUES.filter((v) => v.startsWith(stem)), cursor.ch - stem.length)
+  }
+  // ai:{ hi… → steering keys
+  if ((m = before.match(/ai:\s*\{[^}]*?(\w*)$/))) {
+    const stem = m[1]
+    return found(AI_KEYS.filter((k) => k.startsWith(stem)), cursor.ch - stem.length)
+  }
+  // alias.prop… → that alias's label's properties
+  if ((m = before.match(/(\w+)\.(\w*)$/))) {
+    const [, alias, stem] = m
+    const label = aliasMap(editor.getValue())[alias]
+    if (label) {
+      const props = propertiesOf(label)
+      return found(props.filter((p) => p.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
+    }
+  }
+  // bare word → keywords and labels
+  if ((m = before.match(/(\w+)$/))) {
+    const stem = m[1]
+    const pool = [...KEYWORDS, ...(schema?.labels ?? []).map((l) => l.label)]
+    return found(pool.filter((w) => w.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
+  }
+  return null
+})
+
+function renderSchema() {
+  els.schema.innerHTML = ''
+  if (!schema) {
+    const p = document.createElement('p')
+    p.className = 'hint'
+    p.textContent = 'Schema unavailable — an older appliance, or not reachable.'
+    els.schema.append(p)
+    return
+  }
+  const filter = els.schemaFilter.value.trim().toLowerCase()
+  const labels = schema.labels
+    .filter((l) => !filter || l.label.toLowerCase().includes(filter))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  for (const label of labels) {
+    const details = document.createElement('details')
+    details.className = 'schema-label'
+    const summary = document.createElement('summary')
+    const name = document.createElement('span')
+    name.textContent = label.label
+    const count = document.createElement('span')
+    count.className = 'count'
+    count.textContent = label.sampleCount ? `${label.sampleCount} sampled` : 'virtual'
+    const use = document.createElement('button')
+    use.className = 'use'
+    use.textContent = 'use'
+    use.addEventListener('click', (e) => {
+      e.preventDefault()
+      setEditorText(`MATCH (n:${label.label})\nRETURN n LIMIT 25`, { edited: true })
+      scheduleValidation()
+    })
+    summary.append(name, count, use)
+    details.append(summary)
+
+    const props = document.createElement('div')
+    props.className = 'props'
+    for (const p of label.properties ?? []) {
+      const line = document.createElement('div')
+      line.textContent = `${p.name} `
+      const type = document.createElement('span')
+      type.className = 'prop-type'
+      type.textContent = p.type + (p.sparse ? ' · sparse' : '')
+      line.append(type)
+      props.append(line)
+    }
+    if (!label.exhaustive) {
+      const caveat = document.createElement('div')
+      caveat.className = 'prop-type'
+      caveat.textContent = 'sampled, not exhaustive — absent ≠ nonexistent'
+      props.append(caveat)
+    }
+    details.append(props)
+
+    const touching = (schema.relationships ?? []).filter((r) => r.from === label.label || r.to === label.label)
+    if (touching.length) {
+      const edges = document.createElement('div')
+      edges.className = 'edges'
+      for (const r of touching.slice(0, 12)) {
+        const line = document.createElement('div')
+        line.textContent = `(:${r.from})-[:${r.type}]->(:${r.to})`
+        edges.append(line)
+      }
+      details.append(edges)
+    }
+    els.schema.append(details)
+  }
+  if (!labels.length) {
+    const p = document.createElement('p')
+    p.className = 'hint'
+    p.textContent = 'No label matches that filter.'
+    els.schema.append(p)
+  }
+}
+
+els.schemaFilter.addEventListener('input', renderSchema)
+
+async function loadSchema() {
+  const result = await window.me.vcSchema(settings)
+  schema = result.ok ? { labels: result.labels, relationships: result.relationships } : null
+  renderSchema()
+}
+
+// ---------------------------------------------------------------------------
+// Validation — the engine's strict preflight, debounced as you type. Silent
+// when the appliance predates the endpoint.
+// ---------------------------------------------------------------------------
+
+let validateTimer = null
+let validateSupported = true
+
+function scheduleValidation() {
+  if (!validateSupported) return
+  if (validateTimer) clearTimeout(validateTimer)
+  setStatus(els.validity, null, '…')
+  validateTimer = setTimeout(() => void validateNow(), 700)
+}
+
+async function validateNow() {
+  const cypher = editorText().trim()
+  if (!cypher) {
+    els.validity.textContent = ''
+    els.verdict.innerHTML = ''
+    return
+  }
+  const result = await window.me.vcValidate(settings, cypher)
+  if (!result.ok) {
+    // An appliance without the endpoint: say nothing, once — don't nag per keystroke.
+    validateSupported = false
+    els.validity.textContent = ''
+    return
+  }
+  els.verdict.innerHTML = ''
+  if (result.valid) {
+    setStatus(els.validity, true, '✓ schema-valid')
+    return
+  }
+  setStatus(els.validity, false, `${result.violations.length} schema problem(s)`)
+  for (const violation of result.violations) {
+    const line = document.createElement('div')
+    line.className = 'violation'
+    line.textContent = violation
+    els.verdict.append(line)
+  }
+}
 
 // ---------------------------------------------------------------------------
 // The targets and their modes. Costs are the spec's own guidance, shown at the
@@ -122,8 +381,6 @@ let target = 'documents'
 // user touches it: composing again is an explicit act (the Compose button or a
 // control change while the editor is still machine-written).
 // ---------------------------------------------------------------------------
-
-let handEdited = false
 
 /** The edge property map: via, intent, and the nested {ai:{…}} steering. */
 function edgeProps() {
@@ -227,7 +484,8 @@ function composeThreads() {
 
 function composeCanvas() {
   return [
-    '// The whole graph is yours. Shapes the schema serves:',
+    '// The whole graph is yours — the Schema panel lists every node type here.',
+    '// Shapes the engine serves:',
     "//   (:Concept {value:'…'})-[r:RELEVANT_TO]->(d:Document)            -- about (vector)",
     "//   (:Concept {value:'…'})-[r:RELEVANT_TO {via:'keyword'}]->(d)     -- mentions",
     "//   (:Concept)-[r:RELEVANT_TO {via:'agentic-rag', intent:'…'}]->(d) -- judged",
@@ -245,8 +503,8 @@ function composeCanvas() {
 
 function compose() {
   const composers = { documents: composeDocuments, files: composeFiles, threads: composeThreads, canvas: composeCanvas }
-  els.editor.value = composers[target]()
-  handEdited = false
+  setEditorText(composers[target]())
+  scheduleValidation()
 }
 
 // ---------------------------------------------------------------------------
@@ -333,9 +591,10 @@ for (const el of [
   el.addEventListener('input', onControlChange)
   el.addEventListener('change', onControlChange)
 }
-els.editor.addEventListener('input', () => { handEdited = true })
-els.compose.addEventListener('click', () => { compose() })
-els.copy.addEventListener('click', () => void navigator.clipboard.writeText(els.editor.value))
+els.compose.addEventListener('click', () => {
+  compose()
+})
+els.copy.addEventListener('click', () => void navigator.clipboard.writeText(editorText()))
 
 // ---------------------------------------------------------------------------
 // The tag universe — same query the main window's dropdown uses.
@@ -371,6 +630,72 @@ async function loadTagUniverse() {
   }
   if ([...els.tag.options].some((o) => o.value === previous)) els.tag.value = previous
 }
+
+// ---------------------------------------------------------------------------
+// Ask — text-to-Cypher through the appliance's own generator. Generation only:
+// the query lands HERE, validated and editable, and running it stays a
+// deliberate second step — execution can be arbitrarily slow (a cold
+// extract/aggregate materializes on first traversal), and the whole point of
+// this surface is seeing the query before paying for it.
+// ---------------------------------------------------------------------------
+
+const askQuestion = $('ask-question')
+const askStatus = $('ask-status')
+const generateButton = $('generate')
+const explainEl = $('explain')
+
+async function generate() {
+  const question = askQuestion.value.trim()
+  if (!question) return
+  generateButton.disabled = true
+  explainEl.hidden = true
+  setStatus(askStatus, null, 'The appliance is writing your query — an LLM call, give it a moment…')
+  let result
+  try {
+    result = await window.me.vcGenerate(settings, question)
+  } catch (e) {
+    result = { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+  generateButton.disabled = false
+  if (!result.ok) {
+    setStatus(askStatus, false, result.message)
+    return
+  }
+  // Marked as hand-edited: the composer's controls must not clobber a
+  // generated query on the next dropdown twitch.
+  setEditorText(result.cypher, { edited: true })
+  els.verdict.innerHTML = ''
+  if (result.valid === true) {
+    // The server generated, PREFLIGHTED, and self-corrected before handing this
+    // over — say so, with the price paid (attempts), and skip the re-check.
+    const tries = result.attempts && result.attempts > 1 ? ` after ${result.attempts} attempts` : ''
+    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${result.durationMs} ms` : ''}${tries} — review, then Run`)
+    setStatus(els.validity, true, '✓ schema-valid')
+  } else if (result.valid === false) {
+    // The generator could not reach a valid query — honest, with the verdict.
+    setStatus(askStatus, false, `generated, but ${result.violations.length} schema problem(s) remain — edit before running`)
+    setStatus(els.validity, false, `${result.violations.length} schema problem(s)`)
+    for (const violation of result.violations) {
+      const line = document.createElement('div')
+      line.className = 'violation'
+      line.textContent = violation
+      els.verdict.append(line)
+    }
+  } else {
+    // Older appliance: no server-side verdict — validate here as before.
+    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${result.durationMs} ms` : ''} — review, edit if you like, then Run`)
+    scheduleValidation()
+  }
+  if (result.explain) {
+    explainEl.textContent = result.explain
+    explainEl.hidden = false
+  }
+}
+
+generateButton.addEventListener('click', () => void generate())
+askQuestion.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void generate()
+})
 
 // ---------------------------------------------------------------------------
 // Running, results, history.
@@ -440,8 +765,8 @@ function renderHistory() {
     meta.textContent = `· ${entry.rows} row(s)`
     button.append(meta)
     button.addEventListener('click', () => {
-      els.editor.value = entry.cypher
-      handEdited = true
+      setEditorText(entry.cypher, { edited: true })
+      scheduleValidation()
     })
     els.history.append(button)
   }
@@ -455,7 +780,7 @@ function remember(cypher, rows) {
 }
 
 async function run() {
-  const cypher = els.editor.value.trim()
+  const cypher = editorText().trim()
   if (!cypher) return
   els.run.disabled = true
   els.results.innerHTML = ''
@@ -481,9 +806,6 @@ async function run() {
 }
 
 els.run.addEventListener('click', () => void run())
-els.editor.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void run()
-})
 
 // ---------------------------------------------------------------------------
 // Boot.
@@ -496,6 +818,7 @@ async function init() {
   compose()
   renderHistory()
   void loadTagUniverse()
+  void loadSchema()
 }
 
 void init()

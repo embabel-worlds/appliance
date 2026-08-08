@@ -261,6 +261,75 @@ async function uploadDocument(settings, filename, bytes, tags) {
 }
 
 /**
+ * The acting user's graph schema — labels with typed properties, relationship
+ * triples, virtual labels included. The same snapshot the engine's preflight
+ * validates against, which is what makes it fit to drive completion: what the
+ * editor offers and what validation accepts cannot disagree.
+ * @param {Settings} settings
+ */
+async function kgSchema(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/admin/kg/schema`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (res.status === 404) return { ok: false, message: 'no schema endpoint — older appliance', labels: [], relationships: [] }
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, labels: [], relationships: [] }
+    const body = await readJson(res)
+    return { ok: true, message: '', labels: body?.labels ?? [], relationships: body?.relationships ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), labels: [], relationships: [] }
+  }
+}
+
+/**
+ * Text-to-Cypher, generation ONLY — the appliance writes the query for a plain-
+ * English question and explains what executing it will do, without running it.
+ * The two-phase console pattern: generate → display (editable) → execute.
+ * An LLM call, so patient; a local model can take half a minute.
+ * @param {Settings} settings
+ * @param {string} question
+ */
+async function kgGenerate(settings, question) {
+  try {
+    const res = await post(settings, '/api/v1/admin/kg/generate', { question }, 120_000)
+    if (res.status === 404) return { ok: false, message: 'no generate endpoint — older appliance' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return {
+      ok: true,
+      cypher: body?.cypher ?? '',
+      explain: body?.explain ?? null,
+      durationMs: body?.durationMs ?? null,
+      // Server-validated before it was handed over; an older appliance sends
+      // neither field and the caller falls back to validating client-side.
+      valid: typeof body?.valid === 'boolean' ? body.valid : null,
+      violations: body?.violations ?? [],
+      attempts: body?.attempts ?? null,
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * The engine's strict preflight WITHOUT execution — the editor's validator.
+ * @param {Settings} settings
+ * @param {string} cypher
+ */
+async function kgValidate(settings, cypher) {
+  try {
+    const res = await post(settings, '/api/v1/admin/kg/validate', { cypher }, 30000)
+    if (res.status === 404) return { ok: false, message: 'no validate endpoint — older appliance' }
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const body = await readJson(res)
+    return { ok: true, valid: body?.ok === true, violations: body?.violations ?? [], detail: body?.message ?? null }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
  * Run virtual Cypher verbatim through the appliance's engine — the advanced
  * documents surface. Same executor the appliance's own ask path uses: per-user
  * scope rewrite, preflight, live producer joins. An admin endpoint, which the
@@ -431,6 +500,7 @@ module.exports = {
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
+  kgSchema, kgValidate, kgGenerate,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------

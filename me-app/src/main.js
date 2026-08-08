@@ -450,6 +450,13 @@ handle('docs:upload', (settings, filename, bytes, tags) => {
   return api.uploadDocument(settings, filename, bytes, tags)
 })
 
+handle('vc:schema', (settings) => api.kgSchema(settings))
+handle('vc:validate', (settings, cypher) => api.kgValidate(settings, cypher))
+handle('vc:generate', (settings, question) => {
+  log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
+  return api.kgGenerate(settings, question)
+})
+
 // The advanced documents surface: verbatim virtual Cypher, run by the appliance.
 handle('vc:execute', (settings, cypher) => {
   log(`[me-app] virtual cypher: ${JSON.stringify(cypher).slice(0, 160)}`)
