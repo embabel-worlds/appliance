@@ -227,6 +227,75 @@ async function ingestDocumentUrl(settings, url) {
   return { ok: true, message: body?.title ?? 'ingested' }
 }
 
+/**
+ * Upload one document's bytes for ingestion, with tags. The multipart twin of
+ * ingestDocumentUrl, for files that are NOT on a shared mount — an upload has
+ * no directory the server could derive a tag from, so the tags the user gave
+ * are the only scope it will ever have. Conversion is slow; be patient.
+ * @param {Settings} settings
+ * @param {string} filename
+ * @param {ArrayBuffer | Uint8Array} bytes
+ * @param {string[]} tags
+ */
+async function uploadDocument(settings, filename, bytes, tags) {
+  const form = new FormData()
+  form.append('file', new Blob([bytes]), filename)
+  for (const tag of tags) form.append('tags', tag)
+  let res
+  try {
+    // No explicit Content-Type: FormData carries its own multipart boundary.
+    res = await fetch(`${settings.baseUrl}/api/v1/documents/upload`, {
+      method: 'POST',
+      headers: { Authorization: auth(settings) },
+      body: form,
+      signal: AbortSignal.timeout(300_000),
+    })
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+  const body = await readJson(res)
+  if (!res.ok || body?.status === 'error') {
+    return { ok: false, message: body?.message ?? `HTTP ${res.status}` }
+  }
+  return { ok: true, message: body?.title ?? 'ingested', uri: body?.uri ?? null }
+}
+
+/**
+ * Run virtual Cypher verbatim through the appliance's engine — the advanced
+ * documents surface. Same executor the appliance's own ask path uses: per-user
+ * scope rewrite, preflight, live producer joins. An admin endpoint, which the
+ * appliance operator account holds (the compose file's ORG_ROLE_FALLBACK).
+ * Relevance joins fetch live and can take a while — be patient.
+ * @param {Settings} settings
+ * @param {string} cypher
+ */
+async function kgExecute(settings, cypher) {
+  let res
+  try {
+    res = await post(settings, '/api/v1/admin/kg/execute', { cypher }, 180_000)
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+  if (res.status === 404) {
+    return { ok: false, message: 'This appliance has no virtual-Cypher endpoint — it needs a newer image.' }
+  }
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, message: 'The appliance refused the admin query surface for these credentials.' }
+  }
+  const body = await readJson(res)
+  if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+  return {
+    ok: true,
+    rows: body?.rows ?? [],
+    rowCount: body?.rowCount ?? (body?.rows?.length ?? 0),
+    durationMs: body?.durationMs ?? null,
+    warnings: body?.warnings ?? [],
+    // The engine's own failure/emptiness explanations — a 200 can still carry them.
+    error: body?.error ?? null,
+    hint: body?.hint ?? null,
+  }
+}
+
 /*
  * Realms — the units of capability a world installs. The same three endpoints
  * the Worlds console speaks: the installed list, the discovery catalog (the
@@ -361,8 +430,8 @@ module.exports = {
   chatModel,
   listModels,
   getRoles,
-  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl,
-  listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
+  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
+  uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a

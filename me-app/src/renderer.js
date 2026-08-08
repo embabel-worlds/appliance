@@ -405,6 +405,8 @@ for (const tab of document.querySelectorAll('.tab')) {
     }
     // Chat wakes on first visit — no stream, no polling until someone looks.
     if (tab.dataset['tab'] === 'chat') startChat()
+    // The query template needs the mounts, so it builds on first visit too.
+    if (tab.dataset['tab'] === 'query') void initQuery()
   })
 }
 
@@ -724,6 +726,231 @@ askButton.addEventListener('click', () => void runAsk())
 askQuestion.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void runAsk()
 })
+
+// ---------------------------------------------------------------------------
+// Query — the advanced documents surface: virtual Cypher, editable.
+//
+// The Documents tab compiles a question into retrieval; this tab shows the
+// query. The prepopulated template is REAL and built from what this app
+// already knows — the folders it mounted — scoping retrieval to a folder's
+// tag, since the appliance stamps each indexed document with its bound root
+// directory. Everything is editable before it runs. The appliance applies the
+// per-user scope server-side either way, so an edited query can be wrong but
+// not unsafe.
+// ---------------------------------------------------------------------------
+
+const vcTerm = $('vc-term')
+const vcTag = $('vc-tag')
+const vcCypher = $('vc-cypher')
+const vcRun = $('vc-run')
+const vcStatus = $('vc-status')
+const vcResults = $('vc-results')
+
+/** Cypher string-literal escape: backslashes first, then quotes. */
+const cypherEscape = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+
+function vcTemplate() {
+  const term = vcTerm.value.trim() || 'your search'
+  const tag = vcTag.value
+  // Membership, never CONTAINS: tags is a LIST property, and a substring test
+  // over it is a type error — the same rule the appliance's schema teaches.
+  const scope = tag ? `\nWHERE '${cypherEscape(tag)}' IN d.tags` : ''
+  return (
+    `MATCH (:Concept {value:'${cypherEscape(term)}'})-[r:RELEVANT_TO {via:'keyword'}]->(d:Document)${scope}\n` +
+    `RETURN d.title AS title, r.score AS score, r.snippet AS snippet\n` +
+    `ORDER BY r.score DESC LIMIT 10`
+  )
+}
+
+/** The folder name a mount is known by in the container — and therefore its tag. */
+const mountTag = (mount) => mount.target.split('/').pop() ?? ''
+
+let vcReady = false
+async function initQuery() {
+  if (vcReady) return
+  vcReady = true
+  // The tag choices are the folders this app itself mounted — the same names
+  // the appliance stamps as default tags at ingest.
+  const state = await window.me.mountsState()
+  const none = document.createElement('option')
+  none.value = ''
+  none.textContent = 'all documents'
+  vcTag.append(none)
+  const mounts = state.mounts ?? []
+  for (const mount of mounts) {
+    const option = document.createElement('option')
+    option.value = mountTag(mount)
+    option.textContent = `tag: ${option.value}`
+    vcTag.append(option)
+  }
+  // Default to the first folder being INDEXED — the one whose documents are in
+  // the knowledge base and therefore actually carry the tag.
+  const indexed = mounts.find((m) => m.index) ?? mounts[0]
+  if (indexed) vcTag.value = mountTag(indexed)
+  vcCypher.value = vcTemplate()
+}
+
+$('vc-template').addEventListener('click', () => {
+  vcCypher.value = vcTemplate()
+})
+
+/** One results table, every cell textContent — row values come from documents, and documents lie. */
+function renderVcRows(rows) {
+  vcResults.innerHTML = ''
+  if (!rows.length) return
+  const columns = []
+  for (const row of rows) {
+    for (const key of Object.keys(row)) if (!columns.includes(key)) columns.push(key)
+  }
+  const table = document.createElement('table')
+  table.className = 'vc-table'
+  const head = table.createTHead().insertRow()
+  for (const column of columns) {
+    const th = document.createElement('th')
+    th.textContent = column
+    head.append(th)
+  }
+  const body = table.createTBody()
+  for (const row of rows) {
+    const tr = body.insertRow()
+    for (const column of columns) {
+      const value = row[column]
+      tr.insertCell().textContent =
+        value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value)
+    }
+  }
+  vcResults.append(table)
+}
+
+async function runVc() {
+  const cypher = vcCypher.value.trim()
+  if (!cypher) return
+  vcRun.disabled = true
+  vcResults.innerHTML = ''
+  setStatus(vcStatus, null, 'Running — relevance joins fetch live, give it a moment…')
+  const settings = currentSettings()
+  await window.me.saveSettings(settings)
+  let result
+  try {
+    result = await window.me.vcExecute(settings, cypher)
+  } catch (e) {
+    setStatus(vcStatus, false, e instanceof Error ? e.message : String(e))
+    vcRun.disabled = false
+    return
+  }
+  vcRun.disabled = false
+  if (!result.ok) {
+    setStatus(vcStatus, false, result.message)
+    return
+  }
+  if (result.error) {
+    setStatus(vcStatus, false, result.error)
+    return
+  }
+  // The receipt: what ran and what it cost. Warnings are the engine being honest
+  // about partial coverage — show them next to the count, never swallowed.
+  const parts = [`${result.rowCount} row(s)`]
+  if (result.durationMs != null) parts.push(`${result.durationMs} ms`)
+  for (const warning of result.warnings) parts.push(warning)
+  if (!result.rowCount && result.hint) parts.push(result.hint)
+  setStatus(vcStatus, result.warnings.length ? null : true, parts.join(' · '))
+  renderVcRows(result.rows)
+}
+
+vcRun.addEventListener('click', () => void runVc())
+
+// ---------------------------------------------------------------------------
+// Drop-to-ingest. An upload has NO directory the appliance could derive a tag
+// from (its uri is upload://…), so the tags asked for here are the only scope
+// the document will ever have — which is why the prompt is not optional-feeling
+// and why it prefills from the tag currently selected above.
+// ---------------------------------------------------------------------------
+
+const vcDrop = $('vc-drop')
+const vcIngestRow = $('vc-ingest-row')
+const vcIngestFiles = $('vc-ingest-files')
+const vcIngestTags = $('vc-ingest-tags')
+const vcIngestButton = $('vc-ingest')
+const vcIngestStatus = $('vc-ingest-status')
+
+/** Matches the indexer's cap — the pipeline's practical ceiling for one document. */
+const MAX_UPLOAD_BYTES = 30 * 1024 * 1024
+
+/** @type {File[]} */
+let pendingDrop = []
+
+// A file dropped anywhere else must not navigate the window away from
+// index.html — an Electron renderer that navigates has no way back.
+window.addEventListener('dragover', (e) => e.preventDefault())
+window.addEventListener('drop', (e) => e.preventDefault())
+
+vcDrop.addEventListener('dragover', () => vcDrop.classList.add('is-over'))
+vcDrop.addEventListener('dragleave', () => vcDrop.classList.remove('is-over'))
+vcDrop.addEventListener('drop', (e) => {
+  vcDrop.classList.remove('is-over')
+  const files = [...(e.dataTransfer?.files ?? [])]
+  if (!files.length) return
+  const oversize = files.filter((f) => f.size > MAX_UPLOAD_BYTES)
+  if (oversize.length) {
+    setStatus(vcIngestStatus, false, `Too big for the pipeline (30 MB max): ${oversize.map((f) => f.name).join(', ')}`)
+    return
+  }
+  pendingDrop = files
+  vcIngestFiles.textContent = files.map((f) => f.name).join(', ')
+  // The scope selected above is the likeliest intent; editable before anything is sent.
+  vcIngestTags.value = vcTag.value
+  vcIngestStatus.textContent = ''
+  vcIngestRow.hidden = false
+  vcIngestTags.focus()
+})
+
+$('vc-ingest-cancel').addEventListener('click', () => {
+  pendingDrop = []
+  vcIngestRow.hidden = true
+  vcIngestStatus.textContent = ''
+})
+
+async function runIngest() {
+  const files = pendingDrop
+  if (!files.length) return
+  const tags = vcIngestTags.value.split(',').map((t) => t.trim()).filter(Boolean)
+  vcIngestButton.disabled = true
+  const settings = currentSettings()
+  await window.me.saveSettings(settings)
+  let ok = 0
+  const failures = []
+  // Sequential on purpose: conversion is CPU-heavy server-side, and one slow
+  // PDF at a time is the same manners the background indexer keeps.
+  for (const [i, file] of files.entries()) {
+    setStatus(vcIngestStatus, null, `Ingesting ${file.name} (${i + 1}/${files.length})…`)
+    let result
+    try {
+      result = await window.me.uploadDocument(settings, file.name, await file.arrayBuffer(), tags)
+    } catch (e) {
+      result = { ok: false, message: e instanceof Error ? e.message : String(e) }
+    }
+    if (result.ok) ok++
+    else failures.push(`${file.name}: ${result.message}`)
+  }
+  vcIngestButton.disabled = false
+  pendingDrop = []
+  vcIngestRow.hidden = true
+  const receipt = [`ingested ${ok}/${files.length}`]
+  if (tags.length) receipt.push(`tagged ${tags.join(', ')}`)
+  receipt.push(...failures)
+  setStatus(vcIngestStatus, failures.length === 0, receipt.join(' · '))
+  // A tag used here is now a real scope — offer it in the dropdown without a restart.
+  for (const tag of tags) {
+    if (![...vcTag.options].some((o) => o.value === tag)) {
+      const option = document.createElement('option')
+      option.value = tag
+      option.textContent = `tag: ${tag}`
+      vcTag.append(option)
+    }
+  }
+}
+
+vcIngestButton.addEventListener('click', () => void runIngest())
 
 // ---------------------------------------------------------------------------
 // Models: which model does what.

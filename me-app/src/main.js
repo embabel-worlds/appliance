@@ -414,6 +414,19 @@ handle('models:set-role', (settings, roleId, model) => {
   return api.setRole(settings, roleId, model)
 })
 
+// Dropped-file ingestion: bytes arrive over IPC (no file paths cross the
+// bridge), tags ride along as the upload's only scope.
+handle('docs:upload', (settings, filename, bytes, tags) => {
+  log(`[me-app] uploading ${filename} (${bytes.byteLength ?? bytes.length} bytes, tags: ${tags.join(', ') || 'none'})`)
+  return api.uploadDocument(settings, filename, bytes, tags)
+})
+
+// The advanced documents surface: verbatim virtual Cypher, run by the appliance.
+handle('vc:execute', (settings, cypher) => {
+  log(`[me-app] virtual cypher: ${JSON.stringify(cypher).slice(0, 160)}`)
+  return api.kgExecute(settings, cypher)
+})
+
 handle('docs:ask', (settings, request, event) => {
   log(`[me-app] asking documents: ${JSON.stringify(request.question).slice(0, 120)}`)
   // Narrate the retrieval loop back to the window that asked — the ask itself is

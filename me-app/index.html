@@ -229,6 +229,32 @@
     .tab.is-on { color: var(--ink); border-bottom-color: var(--signal); background: none; }
 
     input.grow { flex: 1; min-width: 260px; }
+    /* The advanced query surface: the text IS code, so monospace; sized so the
+       template fits without scrolling, editable past that. */
+    #vc-cypher {
+      width: 100%; box-sizing: border-box; margin-bottom: 10px;
+      font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+      padding: 9px 11px; border-radius: 3px; border: 1px solid var(--rule);
+      background: #0b1220; color: var(--ink); resize: vertical; min-height: 128px;
+    }
+    #vc-cypher:focus {
+      outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4);
+    }
+    .vc-table { border-collapse: collapse; font-size: 12.5px; display: block; overflow-x: auto; margin-top: 6px; }
+    .vc-table th, .vc-table td { border: 1px solid var(--rule); padding: 5px 9px; text-align: left; vertical-align: top; }
+    .vc-table th {
+      font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.08em; color: var(--mid);
+    }
+    #vc-drop {
+      margin-top: 14px; padding: 18px; text-align: center;
+      border: 1px dashed var(--rule); border-radius: 3px;
+      font-size: 12.5px; color: var(--mid);
+    }
+    #vc-drop.is-over { border-color: var(--signal); color: var(--ink); background: rgba(98, 95, 255, 0.08); }
+    #vc-ingest-row { margin-top: 10px; }
+    #vc-ingest-row .grow input { width: 100%; box-sizing: border-box; }
+
     input[type=date], input[type=number], select {
       font: inherit; font-size: 13px; font-family: var(--sans); padding: 6px 8px;
       border-radius: 3px; border: 1px solid var(--rule); background: #0b1220; color: var(--ink);
@@ -435,6 +461,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab is-on" role="tab" data-tab="sensor">Machine</button>
       <button class="tab" role="tab" data-tab="documents">Documents</button>
+      <button class="tab" role="tab" data-tab="query">Query</button>
       <button class="tab" role="tab" data-tab="realms">Realms</button>
       <button class="tab" role="tab" data-tab="apps">Apps</button>
       <button class="tab" role="tab" data-tab="chat">Chat</button>
@@ -609,6 +636,50 @@
       </div>
     </section>
     </div><!-- /documents -->
+
+    <div class="tabpanel" data-panel="query" hidden>
+    <section class="panel">
+      <h2>Query your documents — virtual Cypher</h2>
+      <div class="panel-body">
+        <p class="hint">
+          The advanced surface. The Documents tab compiles your question into
+          retrieval; this tab shows the query and lets you edit it before it runs.
+          The template scopes retrieval to a <strong>tag</strong> — every document
+          indexed from a shared folder is tagged with that folder's name — and runs
+          through the appliance's virtual-Cypher engine: the relevance join fetches
+          live, and the tag filter is applied inside the search itself, not to its
+          results. Your query only ever sees your own documents; that scope is the
+          appliance's, not the query's.
+        </p>
+        <div class="row">
+          <input type="text" id="vc-term" class="grow"
+                 placeholder="what to search for — e.g. renewal terms" />
+          <label class="field">Scope
+            <select id="vc-tag"></select>
+          </label>
+          <button id="vc-template">Rebuild query</button>
+        </div>
+        <textarea id="vc-cypher" rows="6" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="vc-run" class="primary">Run</button>
+          <span id="vc-status" class="status"></span>
+        </div>
+        <div id="vc-results"></div>
+        <div id="vc-drop">
+          Drop files here to add them to your documents — you'll be asked for tags first.
+        </div>
+        <div class="row" id="vc-ingest-row" hidden>
+          <span id="vc-ingest-files" class="status"></span>
+          <label class="field grow">Tags — comma-separated
+            <input type="text" id="vc-ingest-tags" placeholder="e.g. papers, renewal" />
+          </label>
+          <button id="vc-ingest" class="primary">Ingest</button>
+          <button id="vc-ingest-cancel">Cancel</button>
+        </div>
+        <div id="vc-ingest-status" class="status"></div>
+      </div>
+    </section>
+    </div><!-- /query -->
 
     <div class="tabpanel" data-panel="realms" hidden>
     <section class="panel">
