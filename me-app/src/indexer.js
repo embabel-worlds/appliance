@@ -66,6 +66,9 @@ const WAIT_INTERVAL_MS = 3_000
 const SWEEP_INTERVAL_MS = 15 * 60_000
 const BACKLOG_INTERVAL_MS = 60_000
 const UNREACHABLE_RETRY_MS = 5 * 60_000
+// Mtime comparison slack: host stats are fractional-millisecond, the
+// container's mount view is whole-second — see the reconcile comment below.
+const MTIME_SLACK_MS = 2_000
 
 /** @type {IndexState} */
 const current = {
@@ -253,7 +256,15 @@ async function sweep() {
         //
         // A known document with NO stored modified date predates date capture:
         // re-read it, once, and it gains one.
-        if (known && storedModified !== undefined && storedModified >= file.mtimeMs) {
+        //
+        // The slack absorbs precision loss between the two views of ONE mtime:
+        // the host stat carries fractional milliseconds, while the container's
+        // bind mount truncates to whole SECONDS (measured: stored …482000 vs
+        // host …482726.215) — so an exact >= re-read the entire corpus on every
+        // sweep, "unchanged" being unreachable by construction. A real edit
+        // moves mtime by far more than the slack; one within 2s of the ingest
+        // is caught the next time the file is touched.
+        if (known && storedModified !== undefined && storedModified >= file.mtimeMs - MTIME_SLACK_MS) {
           current.skipped++
           continue
         }
