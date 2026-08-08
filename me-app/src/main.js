@@ -376,6 +376,12 @@ handle('realms:install', async (settings, repo) => {
   log(`[me-app] realm install: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
   return result
 })
+handle('realms:update', async (settings, name) => {
+  log(`[me-app] realm update requested: ${name}`)
+  const result = await api.updateRealm(settings, name)
+  log(`[me-app] realm update: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
+  return result
+})
 handle('realms:gaps', (settings) => api.realmGaps(settings))
 
 handle('models:list', (settings) => api.listModels(settings))

@@ -281,6 +281,26 @@ async function installRealm(settings, repo) {
 }
 
 /**
+ * Pull a realm's checkout and rebuild the world around it. Two things the UI
+ * has to be honest about, both of which come back in the server's summary:
+ * a realm referenced by local path has no checkout to pull and is already
+ * live, and a git-backed checkout is shared between every world on that ref,
+ * so this moves more than the current world.
+ * @param {Settings} settings @param {string} name installed realm name
+ */
+async function updateRealm(settings, name) {
+  try {
+    const res = await post(settings, `/api/v1/realms/${encodeURIComponent(name)}/update`, {}, 120_000)
+    const body = await readJson(res)
+    if (res.status === 404) return { ok: false, message: `no realm named ${name}` }
+    if (!res.ok) return { ok: false, message: body?.message ?? body?.detail ?? `HTTP ${res.status}` }
+    return { ok: true, message: body?.summary ?? 'updated' }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
  * The world's HTML apps — user vibe-coded, world-template and realm-shipped,
  * unioned server-side in the same order /apps/{name} serves them, so this
  * list and what a window opens can never disagree. readOnly=false marks the
@@ -324,7 +344,7 @@ module.exports = {
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl,
-  listRealms, realmCatalog, installRealm, realmGaps, listApps }
+  listRealms, realmCatalog, installRealm, updateRealm, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a

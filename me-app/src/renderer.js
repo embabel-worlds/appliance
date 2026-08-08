@@ -997,11 +997,28 @@ async function loadRealms() {
     setStatus(realmStatus, null, '')
   } else {
     for (const realm of installed.realms) {
+      /* The server's summary is the receipt and it differs in kind: a pulled
+       * checkout reports what moved, a local `path:` reference reports that it
+       * was already live. Show it verbatim rather than flattening both to
+       * "updated" — the difference is the thing the user needs to know. */
+      const update = document.createElement('button')
+      update.textContent = 'Update'
+      update.addEventListener('click', async () => {
+        update.disabled = true
+        update.textContent = 'Updating…'
+        const result = await window.me.updateRealm(settings, realm.name)
+        setStatus(realmStatus, result.ok, `${realm.name}: ${result.message}`)
+        if (result.ok) await loadRealms()
+        else {
+          update.disabled = false
+          update.textContent = 'Update'
+        }
+      })
       realmInstalledEl.append(realmRow({
         name: realm.name,
         description: realm.description,
         meta: [realm.version ? `v${realm.version}` : '', (realm.tags ?? []).join(' ')].filter(Boolean).join(' · '),
-      }, null))
+      }, update))
     }
     setStatus(realmStatus, true, `${installed.realms.length} installed`)
   }
