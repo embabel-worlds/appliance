@@ -414,6 +414,35 @@ handle('models:set-role', (settings, roleId, model) => {
   return api.setRole(settings, roleId, model)
 })
 
+// The Query Studio: the advanced virtual-Cypher surface in its own window, so
+// the main window stays a sensor panel rather than a database console. One
+// instance — a second open focuses the first.
+let studioWindow = null
+handle('query:popout', () => {
+  if (studioWindow) {
+    studioWindow.show()
+    studioWindow.focus()
+    return
+  }
+  studioWindow = new BrowserWindow({
+    width: 1180,
+    height: 840,
+    title: 'Embabel Me — Query Studio',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  void studioWindow.loadFile(path.join(__dirname, '..', 'query.html'))
+  studioWindow.on('closed', () => {
+    studioWindow = null
+  })
+})
+
 // Dropped-file ingestion: bytes arrive over IPC (no file paths cross the
 // bridge), tags ride along as the upload's only scope.
 handle('docs:upload', (settings, filename, bytes, tags) => {

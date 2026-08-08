@@ -405,8 +405,6 @@ for (const tab of document.querySelectorAll('.tab')) {
     }
     // Chat wakes on first visit — no stream, no polling until someone looks.
     if (tab.dataset['tab'] === 'chat') startChat()
-    // The query template needs the mounts, so it builds on first visit too.
-    if (tab.dataset['tab'] === 'query') void initQuery()
   })
 }
 
@@ -728,187 +726,10 @@ askQuestion.addEventListener('keydown', (e) => {
 })
 
 // ---------------------------------------------------------------------------
-// Query — the advanced documents surface: virtual Cypher, editable.
-//
-// The Documents tab compiles a question into retrieval; this tab shows the
-// query. The prepopulated template is REAL and built from what this app
-// already knows — the folders it mounted — scoping retrieval to a folder's
-// tag, since the appliance stamps each indexed document with its bound root
-// directory. Everything is editable before it runs. The appliance applies the
-// per-user scope server-side either way, so an edited query can be wrong but
-// not unsafe.
-// ---------------------------------------------------------------------------
-
-const vcTerm = $('vc-term')
-const vcTag = $('vc-tag')
-const vcCypher = $('vc-cypher')
-const vcRun = $('vc-run')
-const vcStatus = $('vc-status')
-const vcResults = $('vc-results')
-
-/** Cypher string-literal escape: backslashes first, then quotes. */
-const cypherEscape = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-
-function vcTemplate() {
-  const term = vcTerm.value.trim() || 'your search'
-  const tag = vcTag.value
-  // Membership, never CONTAINS: tags is a LIST property, and a substring test
-  // over it is a type error — the same rule the appliance's schema teaches.
-  const scope = tag ? `\nWHERE '${cypherEscape(tag)}' IN d.tags` : ''
-  return (
-    `MATCH (:Concept {value:'${cypherEscape(term)}'})-[r:RELEVANT_TO {via:'keyword'}]->(d:Document)${scope}\n` +
-    `RETURN d.title AS title, r.score AS score, r.snippet AS snippet\n` +
-    `ORDER BY r.score DESC LIMIT 10`
-  )
-}
-
-/** The folder name a mount is known by in the container — and therefore its tag. */
-const mountTag = (mount) => mount.target.split('/').pop() ?? ''
-
-/**
- * The universe of tags the corpus actually holds, with document counts — asked
- * of the appliance itself, through the same execute endpoint the Run button
- * uses. Null when the appliance cannot answer (older image, not reachable);
- * the caller falls back to mount names, which is what this dropdown was
- * before tags could also arrive by upload.
- */
-async function tagUniverse(settings) {
-  let result
-  try {
-    result = await window.me.vcExecute(
-      settings,
-      'MATCH (d:Document) WHERE d.tags IS NOT NULL UNWIND d.tags AS tag ' +
-        'RETURN tag, count(*) AS docs ORDER BY toLower(tag)',
-    )
-  } catch {
-    return null
-  }
-  if (!result.ok || result.error) return null
-  return result.rows
-    .map((row) => ({ tag: String(row.tag ?? ''), docs: Number(row.docs) || 0 }))
-    .filter((t) => t.tag)
-}
-
-/**
- * Rebuild the scope dropdown: every tag the corpus holds (counted), plus any
- * mounted folder whose tag is not there yet — a shared-but-not-yet-indexed
- * folder is still a scope the user is about to have. Keeps the current
- * selection when it survives the rebuild.
- */
-async function refreshTagOptions() {
-  const settings = currentSettings()
-  const [state, universe] = await Promise.all([window.me.mountsState(), tagUniverse(settings)])
-  const mounts = state.mounts ?? []
-  const options = (universe ?? []).map((t) => ({ value: t.tag, label: `tag: ${t.tag} · ${t.docs} doc(s)` }))
-  for (const mount of mounts) {
-    const tag = mountTag(mount)
-    if (tag && !options.some((o) => o.value === tag)) options.push({ value: tag, label: `tag: ${tag}` })
-  }
-  const previous = vcTag.value
-  vcTag.innerHTML = ''
-  const none = document.createElement('option')
-  none.value = ''
-  none.textContent = 'all documents'
-  vcTag.append(none)
-  for (const { value, label } of options) {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    vcTag.append(option)
-  }
-  const indexed = mounts.find((m) => m.index) ?? mounts[0]
-  const preferred =
-    (previous && options.some((o) => o.value === previous) && previous) ||
-    (indexed && options.some((o) => o.value === mountTag(indexed)) && mountTag(indexed)) ||
-    options[0]?.value ||
-    ''
-  vcTag.value = preferred
-}
-
-let vcReady = false
-async function initQuery() {
-  // The universe grows while the app is open (drop-to-ingest, the background
-  // indexer) — refresh the choices on every visit, not just the first.
-  await refreshTagOptions()
-  if (vcReady) return
-  vcReady = true
-  vcCypher.value = vcTemplate()
-}
-
-$('vc-template').addEventListener('click', () => {
-  vcCypher.value = vcTemplate()
-})
-
-/** One results table, every cell textContent — row values come from documents, and documents lie. */
-function renderVcRows(rows) {
-  vcResults.innerHTML = ''
-  if (!rows.length) return
-  const columns = []
-  for (const row of rows) {
-    for (const key of Object.keys(row)) if (!columns.includes(key)) columns.push(key)
-  }
-  const table = document.createElement('table')
-  table.className = 'vc-table'
-  const head = table.createTHead().insertRow()
-  for (const column of columns) {
-    const th = document.createElement('th')
-    th.textContent = column
-    head.append(th)
-  }
-  const body = table.createTBody()
-  for (const row of rows) {
-    const tr = body.insertRow()
-    for (const column of columns) {
-      const value = row[column]
-      tr.insertCell().textContent =
-        value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value)
-    }
-  }
-  vcResults.append(table)
-}
-
-async function runVc() {
-  const cypher = vcCypher.value.trim()
-  if (!cypher) return
-  vcRun.disabled = true
-  vcResults.innerHTML = ''
-  setStatus(vcStatus, null, 'Running — relevance joins fetch live, give it a moment…')
-  const settings = currentSettings()
-  await window.me.saveSettings(settings)
-  let result
-  try {
-    result = await window.me.vcExecute(settings, cypher)
-  } catch (e) {
-    setStatus(vcStatus, false, e instanceof Error ? e.message : String(e))
-    vcRun.disabled = false
-    return
-  }
-  vcRun.disabled = false
-  if (!result.ok) {
-    setStatus(vcStatus, false, result.message)
-    return
-  }
-  if (result.error) {
-    setStatus(vcStatus, false, result.error)
-    return
-  }
-  // The receipt: what ran and what it cost. Warnings are the engine being honest
-  // about partial coverage — show them next to the count, never swallowed.
-  const parts = [`${result.rowCount} row(s)`]
-  if (result.durationMs != null) parts.push(`${result.durationMs} ms`)
-  for (const warning of result.warnings) parts.push(warning)
-  if (!result.rowCount && result.hint) parts.push(result.hint)
-  setStatus(vcStatus, result.warnings.length ? null : true, parts.join(' · '))
-  renderVcRows(result.rows)
-}
-
-vcRun.addEventListener('click', () => void runVc())
-
-// ---------------------------------------------------------------------------
 // Drop-to-ingest. An upload has NO directory the appliance could derive a tag
 // from (its uri is upload://…), so the tags asked for here are the only scope
 // the document will ever have — which is why the prompt is not optional-feeling
-// and why it prefills from the tag currently selected above.
+// and why it prefills with the first indexed folder's name.
 // ---------------------------------------------------------------------------
 
 const vcDrop = $('vc-drop')
@@ -942,10 +763,15 @@ vcDrop.addEventListener('drop', (e) => {
   }
   pendingDrop = files
   vcIngestFiles.textContent = files.map((f) => f.name).join(', ')
-  // The scope selected above is the likeliest intent; editable before anything is sent.
-  vcIngestTags.value = vcTag.value
   vcIngestStatus.textContent = ''
   vcIngestRow.hidden = false
+  // The likeliest intent is the first folder already being indexed — same
+  // default the appliance would derive for a file in that folder.
+  void window.me.mountsState().then((state) => {
+    if (vcIngestTags.value) return
+    const indexed = (state.mounts ?? []).find((m) => m.index) ?? (state.mounts ?? [])[0]
+    if (indexed) vcIngestTags.value = indexed.target.split('/').pop() ?? ''
+  })
   vcIngestTags.focus()
 })
 
@@ -984,18 +810,12 @@ async function runIngest() {
   if (tags.length) receipt.push(`tagged ${tags.join(', ')}`)
   receipt.push(...failures)
   setStatus(vcIngestStatus, failures.length === 0, receipt.join(' · '))
-  // A tag used here is now a real scope — offer it in the dropdown without a restart.
-  for (const tag of tags) {
-    if (![...vcTag.options].some((o) => o.value === tag)) {
-      const option = document.createElement('option')
-      option.value = tag
-      option.textContent = `tag: ${tag}`
-      vcTag.append(option)
-    }
-  }
 }
 
 vcIngestButton.addEventListener('click', () => void runIngest())
+
+// The studio: the advanced surface lives in its own window.
+$('vc-open').addEventListener('click', () => void window.me.openQueryStudio())
 
 // ---------------------------------------------------------------------------
 // Models: which model does what.

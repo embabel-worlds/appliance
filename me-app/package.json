@@ -29,6 +29,7 @@
     "files": [
       "src/**/*",
       "index.html",
+      "query.html",
       "package.json"
     ],
     "mac": {

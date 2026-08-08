@@ -18,6 +18,7 @@ const api = {
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   askDocuments: (settings, request) => ipcRenderer.invoke('docs:ask', settings, request),
   vcExecute: (settings, cypher) => ipcRenderer.invoke('vc:execute', settings, cypher),
+  openQueryStudio: () => ipcRenderer.invoke('query:popout'),
   uploadDocument: (settings, filename, bytes, tags) => ipcRenderer.invoke('docs:upload', settings, filename, bytes, tags),
   // Live narration of a retrieval loop, for as long as one is running. Returns an
   // unsubscribe so a re-ask does not stack listeners.
