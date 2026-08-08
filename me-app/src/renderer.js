@@ -972,9 +972,41 @@ function realmRow(entry, action) {
   const meta = document.createElement('span')
   meta.className = 'meta'
   meta.textContent = entry.meta ?? ''
-  const description = document.createElement('p')
-  description.textContent = entry.description ?? ''
-  body.append(name, meta, description)
+  body.append(name, meta)
+
+  // Descriptions are realm.yml prose — often paragraphs of markdown. The row
+  // shows ONE plain line; "more" expands to the full text through the same
+  // sanitized markdown pipeline the chat and document answers use. Rendered
+  // lazily: most rows are never expanded.
+  const text = (entry.description ?? '').trim()
+  if (text) {
+    const firstLine = text.split('\n', 1)[0].trim()
+    const summary = document.createElement('p')
+    summary.className = 'desc-line'
+    // The toggle lives OUTSIDE the clipped span, or a long first line would
+    // ellipsis it away exactly when it is needed.
+    const clipped = document.createElement('span')
+    clipped.className = 'text'
+    clipped.textContent = firstLine
+    summary.append(clipped)
+    const full = document.createElement('div')
+    full.className = 'md full-desc'
+    full.hidden = true
+    if (text !== firstLine || firstLine.length > 160) {
+      const toggle = document.createElement('button')
+      toggle.className = 'more'
+      toggle.textContent = 'more'
+      toggle.addEventListener('click', () => {
+        const expanding = full.hidden
+        if (expanding && full.childNodes.length === 0) window.markdown.paint(full, text)
+        full.hidden = !expanding
+        clipped.hidden = expanding
+        toggle.textContent = expanding ? 'less' : 'more'
+      })
+      summary.append(toggle)
+    }
+    body.append(summary, full)
+  }
   row.append(tile, body)
   if (action) row.append(action)
   return row

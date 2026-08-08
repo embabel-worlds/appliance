@@ -175,8 +175,18 @@
     .realm .body { flex: 1; min-width: 0; }
     .realm .name { font-size: 13px; font-weight: 600; }
     .realm .meta { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: 8px; }
-    .realm p { font-size: 12.5px; color: var(--mid); margin-top: 2px; overflow-wrap: anywhere; }
-    .realm button { align-self: center; }
+    /* One line, however much prose the realm shipped; "more" unfolds the rest
+       as rendered markdown. The toggle is a text affordance, not a button. */
+    .realm .desc-line { font-size: 12.5px; color: var(--mid); margin-top: 2px;
+      display: flex; align-items: baseline; min-width: 0; }
+    .realm .desc-line .text { overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; min-width: 0; }
+    .realm .more { background: none; border: none; padding: 0 0 0 6px; margin: 0;
+      color: #c7d2ff; font-size: 11.5px; cursor: pointer; }
+    .realm .more:hover, .realm .more:focus-visible { background: none; border: none;
+      box-shadow: none; color: #fff; text-decoration: underline; outline: none; }
+    .realm .full-desc { font-size: 12.5px; color: var(--mid); margin-top: 4px; }
+    .realm > button { align-self: center; }
 
     .mount {
       display: flex; gap: 10px; align-items: center; padding: 8px 12px; margin-bottom: 8px;
