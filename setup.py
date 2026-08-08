@@ -706,6 +706,44 @@ def wire_coding_agents(result: dict) -> None:
           f"{url} --header \"Authorization: Bearer <token>\")")
 
 
+def resolve_world_repo(spec: str) -> str:
+    """A world-template repo from what a person can type — or paste from a link.
+
+    A full URL passes through untouched; `owner/repo` lands on GitHub; a BARE name
+    resolves only inside the embabel org, so a short name in a mailed instruction
+    cannot be squatted elsewhere. Whatever arrives, the resolved URL is echoed
+    before anything uses it: a world template ships behavior, and the operator
+    should see exactly whose."""
+    if spec.startswith(("http://", "https://", "git@", "file://")):
+        return spec
+    if "/" in spec:
+        return f"https://github.com/{spec}.git"
+    return f"https://github.com/embabel/{spec}.git"
+
+
+def set_bootstrap_world(spec: str) -> None:
+    """Write ASSISTANT_BOOTSTRAP_WORLD into .env, preserving everything else there.
+    .env rather than a compose edit: the compose files stay pull-only, and this is
+    exactly the kind of machine-local setting .env exists for."""
+    repo = resolve_world_repo(spec)
+    lines = []
+    if os.path.exists(".env"):
+        with open(".env") as f:
+            lines = f.read().splitlines()
+    replaced = False
+    for index, line in enumerate(lines):
+        if line.startswith("ASSISTANT_BOOTSTRAP_WORLD="):
+            lines[index] = f"ASSISTANT_BOOTSTRAP_WORLD={repo}"
+            replaced = True
+    if not replaced:
+        lines += ["", "# World template new worlds are cloned from (set by ./setup.py --world).",
+                  f"ASSISTANT_BOOTSTRAP_WORLD={repo}"]
+    with open(".env", "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"  World template: {repo}")
+    print("  (applies when a world is FIRST created — existing worlds keep their shape)\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
     parser.add_argument("door", nargs="?", choices=tuple(DOOR_COMPOSE),
@@ -720,6 +758,12 @@ def main() -> int:
                         help=f"appliance base URL (default: detected from the running door, else {DEFAULT_BASE})")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
     parser.add_argument(
+        "--world",
+        help="world template NEW worlds start from: a git URL, owner/repo on GitHub, "
+             "or a bare name in the embabel org. Written to .env as "
+             "ASSISTANT_BOOTSTRAP_WORLD; existing worlds are never reshaped",
+    )
+    parser.add_argument(
         "--ignore-env",
         action="store_true",
         help=f"always ask, even if {' or '.join(PROVIDER_ENV.values())} is set",
@@ -733,6 +777,11 @@ def main() -> int:
     try:
         # Compose files live next to this script; docker compose needs their directory.
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+        # BEFORE the door starts: the container reads .env at creation, and the
+        # template only matters when a world is first built.
+        if args.world:
+            set_bootstrap_world(args.world)
 
         if args.fresh:
             fresh_wipe()

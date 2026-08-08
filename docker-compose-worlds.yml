@@ -75,6 +75,8 @@ services:
       # every authenticated principal. Admin by default lets the setup-created
       # operator use admin-gated local surfaces; set `user` to opt out.
       - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
+      # World template for NEW worlds — same seam as the me door; see its file.
+      - ASSISTANT_BOOTSTRAP_WORLD
       - BRAVE_API_KEY
       - GITHUB_TOKEN
       - TELEGRAM_BOT_TOKEN

@@ -32,6 +32,17 @@ One command is the whole thing: it starts the door (pulling images on first run)
 shows you the boot, walks you through your account and model-provider key, and ends
 by telling you exactly where to go. Add `--fresh` to wipe everything and start over.
 
+**Preconfigured worlds.** `./me.py --world <repo>` makes new worlds start from a
+custom template instead of the default — an industry world with its realms already
+installed, say. Takes a git URL, `owner/repo` on GitHub, or a bare name in the
+embabel org; the resolved URL is echoed before anything uses it, and it applies
+only when a world is first created — an existing world is yours and is never
+reshaped. This is what a shareable install instruction looks like:
+
+```bash
+git clone https://github.com/embabel/appliance.git && cd appliance && ./me.py --world acme/legal-world
+```
+
 **Prerequisite: Docker Model Runner.** Embeddings run locally, so the appliance needs
 it enabled — `docker desktop enable model-runner` (Docker Desktop 4.40+, or Settings →
 AI), or the `docker-model-plugin` package on Docker Engine. Everything else is pulled.
