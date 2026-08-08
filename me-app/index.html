@@ -181,8 +181,45 @@
     input[type=number] { width: 74px; }
     select { text-transform: none; letter-spacing: normal; }
 
+    /* Rendered markdown — the assistant writes it, so these are the elements
+       every answer and reply is actually made of. Tight margins: these live
+       inside bubbles and cards, not on a page of their own. */
+    .md > :first-child { margin-top: 0; }
+    .md > :last-child { margin-bottom: 0; }
+    .md p { margin: 0 0 0.7em; }
+    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+      margin: 1.1em 0 0.45em; line-height: 1.3; font-weight: 600;
+    }
+    .md h1 { font-size: 1.3em; }
+    .md h2 { font-size: 1.18em; }
+    .md h3 { font-size: 1.06em; }
+    .md h4, .md h5, .md h6 { font-size: 1em; color: var(--mid); }
+    .md ul, .md ol { margin: 0 0 0.7em; padding-left: 1.35em; }
+    .md li { margin: 0.2em 0; }
+    .md li > ul, .md li > ol { margin-bottom: 0; }
+    .md code {
+      font-family: var(--mono); font-size: 0.88em;
+      background: rgba(255, 255, 255, 0.07); border: 1px solid var(--rule);
+      border-radius: 3px; padding: 0.5px 4px;
+    }
+    .md pre {
+      margin: 0 0 0.7em; padding: 9px 11px; overflow-x: auto;
+      background: rgba(0, 0, 0, 0.45); border: 1px solid var(--rule); border-radius: 3px;
+    }
+    .md pre code { background: none; border: none; padding: 0; font-size: 12px; line-height: 1.5; }
+    .md blockquote {
+      margin: 0 0 0.7em; padding-left: 10px;
+      border-left: 2px solid var(--rule); color: var(--mid);
+    }
+    .md hr { border: none; border-top: 1px solid var(--rule); margin: 1em 0; }
+    .md a { color: #c7d2ff; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+    .md a:hover { color: #fff; }
+    .md table { border-collapse: collapse; margin: 0 0 0.7em; font-size: 0.93em; display: block; overflow-x: auto; }
+    .md th, .md td { border: 1px solid var(--rule); padding: 4px 9px; text-align: left; }
+    .md th { background: rgba(255, 255, 255, 0.05); font-weight: 600; }
+
     /* The answer, and the citations that make it checkable. */
-    .answer { font-size: 14.5px; line-height: 1.65; margin: 14px 0 0; white-space: pre-wrap; }
+    .answer { font-size: 14.5px; line-height: 1.65; margin: 14px 0 0; }
     .answer:empty { display: none; }
     .cite {
       font-family: var(--mono); font-size: 11px; vertical-align: super; line-height: 1;
@@ -218,10 +255,15 @@
     }
     .chat-msg {
       padding: 8px 11px; border: 1px solid var(--rule); border-radius: 3px;
-      background: rgba(0, 0, 0, 0.35); font-size: 13.5px;
-      white-space: pre-wrap; overflow-wrap: anywhere; max-width: 86%;
+      background: rgba(0, 0, 0, 0.35); font-size: 13.5px; line-height: 1.55;
+      overflow-wrap: anywhere; max-width: 86%;
     }
-    .chat-msg.user { align-self: flex-end; border-color: rgba(98, 95, 255, 0.45); background: rgba(98, 95, 255, 0.10); }
+    /* The user's own words are shown exactly as typed, so their line breaks
+       have to survive; the assistant's arrive as markdown and get laid out. */
+    .chat-msg.user {
+      align-self: flex-end; white-space: pre-wrap;
+      border-color: rgba(98, 95, 255, 0.45); background: rgba(98, 95, 255, 0.10);
+    }
     .chat-msg.assistant { align-self: flex-start; }
     .chat-working { font-family: var(--mono); font-size: 12px; color: var(--mid); padding: 2px 1px; }
     .chat-empty { color: var(--faint); font-size: 13px; padding: 6px 1px; }
@@ -336,10 +378,10 @@
     </div>
 
     <nav class="tabs" role="tablist">
-      <button class="tab is-on" role="tab" data-tab="sensor">Sensor</button>
+      <button class="tab is-on" role="tab" data-tab="sensor">Machine</button>
       <button class="tab" role="tab" data-tab="documents">Documents</button>
-      <button class="tab" role="tab" data-tab="models">Models</button>
       <button class="tab" role="tab" data-tab="chat">Chat</button>
+      <button class="tab" role="tab" data-tab="models">Models</button>
     </nav>
 
 
@@ -379,25 +421,25 @@
       <div class="panel-body">
         <div class="row">
           <label class="check">
-            <input type="checkbox" id="stream-toggle" />
+            <input type="checkbox" id="stream-toggle" checked />
             Stream what I'm doing — frontmost app, active/idle, screen lock, Focus mode
           </label>
         </div>
         <div class="row">
           <label class="check">
-            <input type="checkbox" id="tier1-toggle" />
+            <input type="checkbox" id="tier1-toggle" checked />
             Also read the browser tab I'm on and what's playing
           </label>
         </div>
         <div class="row">
           <label class="check">
-            <input type="checkbox" id="verbs-see" />
+            <input type="checkbox" id="verbs-see" checked />
             Let my assistant LOOK at this Mac when I ask — what I'm doing, what tabs are open
           </label>
         </div>
         <div class="row">
           <label class="check">
-            <input type="checkbox" id="verbs-act" />
+            <input type="checkbox" id="verbs-act" checked />
             Let my assistant DO small things here — focus a tab, open a link, copy text, notify me
           </label>
         </div>
@@ -505,7 +547,7 @@
         </p>
         <div class="row"><span id="ask-model" class="status"></span></div>
         <div id="ask-status" class="status"></div>
-        <div id="ask-answer" class="answer"></div>
+        <div id="ask-answer" class="answer md"></div>
         <div id="ask-sources"></div>
       </div>
     </section>
@@ -573,6 +615,9 @@
     </div><!-- /chat -->
   </div>
 
+  <script src="src/vendor/marked.umd.js"></script>
+  <script src="src/vendor/purify.js"></script>
+  <script src="src/markdown.js"></script>
   <script src="src/graph.js"></script>
   <script src="src/renderer.js"></script>
 </body>

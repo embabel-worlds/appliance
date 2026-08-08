@@ -31,9 +31,16 @@ let tray = null
 /** @type {Settings} */
 // `verbs`: standing consent, BY GROUP, for what the assistant may ask this
 // machine to do (see verbs.js). The outbox loop runs while any group is on.
+//
+// ON by default. Everything these grant is local — the assistant reads and acts on
+// THIS machine, and nothing leaves it — so an appliance the user installed to know
+// about their machine should know about it on first run, rather than appearing inert
+// until they find four checkboxes. Each remains individually revocable here, and the
+// macOS permissions the deeper reads need are still asked for by the OS, per app, the
+// first time they are used.
 const DEFAULTS = {
   baseUrl: 'http://localhost:4242', username: '', password: '',
-  verbs: { see: false, act: false },
+  verbs: { see: true, act: true },
 }
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
@@ -235,9 +242,13 @@ function log(line) {
  * the user's data.
  */
 function handle(channel, fn) {
-  ipcMain.handle(channel, async (_e, ...args) => {
+  // The invoke event is passed as the LAST argument, after the caller's own — a
+  // handler that wants to push updates back while it works (docs:ask narrating a
+  // retrieval loop) needs the sender, and every handler that does not simply
+  // ignores the extra parameter.
+  ipcMain.handle(channel, async (event, ...args) => {
     try {
-      return await fn(...args)
+      return await fn(...args, event)
     } catch (e) {
       log(`[me-app] ${channel} failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`)
       throw new Error(`${channel}: ${e instanceof Error ? e.message : String(e)}`)
@@ -330,9 +341,15 @@ handle('models:set-role', (settings, roleId, model) => {
   return api.setRole(settings, roleId, model)
 })
 
-handle('docs:ask', (settings, request) => {
+handle('docs:ask', (settings, request, event) => {
   log(`[me-app] asking documents: ${JSON.stringify(request.question).slice(0, 120)}`)
-  return documents.ask(settings, request)
+  // Narrate the retrieval loop back to the window that asked — the ask itself is
+  // one long POST, so without this the user watches a spinner for up to 3 minutes
+  // with no way to tell progress from a hang.
+  return documents.ask(settings, request, (step) => {
+    log(`[me-app] retrieval ${step.step}: ${step.detail}`)
+    if (!event.sender.isDestroyed()) event.sender.send('docs:progress', step)
+  })
 })
 
 // Open a cited document where it actually lives. Reveal rather than open: the

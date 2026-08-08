@@ -45,6 +45,11 @@ async function init() {
   passwordInput.value = settings.password
   verbsSee.checked = Boolean(settings.verbs?.see)
   verbsAct.checked = Boolean(settings.verbs?.act)
+  // Consent defaults to ON, so ACT on it: a checkbox that reads "on" while nothing
+  // is streaming and nothing is listening is a lie the user has no way to see
+  // through. These start the loops for real, and unchecking stops them.
+  if (streamToggle.checked) void applyStream()
+  if (verbsSee.checked || verbsAct.checked) void applyVerbs()
   renderMounts(await window.me.mountsState())
   // The indexing watcher runs in the background across window closes and app
   // relaunches — say what it's up to whenever the panel opens.
@@ -430,8 +435,16 @@ function paintChat(messages) {
   }
   for (const m of messages) {
     const row = document.createElement('div')
-    row.className = `chat-msg ${m.role}`
-    row.textContent = m.content
+    /* The assistant writes markdown; what the user typed is what the user
+       typed, and re-interpreting it would rewrite their own words back at
+       them. */
+    if (m.role === 'assistant') {
+      row.className = 'chat-msg assistant md'
+      window.markdown.paint(row, m.content)
+    } else {
+      row.className = 'chat-msg user'
+      row.textContent = m.content
+    }
     chatScroll.append(row)
   }
   if (chatWorking) {
@@ -526,15 +539,10 @@ const askSources = $('ask-sources')
 const askButton = $('ask')
 
 /** Turn [1] into a chip that jumps to its source. */
-function renderAnswer(text) {
-  askAnswer.innerHTML = ''
-  const parts = text.split(/(\[\d{1,3}\])/g)
-  for (const part of parts) {
+function cites(text) {
+  return text.split(/(\[\d{1,3}\])/g).flatMap((part) => {
     const match = part.match(/^\[(\d{1,3})]$/)
-    if (!match) {
-      askAnswer.append(document.createTextNode(part))
-      continue
-    }
+    if (!match) return part ? [document.createTextNode(part)] : []
     const chip = document.createElement('button')
     chip.className = 'cite'
     chip.textContent = match[1]
@@ -546,8 +554,13 @@ function renderAnswer(text) {
       card.classList.add('flash')
       setTimeout(() => card.classList.remove('flash'), 1400)
     })
-    askAnswer.append(chip)
-  }
+    return [chip]
+  })
+}
+
+/** The answer as it was written — markdown, with its citations still live. */
+function renderAnswer(text) {
+  window.markdown.paint(askAnswer, text, cites)
 }
 
 /** One source card: where it lives, what it said, and how to go look. */
@@ -623,6 +636,25 @@ function renderSource(source) {
   return card
 }
 
+/**
+ * One retrieval step, in the user's terms. The appliance reports what the MODEL
+ * chose to do — the query it ran, the document it opened — because that is the
+ * evidence that the answer came from their files rather than the model's memory.
+ */
+function describeStep(step) {
+  const n = step.results === null || step.results === undefined ? '' : ` (${step.results})`
+  switch (step.step) {
+    case 'search_semantic': return `Searching for “${step.detail}”${n}`
+    case 'search_keyword': return `Looking up “${step.detail}”${n}`
+    case 'read_document': return `Reading ${step.detail}`
+    case 'judged': return `Choosing what is relevant — ${step.detail}`
+    case 'composing': return 'Writing the answer'
+    case 'fallback': return 'The retrieval loop failed — falling back to plain search'
+    case 'failed': return `Retrieval failed: ${step.detail}`
+    default: return step.detail || step.step
+  }
+}
+
 async function runAsk() {
   const question = askQuestion.value.trim()
   if (!question) return
@@ -632,6 +664,15 @@ async function runAsk() {
   setStatus(askStatus, null, 'Searching your documents…')
   const settings = currentSettings()
   await window.me.saveSettings(settings)
+
+  // Narrate the loop. Retrieval can legitimately run for a minute or more, and a
+  // spinner cannot tell the user whether it is reading their third document or
+  // has died — which is exactly when people cancel work that was about to finish.
+  const steps = []
+  const unsubscribe = window.me.onAskProgress((step) => {
+    steps.push(step)
+    setStatus(askStatus, null, `${describeStep(step)} · ${steps.length} step${steps.length === 1 ? '' : 's'}`)
+  })
 
   let result
   try {
@@ -643,11 +684,13 @@ async function runAsk() {
       topK: Number($('ask-topk').value) || undefined,
     })
   } catch (e) {
+    unsubscribe()
     setStatus(askStatus, false, `Ask failed: ${e instanceof Error ? e.message : String(e)}`)
     askButton.disabled = false
     return
   }
 
+  unsubscribe()
   askButton.disabled = false
   if (!result.ok) {
     setStatus(askStatus, false, result.message)

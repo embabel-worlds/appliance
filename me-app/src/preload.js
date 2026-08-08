@@ -17,6 +17,13 @@ const api = {
   openAutomationSettings: () => ipcRenderer.invoke('grants:open-settings'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   askDocuments: (settings, request) => ipcRenderer.invoke('docs:ask', settings, request),
+  // Live narration of a retrieval loop, for as long as one is running. Returns an
+  // unsubscribe so a re-ask does not stack listeners.
+  onAskProgress: (cb) => {
+    const listener = (_e, step) => cb(step)
+    ipcRenderer.on('docs:progress', listener)
+    return () => ipcRenderer.removeListener('docs:progress', listener)
+  },
   listModels: (settings) => ipcRenderer.invoke('models:list', settings),
   getDefaultModel: () => ipcRenderer.invoke('models:default'),
   chatModel: (settings) => ipcRenderer.invoke('models:chat', settings),

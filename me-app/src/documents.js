@@ -18,6 +18,8 @@ const mounts = require('./mounts')
 /** @typedef {import('./types').Settings} Settings */
 
 const ASK_TIMEOUT_MS = 180_000 // agentic retrieval runs a bounded LLM loop; be patient
+/** How long to wait for the progress stream before asking anyway. */
+const PROGRESS_CONNECT_MS = 1_500
 
 /** @param {Settings} settings */
 const auth = (settings) =>
@@ -92,7 +94,90 @@ const tildeify = (p) => p.replace(require('node:os').homedir(), '~')
  * @param {Settings} settings
  * @param {{question: string, from?: string, to?: string, topK?: number, history?: string[]}} request
  */
-async function ask(settings, request) {
+/**
+ * Watch a retrieval loop as it runs.
+ *
+ * Agentic retrieval is the slowest thing the appliance does — a bounded LLM loop
+ * that searches, reformulates and reads documents, and legitimately takes tens of
+ * seconds. Until now that was a spinner: indistinguishable from a wedged model, a
+ * model still loading, or a dead appliance. So the appliance narrates each step it
+ * takes, and this reads that narration.
+ *
+ * Two details that are not optional:
+ *
+ *  - The stream is per-USER and multicast with NO replay, so it must be connected
+ *    BEFORE the question is posted or the first searches are simply missed. The
+ *    endpoint sends `connected` as soon as it is ready, so we wait for that.
+ *  - Every window of every app subscribed to this user sees every event, so the
+ *    caller stamps its own operation id on the request (the appliance echoes it
+ *    back) and we ignore anything that is not ours. Without it, asking a question
+ *    in one window narrates into another.
+ *
+ * Best-effort throughout: if the stream cannot be opened the question still runs,
+ * silently, exactly as it did before.
+ *
+ * @param {Settings} settings
+ * @param {string} operationId
+ * @param {(step: {step: string, detail: string, results: number | null}) => void} onStep
+ */
+async function watchProgress(settings, operationId, onStep) {
+  const controller = new AbortController()
+  let res
+  try {
+    res = await fetch(`${settings.baseUrl}/api/v1/virtual-cypher/events`, {
+      headers: { Authorization: auth(settings), Accept: 'text/event-stream' },
+      signal: controller.signal,
+    })
+  } catch {
+    return { close: () => {} } // no narration; the question still gets asked
+  }
+  if (!res.ok || !res.body) return { close: () => {} }
+
+  let connected
+  const ready = new Promise((resolve) => { connected = resolve })
+
+  void (async () => {
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for await (const chunk of res.body) {
+        buffer += decoder.decode(chunk, { stream: true })
+        // SSE frames are separated by a blank line; a frame may span chunks.
+        let split
+        while ((split = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, split)
+          buffer = buffer.slice(split + 2)
+          const data = frame
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.slice(5).trim())
+            .join('')
+          if (!data) continue
+          let payload
+          try { payload = JSON.parse(data) } catch { continue }
+          if (payload.userId !== undefined && payload.type === undefined) { connected(); continue }
+          if (payload.type !== 'retrieval.step') continue
+          if (payload.operationId !== operationId) continue // another window's question
+          onStep({ step: payload.step, detail: payload.detail, results: payload.results ?? null })
+        }
+      }
+    } catch {
+      // Aborted on completion, or the appliance went away mid-answer. Either way
+      // the ask itself reports what happened; narration just stops.
+    }
+  })()
+
+  // Don't wait forever for a stream that may not be there — an older appliance
+  // has no such endpoint, and the question must not be held hostage to narration.
+  await Promise.race([ready, new Promise((r) => setTimeout(r, PROGRESS_CONNECT_MS))])
+  return { close: () => controller.abort() }
+}
+
+async function ask(settings, request, onStep) {
+  // The caller's own correlation id: the progress stream is per-user, so this is
+  // what separates THIS question's steps from every other window's.
+  const operationId = `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const progress = onStep ? await watchProgress(settings, operationId, onStep) : { close: () => {} }
   const body = {
     question: request.question,
     dateField: request.dateField || undefined,
@@ -107,13 +192,20 @@ async function ask(settings, request) {
   try {
     res = await fetch(`${settings.baseUrl}/api/v1/documents/ask`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: auth(settings) },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: auth(settings),
+        // Echoed back on every progress event, so we can tell ours from anyone else's.
+        'X-Embabel-Operation-Id': operationId,
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
     })
   } catch (e) {
     const message = e instanceof Error ? (e.cause?.message ?? e.message) : String(e)
     return { ok: false, message: `Could not reach the appliance: ${message}` }
+  } finally {
+    progress.close()
   }
 
   if (res.status === 404) {
