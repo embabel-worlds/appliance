@@ -940,6 +940,189 @@ for (const tab of document.querySelectorAll('.tab')) {
   })
 }
 
+/* ---------------------------------------------------------------------------
+ * Realms — what the appliance can do, and what it could. The same surface the
+ * Worlds console speaks: installed realms from the world, the discovery
+ * catalog from the directory (a live scan of realm repos, grouped by
+ * provider), install by repo. Installing rebuilds the world server-side, so
+ * the refreshed lists ARE the receipt. No realm declares an icon, so the tile
+ * is a synthesized monogram.
+ */
+
+const realmInstalledEl = $('realm-installed')
+const realmCatalogEl = $('realm-catalog')
+const realmGapsEl = $('realm-gaps')
+const realmStatus = $('realm-status')
+
+/**
+ * @param {{name?: string, version?: string, description?: string, meta?: string}} entry
+ * @param {HTMLElement | null} action
+ */
+function realmRow(entry, action) {
+  const row = document.createElement('div')
+  row.className = 'realm'
+  const tile = document.createElement('div')
+  tile.className = 'tile'
+  tile.textContent = (entry.name ?? '?').slice(0, 2)
+  const body = document.createElement('div')
+  body.className = 'body'
+  const name = document.createElement('span')
+  name.className = 'name'
+  name.textContent = entry.name ?? '(unnamed)'
+  const meta = document.createElement('span')
+  meta.className = 'meta'
+  meta.textContent = entry.meta ?? ''
+  const description = document.createElement('p')
+  description.textContent = entry.description ?? ''
+  body.append(name, meta, description)
+  row.append(tile, body)
+  if (action) row.append(action)
+  return row
+}
+
+async function loadRealms() {
+  setStatus(realmStatus, null, 'loading…')
+  const settings = currentSettings()
+  const [installed, catalog, gaps] = await Promise.all([
+    window.me.listRealms(settings),
+    window.me.realmCatalog(settings),
+    window.me.realmGaps(settings),
+  ])
+
+  realmInstalledEl.innerHTML = ''
+  if (!installed.ok) {
+    setStatus(realmStatus, false, installed.message)
+  } else if (installed.realms.length === 0) {
+    realmInstalledEl.textContent = 'No realms installed yet — pick one below.'
+    setStatus(realmStatus, null, '')
+  } else {
+    for (const realm of installed.realms) {
+      realmInstalledEl.append(realmRow({
+        name: realm.name,
+        description: realm.description,
+        meta: [realm.version ? `v${realm.version}` : '', (realm.tags ?? []).join(' ')].filter(Boolean).join(' · '),
+      }, null))
+    }
+    setStatus(realmStatus, true, `${installed.realms.length} installed`)
+  }
+
+  realmCatalogEl.innerHTML = ''
+  const have = new Set((installed.realms ?? []).map((r) => r.name))
+  const discoverable = (catalog.providers ?? [])
+    .flatMap((p) => (p.realms ?? []).map((r) => ({ ...r, provider: p.provider })))
+    .filter((r) => !r.installed && !have.has(r.name))
+    .sort((a, b) => (b.metadata?.stars ?? 0) - (a.metadata?.stars ?? 0))
+  if (!catalog.ok) {
+    realmCatalogEl.textContent = `Could not reach the directory: ${catalog.message}`
+  } else if (discoverable.length === 0) {
+    realmCatalogEl.textContent = 'Nothing new — every discoverable realm is already installed.'
+  } else {
+    for (const entry of discoverable) {
+      const install = document.createElement('button')
+      install.textContent = 'Install'
+      install.addEventListener('click', async () => {
+        install.disabled = true
+        install.textContent = 'Installing…'
+        const result = await window.me.installRealm(settings, entry.source ?? entry.url)
+        if (result.ok) {
+          setStatus(realmStatus, true, `${result.message} — world rebuilt with it`)
+          await loadRealms()
+        } else {
+          setStatus(realmStatus, false, result.message)
+          install.disabled = false
+          install.textContent = 'Install'
+        }
+      })
+      const stars = entry.metadata?.stars
+      realmCatalogEl.append(realmRow({
+        name: entry.name,
+        description: entry.description,
+        meta: [entry.provider, stars ? `★ ${stars}` : ''].filter(Boolean).join(' · '),
+      }, install))
+    }
+  }
+
+  // Inert capability is invisible unless someone says so: name the variable
+  // that unlocks each idle API, in the same breath as discovery.
+  realmGapsEl.innerHTML = ''
+  for (const api of gaps.inertApis ?? []) {
+    const line = document.createElement('p')
+    line.className = 'hint'
+    line.textContent = `${api.name} is installed but idle — set ${api.unlockedBy ?? 'its key'} to unlock it.`
+    realmGapsEl.append(line)
+  }
+}
+
+let realmsLoaded = false
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => {
+    if (tab.dataset['tab'] === 'realms' && !realmsLoaded) {
+      realmsLoaded = true
+      void loadRealms()
+    }
+  })
+}
+$('realm-refresh').addEventListener('click', () => void loadRealms())
+
+/* ---------------------------------------------------------------------------
+ * Apps — the world's applications as a launcher (#17). One card per app,
+ * unioned server-side across user / world-template / realm tiers by the same
+ * order that serves them; a click opens the app in its own child window,
+ * already signed in (the main process answers the Basic challenge). readOnly
+ * distinguishes shipped apps from the user's own vibe-coded ones.
+ */
+
+const appGrid = $('app-grid')
+const appsStatus = $('apps-status')
+
+async function loadApps() {
+  setStatus(appsStatus, null, 'loading…')
+  const settings = currentSettings()
+  const result = await window.me.listApps(settings)
+  appGrid.innerHTML = ''
+  if (!result.ok) {
+    setStatus(appsStatus, false, result.message)
+    return
+  }
+  if (result.apps.length === 0) {
+    appGrid.textContent = 'No apps yet — vibe-code one in chat, or install a realm that ships some.'
+    setStatus(appsStatus, null, '')
+    return
+  }
+  for (const app of result.apps) {
+    const display = (app.name ?? '').replace(/\.html?$/, '')
+    const card = document.createElement('button')
+    card.className = 'app-card'
+    const tile = document.createElement('div')
+    tile.className = 'tile'
+    tile.textContent = display.slice(0, 2)
+    const name = document.createElement('div')
+    name.className = 'name'
+    name.textContent = display
+    const description = document.createElement('p')
+    description.textContent = app.description ?? ''
+    const meta = document.createElement('div')
+    meta.className = 'meta'
+    meta.textContent = app.readOnly ? 'shipped' : 'yours'
+    card.append(tile, name, description, meta)
+    card.addEventListener('click', () =>
+      void window.me.openApp(settings, app.name, app.description || display))
+    appGrid.append(card)
+  }
+  setStatus(appsStatus, true, `${result.apps.length} app(s)`)
+}
+
+let appsLoaded = false
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => {
+    if (tab.dataset['tab'] === 'apps' && !appsLoaded) {
+      appsLoaded = true
+      void loadApps()
+    }
+  })
+}
+$('apps-refresh').addEventListener('click', () => void loadApps())
+
 
 // ---------------------------------------------------------------------------
 // What runs where.

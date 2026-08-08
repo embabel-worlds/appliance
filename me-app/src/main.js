@@ -317,6 +317,67 @@ ipcMain.handle('verbs:state', () => outbox.state())
 // Local files: host folders shared read-only into the assistant container so
 // the appliance can index them. All the actual work — the override file, the
 // container recreate — lives in mounts.js; this is just the IPC skin.
+/*
+ * Apps — the HTML applications a world carries (vibe-coded, world-template,
+ * realm-shipped), each opened in its OWN child window pointed straight at the
+ * appliance. A dedicated window rather than an embedded webview on purpose:
+ * the app gets first-class presence (its own frame, its own lifecycle) and the
+ * sensor surface never hosts foreign HTML. The window answers the appliance's
+ * HTTP Basic challenge with the saved credentials, so it opens signed in; any
+ * link leaving the appliance goes out through the user's browser.
+ */
+
+/** @type {Map<string, BrowserWindow>} — one window per app, refocused on reopen */
+const appWindows = new Map()
+
+/** @param {Settings} settings @param {string} name @param {string} [title] */
+function openAppWindow(settings, name, title) {
+  const existing = appWindows.get(name)
+  if (existing && !existing.isDestroyed()) {
+    existing.show()
+    existing.focus()
+    return
+  }
+  const win = new BrowserWindow({
+    width: 1000,
+    height: 760,
+    title: title || name.replace(/\.html?$/, ''),
+    backgroundColor: '#000000',
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+  })
+  appWindows.set(name, win)
+  win.on('closed', () => appWindows.delete(name))
+  win.webContents.on('login', (event, _details, _authInfo, callback) => {
+    event.preventDefault()
+    callback(settings.username, settings.password)
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  /* The served page sets its own <title>; don't let it be overwritten by ours
+     and then flicker back — but do keep whatever the app itself declares. */
+  void win.loadURL(`${settings.baseUrl}/apps/${encodeURIComponent(name)}`)
+}
+
+handle('apps:list', (settings) => api.listApps(settings))
+handle('apps:open', (settings, name, title) => {
+  log(`[me-app] opening app ${name}`)
+  openAppWindow(settings, name, title)
+  return true
+})
+
+/* Realms: discovery and install, same surface the Worlds console speaks. */
+handle('realms:list', (settings) => api.listRealms(settings))
+handle('realms:catalog', (settings) => api.realmCatalog(settings))
+handle('realms:install', async (settings, repo) => {
+  log(`[me-app] realm install requested: ${repo}`)
+  const result = await api.installRealm(settings, repo)
+  log(`[me-app] realm install: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
+  return result
+})
+handle('realms:gaps', (settings) => api.realmGaps(settings))
+
 handle('models:list', (settings) => api.listModels(settings))
 handle('models:chat', (settings) => api.chatModel(settings))
 handle('models:in-use', (settings) => api.modelsInUse(settings))

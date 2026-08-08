@@ -24,6 +24,12 @@ const api = {
     ipcRenderer.on('docs:progress', listener)
     return () => ipcRenderer.removeListener('docs:progress', listener)
   },
+  listApps: (settings) => ipcRenderer.invoke('apps:list', settings),
+  openApp: (settings, name, title) => ipcRenderer.invoke('apps:open', settings, name, title),
+  listRealms: (settings) => ipcRenderer.invoke('realms:list', settings),
+  realmCatalog: (settings) => ipcRenderer.invoke('realms:catalog', settings),
+  installRealm: (settings, repo) => ipcRenderer.invoke('realms:install', settings, repo),
+  realmGaps: (settings) => ipcRenderer.invoke('realms:gaps', settings),
   listModels: (settings) => ipcRenderer.invoke('models:list', settings),
   getDefaultModel: () => ipcRenderer.invoke('models:default'),
   chatModel: (settings) => ipcRenderer.invoke('models:chat', settings),

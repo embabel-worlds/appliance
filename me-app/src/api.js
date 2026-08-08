@@ -227,6 +227,94 @@ async function ingestDocumentUrl(settings, url) {
   return { ok: true, message: body?.title ?? 'ingested' }
 }
 
+/*
+ * Realms — the units of capability a world installs. The same three endpoints
+ * the Worlds console speaks: the installed list, the discovery catalog (the
+ * directory's live scan of realm-* repos, grouped by provider), and install —
+ * which appends the realm to the world's realms.yml and rebuilds it, so the
+ * moment install returns the world is already regaining consciousness with
+ * its new capability. Gaps is the honest postscript: which installed APIs
+ * are inert until a key is set, and which variable unlocks each.
+ */
+
+/** @param {Settings} settings */
+async function listRealms(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/realms`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, realms: [] }
+    return { ok: true, message: '', realms: (await readJson(res)) ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), realms: [] }
+  }
+}
+
+/** @param {Settings} settings */
+async function realmCatalog(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/directory/browse/realms`, {
+      headers: { Authorization: auth(settings) },
+      /* a live GitHub scan on a cold cache — allow it time */
+      signal: AbortSignal.timeout(60000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, providers: [] }
+    const body = await readJson(res)
+    return { ok: true, message: '', providers: body?.providers ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), providers: [] }
+  }
+}
+
+/** @param {Settings} settings @param {string} repo clone URL or owner/repo */
+async function installRealm(settings, repo) {
+  try {
+    const res = await post(settings, '/api/v1/realms', { repo }, 120_000)
+    const body = await readJson(res)
+    if (res.status === 409) return { ok: false, message: 'already installed' }
+    if (!res.ok) return { ok: false, message: body?.detail ?? body?.message ?? `HTTP ${res.status}` }
+    return { ok: true, message: body?.name ? `installed ${body.name}` : 'installed' }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * The world's HTML apps — user vibe-coded, world-template and realm-shipped,
+ * unioned server-side in the same order /apps/{name} serves them, so this
+ * list and what a window opens can never disagree. readOnly=false marks the
+ * user's own apps.
+ * @param {Settings} settings
+ */
+async function listApps(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/artifacts/app`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, apps: [] }
+    return { ok: true, message: '', apps: (await readJson(res)) ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), apps: [] }
+  }
+}
+
+/** @param {Settings} settings */
+async function realmGaps(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/realms/gaps`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, inertApis: [] }
+    const body = await readJson(res)
+    return { ok: true, message: '', inertApis: body?.inertApis ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), inertApis: [] }
+  }
+}
+
 module.exports = {
   loadedLocalModels,
   modelsInUse,
@@ -235,7 +323,8 @@ module.exports = {
   chatModel,
   listModels,
   getRoles,
-  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl }
+  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl,
+  listRealms, realmCatalog, installRealm, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a
