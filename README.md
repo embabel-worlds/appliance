@@ -40,8 +40,12 @@ only when a world is first created — an existing world is yours and is never
 reshaped. This is what a shareable install instruction looks like:
 
 ```bash
-git clone https://github.com/embabel/appliance.git && cd appliance && ./me.py --world acme/legal-world
+git clone https://github.com/embabel/appliance.git && cd appliance && ./me.py --world arts-world
 ```
+
+Templates are the blessed way to preconfigure: named, versioned artifacts you
+can audit and fix in one place — see [WORLD_TEMPLATES.md](WORLD_TEMPLATES.md)
+for how inheritance works and how to mint a profile template in three files.
 
 **Prerequisite: Docker Model Runner.** Embeddings run locally, so the appliance needs
 it enabled — `docker desktop enable model-runner` (Docker Desktop 4.40+, or Settings →

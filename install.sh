@@ -101,8 +101,11 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with ma
 say "Done. Starting setup…"
 echo
 cd "$HOME_DIR"
+# Arguments ride through to the door script untouched, which is what makes a
+# preconfigured install a one-liner:
+#   curl -fsSL https://get.embabel.com/me | sh -s -- --world legal-world
 if [ "$DOOR" = "worlds" ]; then
-  exec python3 ./worlds.py
+  exec python3 ./worlds.py "$@"
 else
-  exec python3 ./me.py
+  exec python3 ./me.py "$@"
 fi
