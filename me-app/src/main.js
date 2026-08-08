@@ -382,6 +382,12 @@ handle('realms:update', async (settings, name) => {
   log(`[me-app] realm update: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
   return result
 })
+handle('realms:update-all', async (settings) => {
+  log('[me-app] realm update-all requested')
+  const result = await api.updateAllRealms(settings)
+  log(`[me-app] realm update-all: ${result.ok ? 'ok' : 'FAILED'} — ${result.results.length} realm(s)`)
+  return result
+})
 handle('realms:gaps', (settings) => api.realmGaps(settings))
 
 handle('models:list', (settings) => api.listModels(settings))

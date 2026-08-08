@@ -620,9 +620,19 @@
         </p>
         <div id="realm-installed"></div>
         <div class="row">
+          <!-- Two different questions, so two buttons: Refresh re-reads what the
+               appliance already has, Update goes to the network for what it
+               doesn't. A realm's checkout is never pulled on startup (that would
+               make every boot wait on GitHub), so pushing a realm changes nothing
+               here until someone asks for it. -->
           <button id="realm-refresh">Refresh</button>
+          <button id="realm-update-all">Update all</button>
           <span id="realm-status" class="status"></span>
         </div>
+        <p class="hint">
+          Refresh re-reads the list. Update all pulls every git-backed realm —
+          do that after pushing changes to one.
+        </p>
       </div>
     </section>
     <section class="panel">

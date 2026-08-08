@@ -1113,6 +1113,37 @@ for (const tab of document.querySelectorAll('.tab')) {
 }
 $('realm-refresh').addEventListener('click', () => void loadRealms())
 
+/* Update all: the answer to "I pushed my realm and nothing changed". A realm's
+ * checkout is materialized once and never auto-pulled — RealmReferenceResolver
+ * is explicit that refresh is manual so a startup never blocks on the network —
+ * so neither Refresh nor restarting the appliance can surface a push. This is
+ * the only thing that does.
+ *
+ * Reports per realm rather than one verdict: a partial success is the normal
+ * case, and an unreachable remote must not read as "nothing to update". */
+const realmUpdateAll = $('realm-update-all')
+realmUpdateAll.addEventListener('click', async () => {
+  realmUpdateAll.disabled = true
+  realmUpdateAll.textContent = 'Updating…'
+  setStatus(realmStatus, null, 'pulling every git-backed realm…')
+  const result = await window.me.updateAllRealms(currentSettings())
+  if (!result.ok) {
+    setStatus(realmStatus, false, result.message)
+  } else {
+    const updated = result.results.filter((r) => r.status === 'updated')
+    const failed = result.results.filter((r) => r.status === 'error')
+    const moved = updated.filter((r) => !/already up.to.date/i.test(r.summary ?? ''))
+    const parts = [
+      moved.length ? `${moved.map((r) => r.name).join(', ')} updated` : 'nothing new',
+      failed.length ? `FAILED: ${failed.map((r) => `${r.name} (${r.message})`).join(', ')}` : '',
+    ].filter(Boolean)
+    setStatus(realmStatus, failed.length === 0, parts.join(' · '))
+    await loadRealms()
+  }
+  realmUpdateAll.disabled = false
+  realmUpdateAll.textContent = 'Update all'
+})
+
 /* ---------------------------------------------------------------------------
  * Apps — the world's applications as a launcher (#17). One card per app,
  * unioned server-side across user / world-template / realm tiers by the same

@@ -301,6 +301,24 @@ async function updateRealm(settings, name) {
 }
 
 /**
+ * Pull every git-backed realm at once. Each entry comes back with its own
+ * status — `updated`, `local` (a path reference, already live) or `error` —
+ * because a partial success is the normal case: one unreachable remote must
+ * not read as "nothing updated", nor be hidden behind an overall "ok".
+ * @param {Settings} settings
+ */
+async function updateAllRealms(settings) {
+  try {
+    const res = await post(settings, '/api/v1/realms/update-all', {}, 180_000)
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.message ?? `HTTP ${res.status}`, results: [] }
+    return { ok: true, message: '', results: body?.results ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), results: [] }
+  }
+}
+
+/**
  * The world's HTML apps — user vibe-coded, world-template and realm-shipped,
  * unioned server-side in the same order /apps/{name} serves them, so this
  * list and what a window opens can never disagree. readOnly=false marks the
@@ -344,7 +362,7 @@ module.exports = {
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl,
-  listRealms, realmCatalog, installRealm, updateRealm, realmGaps, listApps }
+  listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a

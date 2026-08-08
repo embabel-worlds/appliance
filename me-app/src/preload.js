@@ -30,6 +30,7 @@ const api = {
   realmCatalog: (settings) => ipcRenderer.invoke('realms:catalog', settings),
   installRealm: (settings, repo) => ipcRenderer.invoke('realms:install', settings, repo),
   updateRealm: (settings, name) => ipcRenderer.invoke('realms:update', settings, name),
+  updateAllRealms: (settings) => ipcRenderer.invoke('realms:update-all', settings),
   realmGaps: (settings) => ipcRenderer.invoke('realms:gaps', settings),
   listModels: (settings) => ipcRenderer.invoke('models:list', settings),
   getDefaultModel: () => ipcRenderer.invoke('models:default'),
