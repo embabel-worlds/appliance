@@ -1,5 +1,9 @@
 # Your configuration — holds API keys. Never commit it.
+# .envrc is the direnv equivalent and holds exactly the same secrets, so it is
+# ignored for exactly the same reason: without this line it is one `git add -A`
+# away from being published.
 .env
+.envrc
 
 # Which of your folders are shared into the assistant (written by the Me app's
 # "Local files" panel). Absolute host paths — this machine's business, like .env.
@@ -11,3 +15,5 @@ docker-compose.override.yml
 *.iml
 .vscode/
 .DS_Store
+__pycache__/
+*.pyc
