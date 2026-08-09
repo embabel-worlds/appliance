@@ -15,6 +15,7 @@ const outbox = require('./outbox')
 const indexer = require('./indexer')
 const mounts = require('./mounts')
 const documents = require('./documents')
+const logs = require('./logs')
 
 /** The appliance's own property name for its default model. */
 const DEFAULT_LLM_KEY = 'EMBABEL_MODELS_DEFAULT_LLM'
@@ -214,6 +215,7 @@ app.on('window-all-closed', () => {})
 app.on('before-quit', () => {
   chat.stop()
   outbox.stop()
+  logs.stop()
 })
 
 /**
@@ -441,6 +443,56 @@ handle('query:popout', () => {
   studioWindow.on('closed', () => {
     studioWindow = null
   })
+})
+
+/*
+ * Container logs — the studio's escape hatch to what the appliance is actually
+ * doing. Its own window rather than a panel: a log you are reading is a thing
+ * you keep beside the query that provoked it, not something that steals the
+ * studio's scroll. The stream lives and dies with the window.
+ */
+let logsWindow = null
+
+/** Push to the log window if it is still there; used by both handlers below. */
+const toLogs = (channel, payload) => {
+  if (logsWindow && !logsWindow.isDestroyed()) logsWindow.webContents.send(channel, payload)
+}
+
+handle('logs:popout', () => {
+  if (logsWindow) {
+    logsWindow.show()
+    logsWindow.focus()
+    return
+  }
+  logsWindow = new BrowserWindow({
+    width: 1040,
+    height: 720,
+    title: 'Embabel Me — Container logs',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  void logsWindow.loadFile(path.join(__dirname, '..', 'logs.html'))
+  logsWindow.on('closed', () => {
+    logsWindow = null
+    logs.stop() // nobody left to read it
+  })
+})
+
+handle('logs:list', () => logs.list())
+handle('logs:start', (name, tail) => {
+  log(`[me-app] following logs for ${name} (tail ${tail})`)
+  logs.start(name, tail, (text) => toLogs('logs:data', text), (message) => toLogs('logs:end', message))
+  return { ok: true, message: '' }
+})
+handle('logs:stop', () => {
+  logs.stop()
+  return { ok: true, message: '' }
 })
 
 // Dropped-file ingestion: bytes arrive over IPC (no file paths cross the

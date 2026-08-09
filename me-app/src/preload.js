@@ -28,6 +28,23 @@ const api = {
   vcLensModel: (settings) => ipcRenderer.invoke('vc:lens-model', settings),
   vcSetLensModel: (settings, model) => ipcRenderer.invoke('vc:set-lens-model', settings, model),
   openQueryStudio: () => ipcRenderer.invoke('query:popout'),
+  // Container logs, in their own window. Read-only: list, follow, stop. The
+  // two `on*` calls return an unsubscribe, and the stream itself is owned by
+  // the main process — the page can only ask it to point somewhere else.
+  openLogs: () => ipcRenderer.invoke('logs:popout'),
+  listContainers: () => ipcRenderer.invoke('logs:list'),
+  startLogs: (name, tail) => ipcRenderer.invoke('logs:start', name, tail),
+  stopLogs: () => ipcRenderer.invoke('logs:stop'),
+  onLogData: (cb) => {
+    const listener = (_e, text) => cb(text)
+    ipcRenderer.on('logs:data', listener)
+    return () => ipcRenderer.removeListener('logs:data', listener)
+  },
+  onLogEnd: (cb) => {
+    const listener = (_e, message) => cb(message)
+    ipcRenderer.on('logs:end', listener)
+    return () => ipcRenderer.removeListener('logs:end', listener)
+  },
   uploadDocument: (settings, filename, bytes, tags) => ipcRenderer.invoke('docs:upload', settings, filename, bytes, tags),
   // Live narration of a retrieval loop, for as long as one is running. Returns an
   // unsubscribe so a re-ask does not stack listeners.

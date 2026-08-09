@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>Embabel Me — Container logs</title>
+  <style>
+    /* The studio's skin, minus the aurora: a dense mono log over a moving
+       background is unreadable, and this window is for reading. */
+    :root {
+      --ink: #e6e6e6;
+      --mid: #99a1af;
+      --faint: #6a7282;
+      --rule: rgba(230, 230, 230, 0.14);
+      --mono: "SF Mono", ui-monospace, Menlo, monospace;
+      --sans: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: rgba(230, 230, 230, 0.18); border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    body {
+      margin: 0; background: #05060f; color: var(--ink);
+      font-family: var(--sans); font-size: 13px;
+      display: flex; flex-direction: column;
+    }
+    .dragbar {
+      -webkit-app-region: drag; height: 40px; flex: none;
+      display: flex; align-items: center; padding: 0 16px 0 84px;
+      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--mid);
+    }
+    .bar {
+      flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 16px; border-bottom: 1px solid var(--rule);
+    }
+    label.field { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); }
+    select, input[type=text] {
+      background: rgba(0,0,0,0.5); color: var(--ink); border: 1px solid var(--rule);
+      border-radius: 3px; padding: 3px 6px; font-family: var(--mono); font-size: 11.5px;
+    }
+    input[type=text] { min-width: 14em; }
+    button {
+      background: rgba(0,0,0,0.5); color: var(--ink); border: 1px solid var(--rule);
+      border-radius: 3px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+    }
+    button:hover { border-color: rgba(230,230,230,0.3); }
+    button[aria-pressed=true] { border-color: #625fff; color: #c7d2ff; }
+    .status { font-size: 11px; color: var(--faint); margin-left: auto; }
+
+    #log {
+      flex: 1; overflow: auto; margin: 0; padding: 8px 16px 24px;
+      font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+    }
+    #log .line { white-space: pre-wrap; word-break: break-word; color: var(--mid); }
+    #log .line.warn { color: #e3b341; }
+    #log .line.error { color: #ff6b6b; }
+    #log .note { color: var(--faint); font-style: italic; padding: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="dragbar">Container logs</div>
+  <div class="bar">
+    <label class="field">Container
+      <select id="container"></select>
+    </label>
+    <label class="field">History
+      <select id="tail"></select>
+    </label>
+    <label class="field">Filter
+      <input type="text" id="filter" placeholder="substring, case-insensitive" />
+    </label>
+    <button id="follow" aria-pressed="true">Following</button>
+    <button id="clear">Clear</button>
+    <span id="status" class="status"></span>
+  </div>
+  <div id="log"></div>
+
+  <script src="src/logview.js"></script>
+</body>
+</html>
