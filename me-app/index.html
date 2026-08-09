@@ -229,14 +229,14 @@
     .tab.is-on { color: var(--ink); border-bottom-color: var(--signal); background: none; }
 
     input.grow { flex: 1; min-width: 260px; }
-    #vc-drop {
+    #doc-drop {
       margin-top: 14px; padding: 18px; text-align: center;
       border: 1px dashed var(--rule); border-radius: 3px;
       font-size: 12.5px; color: var(--mid);
     }
-    #vc-drop.is-over { border-color: var(--signal); color: var(--ink); background: rgba(98, 95, 255, 0.08); }
-    #vc-ingest-row { margin-top: 10px; }
-    #vc-ingest-row .grow input { width: 100%; box-sizing: border-box; }
+    #doc-drop.is-over { border-color: var(--signal); color: var(--ink); background: rgba(98, 95, 255, 0.08); }
+    #doc-ingest-row { margin-top: 10px; }
+    #doc-ingest-row .grow input { width: 100%; box-sizing: border-box; }
 
     input[type=date], input[type=number], select {
       font: inherit; font-size: 13px; font-family: var(--sans); padding: 6px 8px;
@@ -618,6 +618,29 @@
         <div id="ask-sources"></div>
       </div>
     </section>
+
+    <section class="panel">
+      <h2>Add documents</h2>
+      <div class="panel-body">
+        <p class="hint">
+          A dropped file is ingested the same way an indexed folder's files are — converted,
+          chunked and embedded — and is answerable above once it lands. Shared folders you
+          tick to index on the Machine tab arrive on their own; this is for the one-off.
+        </p>
+        <div id="doc-drop">
+          Drop files here to add them to your documents — you'll be asked for tags first.
+        </div>
+        <div class="row" id="doc-ingest-row" hidden>
+          <span id="doc-ingest-files" class="status"></span>
+          <label class="field grow">Tags — comma-separated
+            <input type="text" id="doc-ingest-tags" placeholder="e.g. papers, renewal" />
+          </label>
+          <button id="doc-ingest" class="primary">Ingest</button>
+          <button id="doc-ingest-cancel">Cancel</button>
+        </div>
+        <div id="doc-ingest-status" class="status"></div>
+      </div>
+    </section>
     </div><!-- /documents -->
 
     <div class="tabpanel" data-panel="query" hidden>
@@ -636,18 +659,6 @@
         <div class="row">
           <button id="vc-open" class="primary">Open Query Studio ⧉</button>
         </div>
-        <div id="vc-drop">
-          Drop files here to add them to your documents — you'll be asked for tags first.
-        </div>
-        <div class="row" id="vc-ingest-row" hidden>
-          <span id="vc-ingest-files" class="status"></span>
-          <label class="field grow">Tags — comma-separated
-            <input type="text" id="vc-ingest-tags" placeholder="e.g. papers, renewal" />
-          </label>
-          <button id="vc-ingest" class="primary">Ingest</button>
-          <button id="vc-ingest-cancel">Cancel</button>
-        </div>
-        <div id="vc-ingest-status" class="status"></div>
       </div>
     </section>
     </div><!-- /query -->

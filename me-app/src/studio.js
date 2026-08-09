@@ -1233,10 +1233,6 @@ async function runView(view, args, status) {
 // Boot.
 // ---------------------------------------------------------------------------
 
-/* The one thing in here that is not a query: what the appliance is doing while
-   it answers one. Its own window, so a log you are reading stays put. */
-$('open-logs').addEventListener('click', () => void window.me.openLogs())
-
 async function init() {
   settings = await window.me.loadSettings()
   renderTargets()

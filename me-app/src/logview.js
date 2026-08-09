@@ -25,7 +25,15 @@ const statusEl = $('status')
 let lines = []
 /* A chunk can end mid-line; hold the remainder until its newline arrives. */
 let partial = ''
+/* Paused means the DOM does not change AT ALL — not merely that it stops
+   scrolling. A selection dies the moment its nodes are appended past or
+   trimmed away, so on a busy container "pause" is the only way to copy a
+   stack trace out. Lines keep accumulating in `lines`; the view catches up on
+   resume. */
 let following = true
+/** Where the frozen view stopped, so pause can say how far behind it is. */
+let pausedAt = 0
+const pending = () => Math.max(0, lines.length - pausedAt)
 
 const setStatus = (text) => (statusEl.textContent = text)
 
@@ -71,16 +79,19 @@ function ingest(text) {
   partial = split.pop() ?? '' // the tail with no newline yet
   if (!split.length) return
 
-  const stick = following && atBottom()
+  const stick = atBottom()
   for (const line of split) {
     lines.push(line)
-    if (matches(line)) appendLine(line)
+    if (following && matches(line)) appendLine(line)
   }
-  if (lines.length > MAX_LINES) {
-    lines = lines.slice(-MAX_LINES)
+  const overflow = lines.length - MAX_LINES
+  if (overflow > 0) lines = lines.slice(overflow)
+  if (following) {
     while (logEl.childElementCount > MAX_LINES) logEl.firstElementChild.remove()
+    if (stick) logEl.scrollTop = logEl.scrollHeight
+  } else {
+    setStatus(`paused — ${pending()} line(s) behind`)
   }
-  if (stick) logEl.scrollTop = logEl.scrollHeight
 }
 
 // --- Wiring ----------------------------------------------------------------
@@ -102,16 +113,39 @@ filterEl.addEventListener('input', render)
 
 followButton.addEventListener('click', () => {
   following = !following
-  followButton.setAttribute('aria-pressed', String(following))
-  followButton.textContent = following ? 'Following' : 'Paused'
-  // Pause only stops the view from chasing the end; the stream keeps arriving,
-  // so scrolling back up and reading is not a race against the container.
-  if (following) logEl.scrollTop = logEl.scrollHeight
+  followButton.classList.toggle('paused', !following)
+  followButton.querySelector('.pause').hidden = !following
+  followButton.querySelector('.play').hidden = following
+  $('follow-label').textContent = following ? 'Pause' : 'Resume'
+  followButton.title = following
+    ? 'Freeze the view so you can select and copy'
+    : 'Catch up with the stream'
+  if (following) {
+    render() // catch up on everything that arrived while frozen
+    setStatus(`following ${containerEl.value}…`)
+  } else {
+    pausedAt = lines.length
+    setStatus('paused — the view is frozen; the stream is not')
+  }
 })
 
 $('clear').addEventListener('click', () => {
   lines = []
+  pausedAt = 0
   logEl.textContent = ''
+})
+
+/* Copy what is on screen — the filtered view, whole lines, no DOM selection
+   games. Selecting by hand still works (that is what pause is for); this is
+   for "give me all of it" without a 5000-line drag. */
+$('copy').addEventListener('click', async () => {
+  const text = lines.filter(matches).join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    setStatus(`copied ${text ? text.split('\n').length : 0} line(s)`)
+  } catch (e) {
+    setStatus(`copy failed: ${e instanceof Error ? e.message : String(e)}`)
+  }
 })
 
 window.me.onLogData(ingest)

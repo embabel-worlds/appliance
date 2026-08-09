@@ -123,6 +123,7 @@ function buildMenus() {
           { role: 'about', label: 'About Embabel Me' },
           { type: 'separator' },
           { ...updateItem },
+          { label: 'Container Logs…', click: openLogsWindow },
           { type: 'separator' },
           { role: 'quit' },
         ],
@@ -136,6 +137,7 @@ function buildMenus() {
       { label: 'Open Embabel Me', click: createWindow },
       { type: 'separator' },
       { ...updateItem },
+      { label: 'Container Logs…', click: openLogsWindow },
       { label: 'About Embabel Me', click: () => app.showAboutPanel() },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
@@ -446,10 +448,12 @@ handle('query:popout', () => {
 })
 
 /*
- * Container logs — the studio's escape hatch to what the appliance is actually
- * doing. Its own window rather than a panel: a log you are reading is a thing
- * you keep beside the query that provoked it, not something that steals the
- * studio's scroll. The stream lives and dies with the window.
+ * Container logs — what the appliance is actually doing, in its own window.
+ * Reached from the menus (both of them, like Update) rather than from a panel:
+ * it answers for the whole appliance, not for whatever surface you happened to
+ * be looking at, and the tray menu is there even with every window closed —
+ * which is exactly when "is it even running?" gets asked. The stream lives and
+ * dies with the window.
  */
 let logsWindow = null
 
@@ -458,7 +462,7 @@ const toLogs = (channel, payload) => {
   if (logsWindow && !logsWindow.isDestroyed()) logsWindow.webContents.send(channel, payload)
 }
 
-handle('logs:popout', () => {
+function openLogsWindow() {
   if (logsWindow) {
     logsWindow.show()
     logsWindow.focus()
@@ -482,7 +486,7 @@ handle('logs:popout', () => {
     logsWindow = null
     logs.stop() // nobody left to read it
   })
-})
+}
 
 handle('logs:list', () => logs.list())
 handle('logs:start', (name, tail) => {

@@ -732,12 +732,12 @@ askQuestion.addEventListener('keydown', (e) => {
 // and why it prefills with the first indexed folder's name.
 // ---------------------------------------------------------------------------
 
-const vcDrop = $('vc-drop')
-const vcIngestRow = $('vc-ingest-row')
-const vcIngestFiles = $('vc-ingest-files')
-const vcIngestTags = $('vc-ingest-tags')
-const vcIngestButton = $('vc-ingest')
-const vcIngestStatus = $('vc-ingest-status')
+const docDrop = $('doc-drop')
+const docIngestRow = $('doc-ingest-row')
+const docIngestFiles = $('doc-ingest-files')
+const docIngestTags = $('doc-ingest-tags')
+const docIngestButton = $('doc-ingest')
+const docIngestStatus = $('doc-ingest-status')
 
 /** Matches the indexer's cap — the pipeline's practical ceiling for one document. */
 const MAX_UPLOAD_BYTES = 30 * 1024 * 1024
@@ -750,42 +750,42 @@ let pendingDrop = []
 window.addEventListener('dragover', (e) => e.preventDefault())
 window.addEventListener('drop', (e) => e.preventDefault())
 
-vcDrop.addEventListener('dragover', () => vcDrop.classList.add('is-over'))
-vcDrop.addEventListener('dragleave', () => vcDrop.classList.remove('is-over'))
-vcDrop.addEventListener('drop', (e) => {
-  vcDrop.classList.remove('is-over')
+docDrop.addEventListener('dragover', () => docDrop.classList.add('is-over'))
+docDrop.addEventListener('dragleave', () => docDrop.classList.remove('is-over'))
+docDrop.addEventListener('drop', (e) => {
+  docDrop.classList.remove('is-over')
   const files = [...(e.dataTransfer?.files ?? [])]
   if (!files.length) return
   const oversize = files.filter((f) => f.size > MAX_UPLOAD_BYTES)
   if (oversize.length) {
-    setStatus(vcIngestStatus, false, `Too big for the pipeline (30 MB max): ${oversize.map((f) => f.name).join(', ')}`)
+    setStatus(docIngestStatus, false, `Too big for the pipeline (30 MB max): ${oversize.map((f) => f.name).join(', ')}`)
     return
   }
   pendingDrop = files
-  vcIngestFiles.textContent = files.map((f) => f.name).join(', ')
-  vcIngestStatus.textContent = ''
-  vcIngestRow.hidden = false
+  docIngestFiles.textContent = files.map((f) => f.name).join(', ')
+  docIngestStatus.textContent = ''
+  docIngestRow.hidden = false
   // The likeliest intent is the first folder already being indexed — same
   // default the appliance would derive for a file in that folder.
   void window.me.mountsState().then((state) => {
-    if (vcIngestTags.value) return
+    if (docIngestTags.value) return
     const indexed = (state.mounts ?? []).find((m) => m.index) ?? (state.mounts ?? [])[0]
-    if (indexed) vcIngestTags.value = indexed.target.split('/').pop() ?? ''
+    if (indexed) docIngestTags.value = indexed.target.split('/').pop() ?? ''
   })
-  vcIngestTags.focus()
+  docIngestTags.focus()
 })
 
-$('vc-ingest-cancel').addEventListener('click', () => {
+$('doc-ingest-cancel').addEventListener('click', () => {
   pendingDrop = []
-  vcIngestRow.hidden = true
-  vcIngestStatus.textContent = ''
+  docIngestRow.hidden = true
+  docIngestStatus.textContent = ''
 })
 
 async function runIngest() {
   const files = pendingDrop
   if (!files.length) return
-  const tags = vcIngestTags.value.split(',').map((t) => t.trim()).filter(Boolean)
-  vcIngestButton.disabled = true
+  const tags = docIngestTags.value.split(',').map((t) => t.trim()).filter(Boolean)
+  docIngestButton.disabled = true
   const settings = currentSettings()
   await window.me.saveSettings(settings)
   let ok = 0
@@ -793,7 +793,7 @@ async function runIngest() {
   // Sequential on purpose: conversion is CPU-heavy server-side, and one slow
   // PDF at a time is the same manners the background indexer keeps.
   for (const [i, file] of files.entries()) {
-    setStatus(vcIngestStatus, null, `Ingesting ${file.name} (${i + 1}/${files.length})…`)
+    setStatus(docIngestStatus, null, `Ingesting ${file.name} (${i + 1}/${files.length})…`)
     let result
     try {
       result = await window.me.uploadDocument(settings, file.name, await file.arrayBuffer(), tags)
@@ -803,16 +803,16 @@ async function runIngest() {
     if (result.ok) ok++
     else failures.push(`${file.name}: ${result.message}`)
   }
-  vcIngestButton.disabled = false
+  docIngestButton.disabled = false
   pendingDrop = []
-  vcIngestRow.hidden = true
+  docIngestRow.hidden = true
   const receipt = [`ingested ${ok}/${files.length}`]
   if (tags.length) receipt.push(`tagged ${tags.join(', ')}`)
   receipt.push(...failures)
-  setStatus(vcIngestStatus, failures.length === 0, receipt.join(' · '))
+  setStatus(docIngestStatus, failures.length === 0, receipt.join(' · '))
 }
 
-vcIngestButton.addEventListener('click', () => void runIngest())
+docIngestButton.addEventListener('click', () => void runIngest())
 
 // The studio: the advanced surface lives in its own window.
 $('vc-open').addEventListener('click', () => void window.me.openQueryStudio())
