@@ -456,6 +456,13 @@ handle('vc:generate', (settings, question) => {
   log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
   return api.kgGenerate(settings, question)
 })
+handle('vc:views', (settings) => api.listViews(settings))
+handle('vc:save-view', (settings, spec) => {
+  log(`[me-app] saving view ${spec.name}`)
+  return api.saveView(settings, spec)
+})
+handle('vc:delete-view', (settings, name) => api.deleteView(settings, name))
+handle('vc:view-invocation', (settings, name, args) => api.viewInvocation(settings, name, args))
 handle('vc:lens-model', (settings) => api.lensModel(settings))
 handle('vc:set-lens-model', (settings, model) => {
   log(`[me-app] text-to-cypher model → ${model || '(inherit default)'}`)

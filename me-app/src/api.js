@@ -260,6 +260,84 @@ async function uploadDocument(settings, filename, bytes, tags) {
   return { ok: true, message: body?.title ?? 'ingested', uri: body?.uri ?? null }
 }
 
+/*
+ * Saved views — named Cypher bodies living in the user's world, optionally with
+ * declared parameters. Four calls: list, save, delete, and "what would this view
+ * run", which returns the invocation's Cypher so the studio can show (and let the
+ * user edit) it before running through the ordinary execute path.
+ */
+
+/** @param {Settings} settings */
+async function listViews(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/admin/kg/views`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (res.status === 404) return { ok: false, message: 'no views endpoint — older appliance', views: [] }
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, views: [] }
+    return { ok: true, message: '', views: (await readJson(res)) ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), views: [] }
+  }
+}
+
+/**
+ * Save a query as a named view. The appliance validates before persisting — an
+ * unrunnable body or a name a shipped view already owns comes back as a refusal
+ * with the reason, never a silently broken view.
+ * @param {Settings} settings
+ * @param {{name: string, cypher: string, description?: string, params?: object}} spec
+ */
+async function saveView(settings, spec) {
+  try {
+    const res = await post(settings, '/api/v1/admin/kg/views', spec, 60000)
+    if (res.status === 404) return { ok: false, message: 'this appliance cannot save views — it needs a newer image' }
+    const body = await readJson(res)
+    if (!res.ok) {
+      const violations = body?.violations?.length ? ` — ${body.violations.join('; ')}` : ''
+      return { ok: false, message: (body?.error ?? `HTTP ${res.status}`) + violations }
+    }
+    return { ok: true, message: `saved “${body?.name ?? spec.name}”` }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** @param {Settings} settings @param {string} name */
+async function deleteView(settings, name) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/admin/kg/views/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (res.status === 404) return { ok: false, message: `no saved view named ${name}` }
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    return { ok: true, message: `deleted ${name}` }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * The runnable Cypher for a view invoked with [args] — args merged over the
+ * declared defaults, coerced and substituted server-side. A bad argument comes
+ * back as an actionable message rather than a doomed run.
+ * @param {Settings} settings @param {string} name @param {object} args
+ */
+async function viewInvocation(settings, name, args) {
+  try {
+    const res = await post(settings, `/api/v1/admin/kg/views/${encodeURIComponent(name)}/invocation`, { args }, 30000)
+    const body = await readJson(res)
+    if (res.status === 404) return { ok: false, message: `no such view ${name}` }
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return { ok: true, cypher: body?.cypher ?? '' }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
 /**
  * The acting user's graph schema — labels with typed properties, relationship
  * triples, virtual labels included. The same snapshot the engine's preflight
@@ -532,6 +610,7 @@ module.exports = {
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
   kgSchema, kgValidate, kgGenerate, lensModel, setLensModel,
+  listViews, saveView, deleteView, viewInvocation,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------
