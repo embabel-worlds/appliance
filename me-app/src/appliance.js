@@ -126,11 +126,11 @@ async function update() {
   const dir = mounts.applianceDir()
   if (!dir) return { ok: false, message: 'Appliance checkout not found — run the app from the repo.', appRestartAdvised: false }
 
-  // One door at a time: plain `up -d` opens the me door, and doing that while
-  // the worlds door runs would double every scheduled job. Same guard as Apply.
+  // One mode at a time: plain `up -d` starts the me mode, and doing that while
+  // the worlds mode runs would double every scheduled job. Same guard as Apply.
   const worlds = await tryRun('docker', ['ps', '--filter', 'label=com.docker.compose.service=worlds', '--format', '{{.Names}}'], 15_000)
   if (worlds.ok && worlds.out) {
-    return { ok: false, message: `The worlds door is running (${worlds.out}) — stop it before updating.`, appRestartAdvised: false }
+    return { ok: false, message: `The worlds mode is running (${worlds.out}) — stop it before updating.`, appRestartAdvised: false }
   }
 
   const notes = []

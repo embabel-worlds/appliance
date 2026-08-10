@@ -3,7 +3,7 @@
 // The mounts live in docker-compose.override.yml, next to the compose files in
 // the appliance checkout this app runs from. That name is the one file Docker
 // Compose merges into plain `docker compose up` BY CONVENTION — so the mounts
-// survive every way the door gets opened. (setup.py re-includes the file
+// survive every way the mode gets opened. (setup.py re-includes the file
 // explicitly, because an explicit -f list switches the convention off.) The
 // tracked compose files stay pull-only; this one is generated and gitignored.
 //
@@ -244,14 +244,14 @@ function setEnv(key, value) {
 async function apply() {
   const current = state()
   if (!current.supported || !current.dir) return { ok: false, message: current.message }
-  // One door at a time is an appliance invariant (the doors share one graph);
-  // `up` here would START the me door, so refuse while the other one is up.
+  // One mode at a time is an appliance invariant (the modes share one graph);
+  // `up` here would START the me mode, so refuse while the other one is up.
   const worlds = await docker(
     ['ps', '--filter', 'label=com.docker.compose.service=worlds', '--format', '{{.Names}}'],
     current.dir,
   )
   if (worlds.ok && worlds.out) {
-    return { ok: false, message: `The worlds door is running (${worlds.out}) — stop it before applying mounts.` }
+    return { ok: false, message: `The worlds mode is running (${worlds.out}) — stop it before applying mounts.` }
   }
 
   // Provision BEFORE the restart, straight into the data volume, so the boot

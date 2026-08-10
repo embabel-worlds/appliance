@@ -4,7 +4,7 @@
     ./setup.py
 
 Walks you through creating your account and connecting a model provider. Nothing to
-install: standard library only. Works for either door — it finds the running
+install: standard library only. Works for either mode — it finds the running
 container (Me or Worlds), its port, and its setup token by itself.
 
 If OPENAI_API_KEY or ANTHROPIC_API_KEY is already exported in your shell, the provider
@@ -36,20 +36,20 @@ import urllib.request
 
 DEFAULT_BASE = "http://localhost:4242"
 TOKEN_HEADER = "X-Embabel-Setup-Token"
-# The appliance's two doors, by compose SERVICE name. Containers are found through
+# The appliance's two modes, by compose SERVICE name. Containers are found through
 # their compose service label rather than a hardcoded container_name, so plain
-# `./setup.py` works for whichever door is up — and keeps working if a name or
+# `./setup.py` works for whichever mode is up — and keeps working if a name or
 # project prefix ever changes.
-DOOR_SERVICES = ("assistant", "worlds")
-# Door name (what a person types) -> compose file + service. `./worlds.py` and
+MODE_SERVICES = ("assistant", "worlds")
+# Mode name (what a person types) -> compose file + service. `./worlds.py` and
 # `./setup.py worlds` ride these to make first run a single command.
-DOOR_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
-DOOR_SERVICE = {"me": "assistant", "worlds": "worlds"}
+MODE_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
+MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
 # Operator mounts, written by the Me app's "Local files" panel: host folders the
 # assistant may index, bind-mounted read-only under /local. Plain `docker compose
 # up` merges this file by compose convention, but the explicit -f list used below
 # switches that convention OFF, so it must be re-included by hand — for the me
-# door only, because it overrides the `assistant` service, which the worlds file
+# mode only, because it overrides the `assistant` service, which the worlds file
 # does not define (merging it there would fabricate an image-less service).
 OVERRIDE_FILE = "docker-compose.override.yml"
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
@@ -139,10 +139,10 @@ def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None
         return None
 
 
-def running_doors() -> dict[str, str]:
-    """Running door containers, keyed by compose service name."""
+def running_modes() -> dict[str, str]:
+    """Running mode containers, keyed by compose service name."""
     found = {}
-    for service in DOOR_SERVICES:
+    for service in MODE_SERVICES:
         run = _docker("ps", "--filter", f"label=com.docker.compose.service={service}",
                       "--format", "{{.Names}}")
         if run is not None and run.returncode == 0:
@@ -151,34 +151,34 @@ def running_doors() -> dict[str, str]:
     return found
 
 
-def find_door_container(prefer: str | None = None) -> str | None:
-    """The running door's container. When a door was explicitly asked for, PREFER it:
+def find_mode_container(prefer: str | None = None) -> str | None:
+    """The running mode's container. When a mode was explicitly asked for, PREFER it:
     announcing "setting up embabel-assistant" and then refusing because the caller
     asked for worlds is a small masterpiece of unhelpfulness."""
-    doors = running_doors()
-    if prefer and DOOR_SERVICE.get(prefer) in doors:
-        return doors[DOOR_SERVICE[prefer]]
-    if len(doors) > 1:
-        print(f"  Both doors are running ({', '.join(doors.values())}) — run one at a time.")
-    return next(iter(doors.values()), None)
+    modes = running_modes()
+    if prefer and MODE_SERVICE.get(prefer) in modes:
+        return modes[MODE_SERVICE[prefer]]
+    if len(modes) > 1:
+        print(f"  Both modes are running ({', '.join(modes.values())}) — run one at a time.")
+    return next(iter(modes.values()), None)
 
 
-def door_service(container: str) -> str | None:
-    """Which door this container is — the compose service name from its label."""
+def mode_service(container: str) -> str | None:
+    """Which mode this container is — the compose service name from its label."""
     run = _docker("inspect", "-f", '{{index .Config.Labels "com.docker.compose.service"}}', container)
     return run.stdout.strip() if run is not None and run.returncode == 0 else None
 
 
 def print_worlds_surfaces(base: str) -> None:
-    """Worlds onboarding ends at the doors of the product, not at "done": every
+    """Worlds onboarding ends at the way in, not at "done": every
     surface a worlds operator reaches next, in one block. The API/MCP lines use the
-    door's real detected port; the rest are the compose defaults (.env moves them)."""
+    mode's real detected port; the rest are the compose defaults (.env moves them)."""
     print("  \u2500\u2500 Your Worlds surfaces " + "\u2500" * 38)
     print("  Console        http://localhost:4343   \u2190 START HERE")
     print("                 The Worlds console: realms, documents, keys, views, chat.")
     print("                 Opens with the commissioning sequence.")
     print()
-    print(f"  API / UI       {base}   (the door itself)")
+    print(f"  API / UI       {base}   (the server itself)")
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
@@ -205,7 +205,7 @@ def me_app_settings_file() -> str | None:
 
 
 def seed_me_app_settings(base: str, username: str | None) -> None:
-    """Hand the Me app what setup already established: which door to talk to, and
+    """Hand the Me app what setup already established: which mode to talk to, and
     who the user is. Retyping a URL and username the wizard just set up is pure
     friction — and the URL is worth seeding even at the default, because a
     non-default ASSISTANT_PORT would otherwise leave the app pointed at nothing.
@@ -282,7 +282,7 @@ def launch_me_app(base: str, username: str | None = None) -> None:
             return
         subprocess.Popen(["open", "-a", packaged], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print('  Starting — look for "Me" in your menu bar. The door and your username')
+        print('  Starting — look for "Me" in your menu bar. The appliance URL and your username')
         print("  are filled in already; enter your password and it will offer its first scan.")
         return
 
@@ -307,12 +307,12 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     # chatter has no business in the terminal being handed back.
     subprocess.Popen([npm, "start"], cwd=ME_APP_DIR, start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print('  Starting — look for "Me" in your menu bar. The door and your username')
+    print('  Starting — look for "Me" in your menu bar. The appliance URL and your username')
     print("  are filled in already; enter your password and it will offer its first scan.")
 
 
 def container_base_url(container: str) -> str | None:
-    """The door's URL from its own SERVER_PORT. The compose files keep the host and
+    """The mode's URL from its own SERVER_PORT. The compose files keep the host and
     container ports equal by design, so the container's port IS the published one."""
     run = _docker("inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", container)
     if run is not None and run.returncode == 0:
@@ -322,11 +322,11 @@ def container_base_url(container: str) -> str | None:
     return None
 
 
-def _compose(door: str, *argv: str, capture: bool = False):
-    """docker compose against the door's file, from the appliance directory.
+def _compose(mode: str, *argv: str, capture: bool = False):
+    """docker compose against the mode's file, from the appliance directory.
     capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
-    cmd = ["docker", "compose", "-f", DOOR_COMPOSE[door]]
-    if door == "me" and os.path.exists(OVERRIDE_FILE):
+    cmd = ["docker", "compose", "-f", MODE_COMPOSE[mode]]
+    if mode == "me" and os.path.exists(OVERRIDE_FILE):
         cmd += ["-f", OVERRIDE_FILE]
     cmd += argv
     try:
@@ -378,62 +378,62 @@ def ensure_timezone() -> None:
 
 def fresh_wipe() -> None:
     """--fresh: delete the whole appliance state after saying exactly what dies.
-    Both door files merged, so every service and volume in the project goes,
-    whichever door was last up."""
+    Both mode files merged, so every service and volume in the project goes,
+    whichever mode was last up."""
     print("  --fresh DELETES the appliance's entire state:")
     print("    account and password, world, knowledge graph, documents, dashboards.")
     print("  Images and the local embedding model survive; nothing else does.")
     answer = input("  Type 'yes' to wipe: ").strip().lower()
     if answer != "yes":
         raise SetupError("Not wiped — nothing was touched.")
-    cmd = ["docker", "compose", "-f", DOOR_COMPOSE["me"], "-f", DOOR_COMPOSE["worlds"],
+    cmd = ["docker", "compose", "-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
            "down", "--volumes", "--remove-orphans"]
     subprocess.run(cmd)
     print()
 
 
-def ensure_door(door: str) -> bool:
-    """Bring the chosen door up. Returns True if it was not already running — the
+def ensure_mode(mode: str) -> bool:
+    """Bring the chosen mode up. Returns True if it was not already running — the
     caller then follows the container log, because the first boot is a designed
     experience (the operator console), not a thing to hide.
 
     Also the moment the host's timezone reaches .env: it must exist before the
     `up -d` below, and `up -d` then applies it — compose sees the changed
-    environment and recreates the door, so a UTC container heals on re-run.
+    environment and recreates the mode, so a UTC container heals on re-run.
 
-    ALWAYS runs `compose up -d`, even when the door is already up. "The door
+    ALWAYS runs `compose up -d`, even when the mode is already up. "The
     container is running" does NOT mean "this compose file is applied": a service
     added since the last run (the console was, once) would never be created, and
     the operator sees a service in their YAML with nothing behind it. `up -d`
     is idempotent — it reconciles and leaves running containers alone."""
     ensure_timezone()
-    doors = running_doors()
-    other = next(((svc, name) for svc, name in doors.items() if svc != DOOR_SERVICE[door]), None)
+    modes = running_modes()
+    other = next(((svc, name) for svc, name in modes.items() if svc != MODE_SERVICE[mode]), None)
     if other:
-        # Asked for this door while the other one is up. Offer the precise fix rather
+        # Asked for this mode while the other one is up. Offer the precise fix rather
         # than "docker compose down", which is ambiguous (which file?) and heavier
         # than needed — it would take the shared graph and metrics down too.
-        other_door = "me" if other[0] == "assistant" else "worlds"
-        print(f"  The {other_door} door is running ({other[1]}), and only one door may run at a time")
+        other_mode = "me" if other[0] == "assistant" else "worlds"
+        print(f"  The {other_mode} mode is running ({other[1]}), and only one mode may run at a time")
         print("  — they share one graph, so two would duplicate every scheduled job.\n")
-        answer = input(f"  Stop the {other_door} door and continue? [Y/n]: ").strip().lower()
+        answer = input(f"  Stop the {other_mode} mode and continue? [Y/n]: ").strip().lower()
         if answer not in ("", "y", "yes"):
             raise SetupError(
-                f"Left the {other_door} door running. Stop it when you are ready:\n"
-                f"    docker compose -f {DOOR_COMPOSE[other_door]} stop {other[0]}"
+                f"Left the {other_mode} mode running. Stop it when you are ready:\n"
+                f"    docker compose -f {MODE_COMPOSE[other_mode]} stop {other[0]}"
             )
-        _compose(other_door, "stop", other[0])
+        _compose(other_mode, "stop", other[0])
         print()
-    running = doors.get(DOOR_SERVICE[door])
+    running = modes.get(MODE_SERVICE[mode])
     if running:
-        print(f"  The {door} door is running — reconciling with the compose file.\n")
-        _compose(door, "up", "-d")
+        print(f"  The {mode} mode is running — reconciling with the compose file.\n")
+        _compose(mode, "up", "-d")
         print()
         return False
-    print(f"  Starting the {door} door — first run pulls images, give it a few minutes.\n")
-    run = _compose(door, "up", "-d")
+    print(f"  Starting the {mode} mode — first run pulls images, give it a few minutes.\n")
+    run = _compose(mode, "up", "-d")
     if run.returncode != 0:
-        raise SetupError(f"docker compose up failed for the {door} door.")
+        raise SetupError(f"docker compose up failed for the {mode} mode.")
     print()
     return True
 
@@ -537,7 +537,7 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
 
     if container is None and state == "unreachable":
         raise SetupError(
-            f"No appliance is running: no door container was found and {base} does not answer.\n"
+            f"No appliance is running: no mode container was found and {base} does not answer.\n"
             "Start one first:  docker compose up -d"
         )
     print("  Could not find the setup token automatically.")
@@ -746,16 +746,16 @@ def set_bootstrap_world(spec: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
-    parser.add_argument("door", nargs="?", choices=tuple(DOOR_COMPOSE),
-                        help="which door to set up — starts it if nothing is running "
-                             "(default: whichever door is already up)")
+    parser.add_argument("mode", nargs="?", choices=tuple(MODE_COMPOSE),
+                        help="which mode to set up — starts it if nothing is running "
+                             "(default: whichever mode is already up)")
     parser.add_argument("--fresh", action="store_true",
                         help="DELETE all appliance state first (asks for confirmation), then start fresh")
     parser.add_argument("--reset-password", action="store_true",
                         help="forgot the password: recreate the operator account "
                              "(asks for confirmation) and keep all data")
     parser.add_argument("--url", default=None,
-                        help=f"appliance base URL (default: detected from the running door, else {DEFAULT_BASE})")
+                        help=f"appliance base URL (default: detected from the running mode, else {DEFAULT_BASE})")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
     parser.add_argument(
         "--world",
@@ -778,7 +778,7 @@ def main() -> int:
         # Compose files live next to this script; docker compose needs their directory.
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-        # BEFORE the door starts: the container reads .env at creation, and the
+        # BEFORE the mode starts: the container reads .env at creation, and the
         # template only matters when a world is first built.
         if args.world:
             set_bootstrap_world(args.world)
@@ -786,15 +786,15 @@ def main() -> int:
         if args.fresh:
             fresh_wipe()
         started = False
-        if args.door or args.fresh:
-            started = ensure_door(args.door or "me")
+        if args.mode or args.fresh:
+            started = ensure_mode(args.mode or "me")
 
-        container = find_door_container(args.door)
+        container = find_mode_container(args.mode)
         base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
         if args.reset_password:
             if not container:
                 raise SetupError(
-                    "No door is running to reset. Start one first:  ./me.py  or  ./worlds.py"
+                    "No mode is running to reset. Start one first:  ./me.py  or  ./worlds.py"
                 )
             reset_credentials(container, base)
         if container:
@@ -826,19 +826,19 @@ def main() -> int:
         username = done.get("signInAs")
         print(f"\n  Done. Sign in at {base}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
-        service = door_service(container) if container else None
+        service = mode_service(container) if container else None
         if service == "worlds":
             print_worlds_surfaces(base)
         elif service == "assistant":
             launch_me_app(base, username)
         return 0
     except AlreadySetUp as e:
-        # Not a failure: the appliance is up and configured. For the Me door,
+        # Not a failure: the appliance is up and configured. For the Me mode,
         # re-running ./me.py is how people come back — so still end at the app.
         if follower:
             follower.terminate()
         print(f"\n  {e}\n")
-        if container and door_service(container) == "assistant":
+        if container and mode_service(container) == "assistant":
             # Already set up, so no wizard ran and no username was minted here —
             # anything the app already has stays untouched.
             launch_me_app(base)

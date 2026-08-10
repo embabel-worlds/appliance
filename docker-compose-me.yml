@@ -1,14 +1,14 @@
-# Embabel Me — the personal-assistant door of the appliance.
+# Embabel Me — the personal-assistant mode of the appliance.
 #
-#   docker compose up -d              # plain `up` opens THIS door (see docker-compose.yml)
+#   docker compose up -d              # plain `up` starts THIS mode (see docker-compose.yml)
 #   ./setup.py                        # account, model provider, Claude Code wiring
 #   open http://localhost:4242
 #
-# The other door is docker-compose-worlds.yml — the SAME image and the SAME data,
+# The other mode is docker-compose-worlds.yml — the SAME image and the SAME data,
 # framed as a headless world runtime. See its header before running both at once.
 #
-# Everything door-agnostic (graph, embedding model, docling, sandbox, metrics)
-# lives in infra.yml, included below. Same project name as the worlds door, so
+# Everything mode-agnostic (graph, embedding model, docling, sandbox, metrics)
+# lives in infra.yml, included below. Same project name as the worlds mode, so
 # however you arrive there is exactly one appliance on this machine.
 
 name: embabel-appliance
@@ -111,7 +111,7 @@ services:
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
       - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
       # Reported in the usage payload as `packaging`, so we can tell an appliance from a
-      # bare jar — and this door from the worlds door. It is a constant, not information
+      # bare jar — and this mode from the worlds mode. It is a constant, not information
       # about you — see PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose
       # Without an external organization role provider, this fallback applies to
@@ -196,7 +196,7 @@ services:
   # ── TUI — terminal client, run on demand ────────────────────────────────────
   #   docker compose run --rm tui
   # Interactive, so never started by `up` (profile-gated; `run` targets the
-  # service explicitly and starts it regardless — verified). Reaches this door
+  # service explicitly and starts it regardless — verified). Reaches this server
   # over the compose network by service name, passed as the FIRST server so the
   # login dropdown defaults to it. Image published from the embabel/tui repo,
   # versioned with the rest of the appliance.

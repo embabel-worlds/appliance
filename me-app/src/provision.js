@@ -94,7 +94,7 @@ const run = (args, input) =>
 
 /**
  * Provision every world for the /local mounts. Never throws — an appliance
- * that has no data volume yet (door never started) is a normal outcome.
+ * that has no data volume yet (mode never started) is a normal outcome.
  * @returns {Promise<{ changed: boolean, worlds: number, warnings: string[], error?: string }>}
  */
 async function provision() {

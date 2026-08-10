@@ -1,12 +1,12 @@
-# Embabel appliance — one appliance, two doors.
+# Embabel appliance — one appliance, two modes.
 #
 #   docker compose up -d                                  # Me — the personal assistant (this file)
 #   docker compose -f docker-compose-worlds.yml up -d     # Worlds — the world runtime, 43xx block
 #
-# This file exists so plain `docker compose up` keeps opening the Me door; it is
-# nothing but an alias for docker-compose-me.yml. The doors share one project
+# This file exists so plain `docker compose up` keeps opening the Me mode; it is
+# nothing but an alias for docker-compose-me.yml. The modes share one project
 # name, one graph, one data volume, one local embedding model (infra.yml) — the
-# SAME product with two fronts, not two products. Run one door at a time; see the
+# SAME product with two fronts, not two products. Run one mode at a time; see the
 # header of docker-compose-worlds.yml for why.
 #
 # PULL-ONLY BY DESIGN. Every service is an `image:` — no `build:` anywhere, no
@@ -21,7 +21,7 @@
 # "Who can log in"), so this must not be reachable from the network until that is
 # replaced. Change the bind address deliberately, not by habit.
 
-# The project name must live HERE, not only in the included door file: compose
+# The project name must live HERE, not only in the included mode file: compose
 # ignores `name:` in included files, and the project name prefixes every volume —
 # losing it would strand every existing install's data under a new prefix.
 name: embabel-appliance

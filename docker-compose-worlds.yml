@@ -1,21 +1,21 @@
-# Embabel Worlds — the world-runtime door of the appliance.
+# Embabel Worlds — the world-runtime mode of the appliance.
 #
 #   ./worlds.py                 # or: docker compose -f docker-compose-worlds.yml up -d
-#   open http://localhost:4343   # THE CONSOLE — the Worlds front door.
+#   open http://localhost:4343   # THE CONSOLE — start here.
 #                                # 4342 is the server: API and MCP, not a place to look.
 #
-# THE SAME IMAGE, THE SAME DATA as the Me door (docker-compose-me.yml) — this is
-# the superset design: the world runtime is always in the product, and this door
+# THE SAME IMAGE, THE SAME DATA as the Me mode (docker-compose-me.yml) — this is
+# the superset design: the world runtime is always in the product, and this mode
 # frames it as a headless-leaning team server (MCP, automations, webhooks, the
 # data plane) on the 43xx block. There is no stripped-down build and no special
 # Spring profile; what differs is the port, the name, and the packaging label.
 #
-# RUN ONE DOOR AT A TIME against the shared store. Both doors up simultaneously
+# RUN ONE MODE AT A TIME against the shared store. Both modes up simultaneously
 # means two identical JVMs each running the singleton background work — cron
 # firing twice, channel autostart connecting the same Telegram bot token twice
 # (an API conflict, not just waste), warmers and sweeps duplicated. If a genuine
 # both-at-once deployment ever matters, that is the moment a "this instance does
-# not schedule" switch earns its way into the app; until then, one door.
+# not schedule" switch earns its way into the app; until then, one mode.
 
 name: embabel-appliance
 
@@ -33,12 +33,12 @@ services:
       neo4j:
         condition: service_healthy
     ports:
-      # Same host-equals-container port rule as the Me door: the code sandbox is
+      # Same host-equals-container port rule as the Me mode: the code sandbox is
       # handed host.docker.internal:${server.port}, so the two move together.
       - "127.0.0.1:${WORLDS_PORT:-4342}:${WORLDS_PORT:-4342}"
     environment:
       - SERVER_PORT=${WORLDS_PORT:-4342}
-      # Host timezone, from .env (setup.py writes it) — see the Me door's note.
+      # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
       - TZ=${TZ:-Etc/UTC}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
@@ -61,42 +61,42 @@ services:
       # so nothing routes there unless configured. Remove this workaround when
       # BYOK lands and a missing provider key is simply inert.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # Same embedding model as the Me door, NON-NEGOTIABLY: both doors write
+      # Same embedding model as the Me mode, NON-NEGOTIABLY: both modes write
       # vectors into the same graph. See the models element in infra.yml.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
       - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
       - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
       - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
-      # Distinguishes this door from the Me door in the usage payload — a constant,
+      # Distinguishes this mode from the Me mode in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose-worlds
       # Without an external organization role provider, this fallback applies to
       # every authenticated principal. Admin by default lets the setup-created
       # operator use admin-gated local surfaces; set `user` to opt out.
       - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
-      # World template for NEW worlds — same seam as the me door; see its file.
+      # World template for NEW worlds — same seam as the me mode; see its file.
       - ASSISTANT_BOOTSTRAP_WORLD
       - BRAVE_API_KEY
       - GITHUB_TOKEN
       - TELEGRAM_BOT_TOKEN
       - SLACK_APP_TOKEN
     volumes:
-      # Same socket rationale as the Me door: sandboxes are host-daemon siblings,
+      # Same socket rationale as the Me mode: sandboxes are host-daemon siblings,
       # and the socket is root-equivalent on the host — a decision, not a surprise.
       - /var/run/docker.sock:/var/run/docker.sock
-      # THE SAME worlds-on-disk volume as the Me door. A world is the unit the
-      # whole product family agrees on; the doors are surfaces over it.
+      # THE SAME worlds-on-disk volume as the Me mode. A world is the unit the
+      # whole product family agrees on; the modes are surfaces over it.
       - embabel_assistant_data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     models:
-      # Same injection as the Me door — see the comment there.
+      # Same injection as the Me mode — see the comment there.
       embedder:
         endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
 
   # ── Console — the Worlds web face ───────────────────────────────────────────
-  # Static app + nginx proxying /api to the door on the SAME ORIGIN, so the
+  # Static app + nginx proxying /api to the server on the SAME ORIGIN, so the
   # browser's login applies with no CORS and no token plumbing. Ships as an image
   # like everything else: no checkout, no Node, no dev server.
   worlds-console:
@@ -108,7 +108,7 @@ services:
     ports:
       - "127.0.0.1:${WORLDS_CONSOLE_PORT:-4343}:80"
     environment:
-      # In-container address of the door: same compose network, container port.
+      # In-container address of the server: same compose network, container port.
       - WORLDS_URL=http://worlds:${WORLDS_PORT:-4342}
       # OPTIONAL: skip the console's sign-in by having the proxy authenticate for
       # you. Convenient on your own laptop; understand what it means before setting
@@ -117,12 +117,12 @@ services:
       - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
       - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
 
-  # ── TUI — the Worlds door's primary human interface ─────────────────────────
+  # ── TUI — the Worlds mode's primary human interface ─────────────────────────
   #   docker compose -f docker-compose-worlds.yml run --rm tui
-  # Same client as the Me door, in worlds mode: no Chat tab, no memories panel —
+  # Same client as Me, in worlds mode: no Chat tab, no memories panel —
   # Automate / Extend / Data / Monitor / Settings ARE the worlds surface. The
-  # mode is a client flag for now; when the server can announce which door it
-  # is, that should drive the surface and the flag become an override.
+  # mode is a client flag for now; when the server can announce its own mode,
+  # that should drive the surface and the flag become an override.
   tui:
     profiles: ["tui"]
     image: ghcr.io/embabel/tui:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}

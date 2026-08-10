@@ -1,9 +1,9 @@
-# Shared substrate for BOTH appliance doors — Me (docker-compose-me.yml) and
+# Shared substrate for BOTH appliance modes — Me (docker-compose-me.yml) and
 # Worlds (docker-compose-worlds.yml). Never `docker compose up` this file directly;
-# the door files include: it. Everything here is door-agnostic: the graph, the
+# the mode files include: it. Everything here is mode-agnostic: the graph, the
 # local embedding model, document conversion, the sandbox pre-pull, and metrics.
 #
-# One EMBABEL_VERSION moves every Embabel image AND both doors together: a shared
+# One EMBABEL_VERSION moves every Embabel image AND both modes together: a shared
 # graph only stays coherent if schema migrations and the embedding model can never
 # diverge between the processes writing to it.
 #
@@ -12,8 +12,8 @@
 services:
 
   # ── Knowledge graph ─────────────────────────────────────────────────────────
-  # ONE graph, shared by both doors deliberately: in the superset design the world
-  # store IS the product's data plane, and the doors are two surfaces over it.
+  # ONE graph, shared by both modes deliberately: in the superset design the world
+  # store IS the product's data plane, and the modes are two surfaces over it.
   neo4j:
     image: neo4j:2026.06-community
     container_name: embabel-appliance-neo4j
@@ -22,7 +22,7 @@ services:
       - "127.0.0.1:${NEO4J_BROWSER_PORT:-4243}:7474"   # browser
       - "127.0.0.1:${NEO4J_BOLT_PORT:-4244}:7687"      # bolt, for cypher-shell
     environment:
-      # Same zone as the doors (setup.py writes TZ to .env): cypher's datetime()
+      # Same zone as the modes (setup.py writes TZ to .env): cypher's datetime()
       # and the graph's logs should tell the same time the assistant does.
       - TZ=${TZ:-Etc/UTC}
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-embabel-assistant}
@@ -82,7 +82,7 @@ services:
     command: ["true"]
 
   # ── Metrics ─────────────────────────────────────────────────────────────────
-  # Prometheus scrapes each door's /actuator/prometheus; Grafana renders it.
+  # Prometheus scrapes each mode's /actuator/prometheus; Grafana renders it.
   #
   #   open http://localhost:4246        (no login, lands on Surface Health)
   #
@@ -140,9 +140,9 @@ services:
       - embabel_appliance_grafana_data:/var/lib/grafana
 
 configs:
-  # Scrape targets are the doors ON THE COMPOSE NETWORK — service name and the
+  # Scrape targets are the modes ON THE COMPOSE NETWORK — service name and the
   # in-container port, which SERVER_PORT keeps equal to the published one. Both
-  # doors are listed; Prometheus treats an absent door as a down target, which is
+  # modes are listed; Prometheus treats an absent mode as a down target, which is
   # benign and honest — the Surface Health dashboard shows exactly what is running.
   prometheus_config:
     content: |
@@ -170,7 +170,7 @@ configs:
 # Metal GPU access, which a container in the VM can never have. This is why it is
 # a `models:` element and not a service.
 #
-# ONE model for BOTH doors, and that is load-bearing, not tidiness: every vector
+# ONE model for BOTH modes, and that is load-bearing, not tidiness: every vector
 # in the shared graph must come from the same embedding model.
 #
 # REQUIRES Docker Model Runner: Docker Desktop 4.40+ with it enabled
@@ -200,7 +200,7 @@ models:
 
 volumes:
   # Worlds on disk — documents, artifacts, apps, credentials. Shared by both
-  # doors: a world is the unit the whole product family agrees on.
+  # modes: a world is the unit the whole product family agrees on.
   embabel_assistant_data:
   embabel_appliance_neo4j_data:
   embabel_appliance_prometheus_data:

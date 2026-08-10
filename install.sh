@@ -17,7 +17,7 @@
 # Environment:
 #   EMBABEL_HOME   where to install         (default: ~/embabel-me)
 #   EMBABEL_REF    branch or tag to fetch   (default: main)
-#   EMBABEL_DOOR   me | worlds              (default: me)
+#   EMBABEL_MODE   me | worlds              (default: me)
 
 set -eu
 
@@ -26,7 +26,7 @@ REPO="${EMBABEL_REPO:-embabel/appliance}"
 # means you get whatever landed this morning, which is not what an installer
 # should hand a new user.
 REF="${EMBABEL_REF:-main}"
-DOOR="${EMBABEL_DOOR:-me}"
+MODE="${EMBABEL_MODE:-${EMBABEL_DOOR:-me}}"   # EMBABEL_DOOR: the old name, still honoured
 HOME_DIR="${EMBABEL_HOME:-$HOME/embabel-me}"
 
 say() { printf '  %s\n' "$*"; }
@@ -93,7 +93,7 @@ tar xzf "$TARBALL" -C "$HOME_DIR" --strip-components=1 || die "Could not unpack 
 chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" 2>/dev/null || true
 
 # --- 3. Hand off ----------------------------------------------------------
-# setup.py owns the real flow — starting the door, streaming the first boot,
+# setup.py owns the real flow — starting the mode, streaming the first boot,
 # the account and model-provider key, and the offer to open the Me app. There
 # is deliberately no second implementation of any of that here.
 command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with macOS; on Linux: apt install python3)."
@@ -101,10 +101,10 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with ma
 say "Done. Starting setup…"
 echo
 cd "$HOME_DIR"
-# Arguments ride through to the door script untouched, which is what makes a
+# Arguments ride through to the mode script untouched, which is what makes a
 # preconfigured install a one-liner:
 #   curl -fsSL https://get.embabel.com/me | sh -s -- --world legal-world
-if [ "$DOOR" = "worlds" ]; then
+if [ "$MODE" = "worlds" ]; then
   exec python3 ./worlds.py "$@"
 else
   exec python3 ./me.py "$@"

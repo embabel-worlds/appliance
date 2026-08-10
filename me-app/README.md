@@ -23,7 +23,7 @@ npm start        # the first run fetches Electron by itself
 JavaScript with no build step — Electron is the only thing `npm` fetches, and
 there is nothing to compile.
 
-Requires the Me door up (`../me.py`) and your appliance username/password.
+Requires the Me mode up (`../me.py`) and your appliance username/password.
 
 v1 reads, with no special permissions:
 

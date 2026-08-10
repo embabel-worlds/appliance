@@ -28,7 +28,7 @@ git clone https://github.com/embabel/appliance.git && cd appliance
 ./worlds.py     # Embabel Worlds — the world runtime     → http://localhost:4343
 ```
 
-One command is the whole thing: it starts the door (pulling images on first run),
+One command is the whole thing: it starts the mode (pulling images on first run),
 shows you the boot, walks you through your account and model-provider key, and ends
 by telling you exactly where to go. Add `--fresh` to wipe everything and start over.
 
@@ -52,7 +52,7 @@ it enabled — `docker desktop enable model-runner` (Docker Desktop 4.40+, or Se
 AI), or the `docker-model-plugin` package on Docker Engine. Everything else is pulled.
 
 `setup.py` needs nothing installed — Python 3 standard library only, no flags. It finds
-the running door, its port, and its setup token by itself (waiting out a still-booting
+the running mode, its port, and its setup token by itself (waiting out a still-booting
 app rather than failing), walks you through each step, and checks your API key against
 the provider before storing it, so a mistyped key fails there and then rather than at your
 first message.
@@ -69,39 +69,39 @@ docker compose down                  # stop, KEEP your data
 docker compose down -v               # stop and DELETE everything
 ```
 
-## Two doors — Me and Worlds
+## Two modes — Me and Worlds
 
-The appliance is one product with two fronts, running the **same image over the
+The appliance is one product in two modes, running the **same image over the
 same data**:
 
-| Door | Start with | Open | What it is |
+| Mode | Start with | Open | What it is |
 |---|---|---|---|
 | **Me** | `./me.py` | **4242** | the personal assistant — web UI, chat, memory |
 | **Worlds** | `./worlds.py` | **4343** — the console | the world runtime — realms, documents, keys, views, chat, MCP, automations |
 
-For Worlds, **4343 is the front door**: the console. The server itself is on 4342 —
+For Worlds, **4343 is where you go**: the console. The server itself is on 4342 —
 that is the API and MCP endpoint, not where you go to look at anything.
 
 `docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
-`docker compose up` opens the Me door. Everything door-agnostic — the graph, the
+`docker compose up` starts the Me mode. Everything mode-agnostic — the graph, the
 local embedding model, document conversion, metrics — lives in `infra.yml`,
 included by both.
 
-First-run setup is the same `./setup.py` for either door, with no flags: it finds
+First-run setup is the same `./setup.py` for either mode, with no flags: it finds
 the running container by its compose service label and takes the port and setup
 token from there.
 
-Prefer a terminal? Each door carries the TUI as a run-on-demand service —
+Prefer a terminal? Each mode carries the TUI as a run-on-demand service —
 `docker compose run --rm tui` (add `-f docker-compose-worlds.yml` for Worlds,
 where it opens in worlds mode: no Chat tab, since the world runtime has no
 personal-assistant surface).
 
-Because the doors share one graph and one data volume, two rules hold:
+Because the modes share one graph and one data volume, two rules hold:
 
-1. **Run one door at a time.** Both up at once means two identical JVMs running
+1. **Run one mode at a time.** Both up at once means two identical JVMs running
    the singleton background work — cron firing twice, the same Telegram bot
    token connected twice (an API conflict, not just waste).
-2. **`EMBABEL_VERSION` and the embedding model move both doors together** — they
+2. **`EMBABEL_VERSION` and the embedding model move both modes together** — they
    are set once, in `.env` and `infra.yml`, deliberately.
 
 ## The Me app — a sensor for your Mac
@@ -121,7 +121,7 @@ cd me-app
 npm start          # "Me" appears in the menu bar; the first run fetches Electron itself
 ```
 
-Point it at your Me door (`http://localhost:4242`) with your appliance login, and
+Point it at your Me mode (`http://localhost:4242`) with your appliance login, and
 it offers three things:
 
 **Scan → review → send.** Every fact is shown before anything leaves the machine
@@ -229,7 +229,7 @@ route to different providers.
 
 ## Authorization fallback
 
-Both doors default `ORG_ROLE_FALLBACK` to `admin` when no external organization role
+Both modes default `ORG_ROLE_FALLBACK` to `admin` when no external organization role
 provider is configured. This lets the setup-created operator use admin-gated local
 surfaces. The fallback applies to **every authenticated principal**, not only that operator.
 To opt out, set `ORG_ROLE_FALLBACK=user` in `.env`; every authenticated principal will then
@@ -391,7 +391,7 @@ Ports still bind to `127.0.0.1` by default. Change that deliberately.
 ```
 
 Recreates the operator account — it deletes the credential and setup-record files
-from the data volume, restarts the door, and walks first-run setup again. Everything
+from the data volume, restarts the mode, and walks first-run setup again. Everything
 the appliance knows (graph, documents, memories) is kept; have your model-provider
 key handy, because the wizard verifies it again. This works from the host on purpose:
 the appliance never reopens setup over the API, but whoever controls Docker on the
