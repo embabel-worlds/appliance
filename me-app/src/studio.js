@@ -22,6 +22,20 @@
 // never disagree; and the per-user scope is applied server-side, so an edited
 // query can be wrong but not unsafe.
 
+/* global EmbabelVc */
+/*
+ * The virtual-Cypher semantics come from @embabel/vc — composing a query, reading
+ * the schema, finding a view's parameters. Vendored as a plain script (this
+ * renderer has no module system), same as marked and CodeMirror next door.
+ *
+ * Nothing about the engine's shape is decided in this file any more. That is the
+ * point: the console builds the same queries from the same package rather than
+ * from a second, drifting reading of VIRTUAL_CYPHER.md.
+ */
+const { TARGETS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, compose: composeCypher } = EmbabelVc
+/** The schema-aware lookup, curried with whatever snapshot we last loaded. */
+const propertiesOf = (label) => EmbabelVc.propertiesOf(schema, label)
+
 /** @param {string} id */
 const $ = (id) => document.getElementById(id)
 
@@ -68,9 +82,6 @@ function setStatus(el, ok, message) {
   el.textContent = message
   el.className = ok === null ? 'status' : ok ? 'status ok' : 'status error'
 }
-
-/** Cypher string-literal escape: backslashes first, then quotes. */
-const esc = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 
 // ---------------------------------------------------------------------------
 // The editor: CodeMirror over the textarea — Cypher highlighting, completion
@@ -128,24 +139,11 @@ cm.on('inputRead', (_cm, change) => {
 /** @type {{labels: Array<any>, relationships: Array<any>} | null} */
 let schema = null
 
-const VIA_VALUES = ['keyword', 'agentic-rag']
-const AI_KEYS = ['hint', 'model', 'temperature', 'confidence', 'fresh']
 const KEYWORDS = [
   'MATCH', 'WHERE', 'RETURN', 'ORDER BY', 'LIMIT', 'WITH', 'DISTINCT', 'AND', 'OR', 'NOT',
   'CONTAINS', 'STARTS WITH', 'ENDS WITH', 'IN', 'IS NULL', 'IS NOT NULL', 'count(', 'toLower(',
   'ai.relevant(', 'ai.score(', 'ai.classify(',
 ]
-
-/** alias → label, parsed from the query's own `(alias:Label` patterns. */
-function aliasMap(text) {
-  const map = {}
-  for (const m of text.matchAll(/\(\s*(\w+)\s*:\s*(\w+)/g)) map[m[1]] = m[2]
-  return map
-}
-
-function propertiesOf(label) {
-  return schema?.labels.find((l) => l.label === label)?.properties?.map((p) => p.name) ?? []
-}
 
 /** The custom hint: what fits HERE, from the schema, never a generic word list. */
 CodeMirror.registerHelper('hint', 'cypher', (editor) => {
@@ -336,44 +334,6 @@ const MODES = {
   semantic: { label: 'semantic — vector over thread summaries', cost: 'one embedding pass · cheap', dear: false },
 }
 
-const TARGETS = {
-  documents: {
-    name: 'Documents',
-    what: 'your ingested knowledge base',
-    seedLabel: 'Search for',
-    modes: ['about', 'mentions', 'judged'],
-    tags: true,
-    dates: true,
-  },
-  files: {
-    name: 'Files',
-    what: 'shared folders, walked live',
-    seedLabel: 'Term or idea',
-    modes: ['mentions', 'judged'],
-    tags: false,
-    dates: false,
-  },
-  threads: {
-    name: 'Email threads',
-    what: 'relevance over thread summaries',
-    seedLabel: 'Seed',
-    modes: ['semantic'],
-    tags: false,
-    dates: false,
-    anchors: {
-      topic: { label: 'Topic (Concept)', pattern: (v) => `(:Concept {value:'${esc(v)}'})`, placeholder: 'the renewal' },
-      person: { label: 'Person', pattern: (v) => `(:Person {name:'${esc(v)}'})`, placeholder: 'Ada Lovelace' },
-      organization: { label: 'Organization', pattern: (v) => `(:Organization {name:'${esc(v)}'})`, placeholder: 'Acme' },
-      meeting: { label: 'Meeting', pattern: (v) => `(:Meeting {subject:'${esc(v)}'})`, placeholder: 'Q3 planning' },
-    },
-  },
-  canvas: {
-    name: 'Blank canvas',
-    what: 'the whole graph, your shapes',
-    modes: [],
-  },
-}
-
 let target = 'documents'
 
 // ---------------------------------------------------------------------------
@@ -381,129 +341,38 @@ let target = 'documents'
 // user touches it: composing again is an explicit act (the Compose button or a
 // control change while the editor is still machine-written).
 // ---------------------------------------------------------------------------
-
-/** The edge property map: via, intent, and the nested {ai:{…}} steering. */
-function edgeProps() {
-  const parts = []
-  const mode = els.mode.value
-  if (mode === 'mentions') parts.push("via:'keyword'")
-  if (mode === 'judged') {
-    parts.push("via:'agentic-rag'")
-    const intent = els.intent.value.trim()
-    if (intent) parts.push(`intent:'${esc(intent)}'`)
+/**
+ * The controls, as the spec @embabel/vc composes from. This function is all that
+ * is left of the composer here: the Cypher-shaping — three relevance modes, the
+ * {ai:{…}} steering, the tag/date/score filters, the commented per-row judgment
+ * lines — lives in the package, so the Worlds console composes the same queries
+ * from the same understanding instead of a second reading of the spec.
+ */
+function composeSpec() {
+  return {
+    target,
+    mode: els.mode.value,
+    seed: els.seed.value,
+    intent: els.intent.value,
+    anchor: els.anchor.value,
+    tag: els.tag.value,
+    dateField: els.dateField.value,
+    dateFrom: els.dateFrom.value,
+    dateTo: els.dateTo.value,
+    minScore: els.minScore.value,
+    limit: els.limit.value,
+    ai: {
+      hint: els.aiHint.value,
+      model: els.aiModel.value,
+      temperature: els.aiTemperature.value,
+      confidence: els.aiConfidence.value,
+      fresh: els.aiFresh.checked,
+    },
   }
-  const ai = []
-  if (els.aiHint.value.trim()) ai.push(`hint:'${esc(els.aiHint.value.trim())}'`)
-  if (els.aiModel.value.trim()) ai.push(`model:'${esc(els.aiModel.value.trim())}'`)
-  if (els.aiTemperature.value !== '') ai.push(`temperature:${Number(els.aiTemperature.value)}`)
-  if (els.aiConfidence.value !== '') ai.push(`confidence:${Number(els.aiConfidence.value)}`)
-  if (els.aiFresh.checked) ai.push('fresh:true')
-  if (ai.length && mode === 'judged') parts.push(`ai:{${ai.join(', ')}}`)
-  return parts.length ? ` {${parts.join(', ')}}` : ''
-}
-
-function whereParts(alias) {
-  const parts = []
-  const spec = TARGETS[target]
-  if (spec.tags && els.tag.value) parts.push(`'${esc(els.tag.value)}' IN ${alias}.tags`)
-  if (spec.dates && els.dateField.value) {
-    if (els.dateFrom.value) parts.push(`${alias}.${els.dateField.value} >= '${els.dateFrom.value}'`)
-    if (els.dateTo.value) parts.push(`${alias}.${els.dateField.value} < '${els.dateTo.value}'`)
-  }
-  if (els.minScore.value !== '') parts.push(`r.score >= ${Number(els.minScore.value)}`)
-  return parts
-}
-
-const LIMIT = () => Math.max(1, Number(els.limit.value) || 10)
-
-function composeDocuments() {
-  const seed = els.seed.value.trim() || 'your search'
-  const mode = els.mode.value
-  const where = whereParts('d')
-  const evidence =
-    mode === 'mentions'
-      ? 'r.score AS score, r.snippet AS snippet, r.matchedTerms AS matched'
-      : mode === 'judged'
-        ? 'r.score AS score, r.snippet AS evidence, r.intent AS intent'
-        : 'r.score AS score, r.snippet AS snippet, r.mode AS mode'
-  return [
-    mode === 'judged' ? '// judged retrieval: several LLM calls per anchor — an explicit choice, never a default' : null,
-    `MATCH (:Concept {value:'${esc(seed)}'})-[r:RELEVANT_TO${edgeProps()}]->(d:Document)`,
-    where.length ? `WHERE ${where.join('\n  AND ')}` : null,
-    `RETURN d.title AS title, ${evidence}`,
-    `ORDER BY r.score DESC LIMIT ${LIMIT()}`,
-    '',
-    '// Per-row LLM judgment over the fetched rows — one uncomment away:',
-    "//   AND ai.relevant(d, 'genuinely about <your criterion>')      -- filter",
-    "//   ORDER BY ai.score(d, '<your criterion>') DESC               -- rerank",
-    '// Content, not metadata: MATCH (d)-[:HAS_SUMMARY]->(s:Summary) RETURN s.summary',
-    '// AND at the document: a second seed meeting the same d asserts BOTH terms.',
-  ]
-    .filter((l) => l !== null)
-    .join('\n')
-}
-
-function composeFiles() {
-  const mode = els.mode.value
-  if (mode === 'mentions') {
-    // The files keyword join greps CONTENT for the literal term; the seed must
-    // be lowercase (the graph re-applies the predicate to the excerpt).
-    const seed = (els.seed.value.trim() || 'your term').toLowerCase()
-    return [
-      `MATCH (:Concept {value:'${esc(seed)}'})-[r:RELEVANT_TO {via:'keyword'}]->(f:File)`,
-      `RETURN f.name AS name, f.dir AS dir, f.content AS excerpt, f.modifiedAt AS modified`,
-      `ORDER BY modified DESC LIMIT ${LIMIT()}`,
-      '',
-      '// The excerpt holds the matching lines, never the whole file body.',
-      '// For summarization use the Documents target — files are metadata + grep.',
-    ].join('\n')
-  }
-  const seed = els.seed.value.trim() || 'your idea'
-  return [
-    '// judged retrieval over file contents: several LLM calls per anchor',
-    `MATCH (:Concept {value:'${esc(seed)}'})-[r:RELEVANT_TO${edgeProps()}]->(f:File)`,
-    `RETURN f.name AS name, f.dir AS dir, r.score AS score, r.snippet AS evidence`,
-    `ORDER BY r.score DESC LIMIT ${LIMIT()}`,
-  ].join('\n')
-}
-
-function composeThreads() {
-  const anchor = TARGETS.threads.anchors[els.anchor.value]
-  const seed = els.seed.value.trim() || anchor.placeholder
-  const floor = els.minScore.value !== '' ? Number(els.minScore.value) : 0.6
-  return [
-    `MATCH ${anchor.pattern(seed)}-[r:RELEVANT_TO]->(t:RelevantEmailThread)`,
-    `WHERE r.score >= ${floor}`,
-    `RETURN t.subject AS subject, t.snippet AS snippet, r.score AS score`,
-    `ORDER BY r.score DESC LIMIT ${LIMIT()}`,
-    '',
-    "// RELEVANT_TO is semantic — 'reads as being about', never 'corresponded with'.",
-    '// Compose with structure: (me:AssistantUser)-[:EMAILED]->(p:Person)-[r:RELEVANT_TO]->(t)',
-  ].join('\n')
-}
-
-function composeCanvas() {
-  return [
-    '// The whole graph is yours — the Schema panel lists every node type here.',
-    '// Shapes the engine serves:',
-    "//   (:Concept {value:'…'})-[r:RELEVANT_TO]->(d:Document)            -- about (vector)",
-    "//   (:Concept {value:'…'})-[r:RELEVANT_TO {via:'keyword'}]->(d)     -- mentions",
-    "//   (:Concept)-[r:RELEVANT_TO {via:'agentic-rag', intent:'…'}]->(d) -- judged",
-    "//   (:Concept {value:'…'})-[r:RELEVANT_TO {via:'keyword'}]->(f:File)",
-    '//   (:Person|Organization|Meeting)-[r:RELEVANT_TO]->(t:RelevantEmailThread)',
-    '//   (d:Document)-[:HAS_SUMMARY]->(s:Summary)',
-    "//   WHERE 'tag' IN d.tags — membership, never CONTAINS (tags is a list)",
-    "//   ai.relevant(n, '…') / ai.score(n, '…') / ai.classify(n, '…') — per-row LLM judgment",
-    '',
-    'MATCH (d:Document)',
-    'RETURN d.title AS title, d.tags AS tags, d.uri AS uri',
-    'ORDER BY d.ingestionTimestamp DESC LIMIT 25',
-  ].join('\n')
 }
 
 function compose() {
-  const composers = { documents: composeDocuments, files: composeFiles, threads: composeThreads, canvas: composeCanvas }
-  setEditorText(composers[target]())
+  setEditorText(composeCypher(composeSpec()))
   scheduleValidation()
 }
 
@@ -877,13 +746,6 @@ const saveName = $('save-name')
 const saveDescription = $('save-description')
 const saveParams = $('save-params')
 const saveStatus = $('save-status')
-
-/** Bind variables the query references — `$name`, ignoring `$$` and string content is close enough here. */
-function declaredParams(cypher) {
-  return [...new Set([...cypher.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]))]
-    // The engine reserves these namespaces; they are never view params.
-    .filter((p) => !['ai', 'realm', 'userId', 'anchors', 'exclude', 'want', 'hint'].includes(p))
-}
 
 /** One control for a declared param, matched to its type. Returns {name, read()}. */
 function paramField(name, spec, container) {
