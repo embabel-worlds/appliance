@@ -1235,6 +1235,7 @@ async function runView(view, args, status) {
 
 async function init() {
   settings = await window.me.loadSettings()
+  void window.meTheme.restoreTheme(settings)
   renderTargets()
   applyTarget()
   compose()

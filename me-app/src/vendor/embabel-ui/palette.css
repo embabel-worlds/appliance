@@ -1,0 +1,68 @@
+/*
+ * Theme: embabel
+ * Display Name: Embabel
+ * Description: The schematic — light lines on black, indigo as the one signal
+ * Default: false
+ */
+
+/*
+ * THE FALLBACK PALETTE, written as a theme file on purpose.
+ *
+ * The appliance already has a theme system: `*.css` files under the
+ * installation's `themes/` directory, each a metadata header plus a `:root`
+ * block of `--sb-*` variables, discovered by `ThemeService`, picked by the user,
+ * and served over `GET /api/v1/themes/{name}.css`. The Vaadin UI has used it for
+ * a while; this package joins it rather than inventing a second one.
+ *
+ * Which means the contract below is NOT ours. It is the `--sb-*` palette
+ * documented in `installation-default/themes/README.md`, and every bundled theme
+ * — midnight, cubicle, corporate, aurora, neon, slate, ember — already speaks
+ * it. A user who picks Midnight in the Vaadin drawer gets Midnight in the
+ * console and in Me, because all three read the same variables.
+ *
+ * This file supplies DEFAULTS only, so the package renders correctly with no
+ * theme loaded at all. Anything the appliance serves later wins: load it after
+ * this one and it simply overwrites the same custom properties.
+ *
+ * The values are Embabel's own look, mapped onto the shared contract:
+ *   bg-dark #000 (paper) · bg-light #101828 (cards, fields) · accent #625fff.
+ */
+
+:root {
+  /* ── The documented contract every appliance theme defines ─────────────── */
+  --sb-bg-dark: #000000;
+  --sb-bg-medium: #0b1020;
+  --sb-bg-light: #101828;
+
+  --sb-accent: #625fff;
+  --sb-accent-light: #c7d2ff;
+  /* Ink for text sitting on a SOLID accent fill. A theme with a pale accent
+     must set this, or its primary buttons render white-on-white. */
+  --sb-accent-contrast: #ffffff;
+
+  --sb-link: #c7d2ff;
+  --sb-link-hover: #ffffff;
+
+  --sb-heading: #e6e6e6;
+  --sb-text-primary: #e6e6e6;
+  --sb-text-secondary: #99a1af;
+  --sb-text-muted: #6a7282;
+
+  --sb-border: #1e2939;
+
+  --sb-error: #f87171;
+  --sb-success: #3ecf8e;
+
+  /* ── Extensions ────────────────────────────────────────────────────────── */
+  /* Not in the base contract, so both carry a fallback and a theme may set
+     either. `--sb-warning` is the amber that says somebody else's computer is in
+     the loop; `--sb-unlit` is a lamp that is OFF, which must read as off rather
+     than as dim text. */
+  --sb-warning: #dcaa37;
+  --sb-unlit: #364153;
+
+  /* Typefaces are not part of the palette contract and no bundled theme sets
+     them. A theme may; these are the defaults. */
+  --sb-font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sb-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}

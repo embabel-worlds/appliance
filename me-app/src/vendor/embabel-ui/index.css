@@ -1,0 +1,16 @@
+/* Everything, in the order it must cascade.
+ *
+ * palette -> tokens -> ground -> base -> components -> markdown. Later files rely on the
+ * custom properties the first two define, and components deliberately refine
+ * bare-element rules from base.
+ *
+ * Importing a subset is supported and expected: a surface embedded in someone
+ * else's page wants `tokens` + `base` + `components` and NOT `ground`, which
+ * repaints the whole viewport.
+ */
+@import './palette.css';
+@import './tokens.css';
+@import './ground.css';
+@import './base.css';
+@import './components.css';
+@import './markdown.css';

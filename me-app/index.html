@@ -3,285 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <title>Embabel Me</title>
+  <!-- The shared visual language, ahead of Me's own rules so they refine it. -->
+  <link rel="stylesheet" href="src/vendor/embabel-ui/index.css" />
+  <!-- The chosen appliance theme, fetched by the main process. Empty until picked. -->
+  <style id="theme"></style>
   <style>
-    /* Embabel Me sensor — the same surface as the Worlds console: the schematic
-       drawn in light lines on black, brand indigo #625fff as the ONE signal
-       colour, green/red reserved for status. Embabel is dark mode, period. */
-    :root {
-      --paper: #000000;
-      --card: #101828;
-      --ink: #e6e6e6;
-      --mid: #99a1af;
-      --faint: #6a7282;
-      --rule: #1e2939;
-      --signal: #625fff;
-      --lit: #3ecf8e;
-      --alert: #f87171;
-      --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
-      --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
-      color-scheme: dark;
-    }
-
-    * { box-sizing: border-box; margin: 0; }
-
-    body {
-      color: var(--ink); font-family: var(--sans); line-height: 1.5;
-      /* The graph-paper ground the console is drawn on. */
-      background:
-        repeating-linear-gradient(0deg, rgba(230, 230, 230, 0.028) 0 1px, transparent 1px 44px),
-        repeating-linear-gradient(90deg, rgba(230, 230, 230, 0.028) 0 1px, transparent 1px 44px),
-        var(--paper);
-      background-attachment: fixed;
-      min-height: 100vh;
-      position: relative;
-    }
-
-    /* The aurora lives on its own fixed layer so it can DRIFT — slow, alive,
-       behind everything. */
-    body::before {
-      content: ""; position: fixed; inset: -30%; z-index: -2; pointer-events: none;
-      background:
-        radial-gradient(1000px 640px at 22% 12%, rgba(98, 95, 255, 0.34), transparent 62%),
-        radial-gradient(880px 560px at 82% 18%, rgba(62, 207, 142, 0.13), transparent 58%),
-        radial-gradient(1300px 860px at 55% 95%, rgba(98, 95, 255, 0.20), transparent 62%);
-      animation: aurora 40s ease-in-out infinite alternate;
-      filter: saturate(1.1);
-    }
-    @keyframes aurora {
-      0%   { transform: translate3d(-3%, -2%, 0) scale(1); }
-      50%  { transform: translate3d(3%, 2%, 0) scale(1.06); }
-      100% { transform: translate3d(-2%, 3%, 0) scale(1.02); }
-    }
     @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
-
-    /* The living graph: nodes drifting, edges forming as they pass. */
-    #graphbg { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
-
     /* With titleBarStyle: hiddenInset the traffic lights float over the page,
        so the window needs its own drag strip and headroom beneath them. */
     .titlebar { position: fixed; top: 0; left: 0; right: 0; height: 38px;
       -webkit-app-region: drag; z-index: 10; }
-    .console { width: 100%; max-width: 900px; margin: 0 auto;
-      padding: 46px clamp(16px, 3vw, 26px) 60px; }
-
-    .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 14px; }
-    .masthead h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 760; letter-spacing: -0.02em; }
-    .masthead p { color: var(--mid); font-size: 13px; margin-top: 4px; }
-
-    .panel {
-      background: rgba(11, 16, 30, 0.44);
-      border: 1px solid rgba(230, 230, 230, 0.20);
-      border-radius: 4px;
-      margin-bottom: 16px;
-      backdrop-filter: blur(2px);
-    }
-    .panel > h2 {
-      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
-      letter-spacing: 0.14em; color: var(--mid); font-weight: 500;
-      padding: 10px 16px; border-bottom: 1px solid rgba(230, 230, 230, 0.14);
-      background: rgba(0, 0, 0, 0.45);
-    }
-    .panel-body { padding: 14px 16px; }
-
-    .row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-    .row:last-child { margin-bottom: 0; }
-
-    label.field { display: flex; flex-direction: column; font-size: 11px; gap: 4px;
-      font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); }
-    input[type=text], input[type=password] {
-      font: inherit; font-size: 13px; font-family: var(--sans); padding: 7px 9px;
-      border-radius: 3px; border: 1px solid var(--rule); background: #0b1220;
-      color: var(--ink); min-width: 190px; text-transform: none; letter-spacing: normal;
-    }
-    input[type=text]:focus, input[type=password]:focus {
-      outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4);
-    }
-    input[type=checkbox] { accent-color: var(--signal); }
-
-    button {
-      font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 3px; cursor: pointer;
-      border: 1px solid var(--rule); background: rgba(98, 95, 255, 0.16); color: #c7d2ff;
-      transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
-    }
-    button:hover:not(:disabled), button:focus-visible:not(:disabled) {
-      background: var(--signal); border-color: var(--signal); color: #fff;
-      outline: none; box-shadow: 0 0 18px rgba(98, 95, 255, 0.45);
-    }
-    button.primary { background: var(--signal); border-color: var(--signal); color: #fff; }
-    button:disabled { opacity: 0.4; cursor: default; }
-
-    .status { font-size: 12.5px; font-family: var(--mono); color: var(--mid); }
-    .status.ok { color: var(--lit); }
-    .status.error { color: var(--alert); }
-
-    label.check { font-size: 13px; display: flex; align-items: center; gap: 7px; cursor: pointer; }
-    .hint { font-size: 12px; color: var(--faint); margin: 2px 0 10px; }
-
-    /* A button or status sharing a row with captioned fields sits on the
-       INPUT line, not centered against the taller caption+input stack. */
-    .row .inline-action { align-self: flex-end; }
-    .row .inline-status { align-self: flex-end; padding-bottom: 7px; }
-
-    .fact {
-      display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 8px;
-      border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
-      cursor: pointer;
-    }
     .fact:hover { border-color: rgba(98, 95, 255, 0.5); }
     .fact input { margin-top: 3px; }
     .fact strong { font-size: 12px; font-family: var(--mono); color: #c7d2ff;
       text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
     .fact p { margin: 5px 0 0; font-size: 13px; color: var(--mid); overflow-wrap: anywhere; }
-
-    /* App launcher cards: a grid of the world's applications, each a click
-       from its own signed-in window. Monogram tiles — apps declare no icon. */
-    .app-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 10px; margin-bottom: 12px;
-    }
-    .app-card {
-      display: flex; flex-direction: column; gap: 8px; padding: 14px;
-      border: 1px solid var(--rule); border-radius: 4px; background: rgba(0, 0, 0, 0.35);
-      cursor: pointer; text-align: left; font: inherit; color: inherit;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .app-card:hover, .app-card:focus-visible {
-      border-color: var(--signal); box-shadow: 0 0 14px rgba(98, 95, 255, 0.3);
-      outline: none; background: rgba(0, 0, 0, 0.35); color: inherit;
-    }
-    .app-card .tile {
-      width: 44px; height: 44px; border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--mono); font-size: 19px; color: #c7d2ff; text-transform: uppercase;
-      background: rgba(98, 95, 255, 0.16); border: 1px solid var(--rule);
-    }
-    .app-card .name { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-    .app-card p { font-size: 12px; color: var(--mid); margin: 0; overflow-wrap: anywhere; }
-    .app-card .meta { font-family: var(--mono); font-size: 10.5px; color: var(--faint);
-      text-transform: uppercase; letter-spacing: 0.08em; }
-
-    /* A realm row: monogram tile (no realm declares an icon — we synthesize),
-       name and version, description, provider/stars, and the install action. */
-    .realm {
-      display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; margin-bottom: 8px;
-      border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
-    }
-    .realm .tile {
-      width: 36px; height: 36px; flex: none; border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--mono); font-size: 16px; color: #c7d2ff; text-transform: uppercase;
-      background: rgba(98, 95, 255, 0.16); border: 1px solid var(--rule);
-    }
-    .realm .body { flex: 1; min-width: 0; }
-    .realm .name { font-size: 13px; font-weight: 600; }
-    .realm .meta { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: 8px; }
-    /* One line, however much prose the realm shipped; "more" unfolds the rest
-       as rendered markdown. The toggle is a text affordance, not a button. */
-    .realm .desc-line { font-size: 12.5px; color: var(--mid); margin-top: 2px;
-      display: flex; align-items: baseline; min-width: 0; }
-    .realm .desc-line .text { overflow: hidden; text-overflow: ellipsis;
-      white-space: nowrap; min-width: 0; }
-    .realm .more { background: none; border: none; padding: 0 0 0 6px; margin: 0;
-      color: #c7d2ff; font-size: 11.5px; cursor: pointer; }
-    .realm .more:hover, .realm .more:focus-visible { background: none; border: none;
-      box-shadow: none; color: #fff; text-decoration: underline; outline: none; }
-    .realm .full-desc { font-size: 12.5px; color: var(--mid); margin-top: 4px; }
-    .realm > button { align-self: center; }
-
-    .mount {
-      display: flex; gap: 10px; align-items: center; padding: 8px 12px; margin-bottom: 8px;
-      border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
-      font-size: 13px;
-    }
     .mount .path { flex: 1; overflow-wrap: anywhere; }
     .mount .target { font-family: var(--mono); font-size: 12px; color: var(--faint); }
-    .hint code { font-family: var(--mono); font-size: 11.5px; color: #c7d2ff; }
-
-    .masthead-row { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
-
-    /* The mark, small: its own black glow disappears into the page's black,
-       so it sits there like it was drawn on. */
-    .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
     .brand .mark { width: 76px; height: 76px; flex: none; border-radius: 12px; }
-
-    /* The connection pill: a light that tells you the truth at a glance, and
-       opens the full form when it doesn't. */
-    .pill {
-      display: flex; align-items: center; gap: 7px; flex: none;
-      font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-      padding: 5px 11px; border-radius: 999px; background: rgba(0, 0, 0, 0.4);
-      border: 1px solid var(--rule); color: var(--mid);
-    }
-    .pill:hover { background: rgba(98, 95, 255, 0.16); border-color: var(--rule); box-shadow: none; color: var(--ink); }
-    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
-    .pill.ok .dot { background: var(--lit); box-shadow: 0 0 7px rgba(62, 207, 142, 0.6); }
-    .pill.error .dot { background: var(--alert); box-shadow: 0 0 7px rgba(248, 113, 113, 0.5); }
-
-    /* Tabs: the sensor and the documents are different jobs, and showing both
-       at once is what made this window feel like a settings screen. */
-    .tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid rgba(230, 230, 230, 0.14); }
-    .tab {
-      font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em;
-      background: none; border: none; border-bottom: 2px solid transparent; color: var(--faint);
-      padding: 8px 14px; border-radius: 0;
-    }
-    .tab:hover:not(.is-on) { background: none; color: var(--mid); box-shadow: none; border-color: transparent; }
-    .tab.is-on { color: var(--ink); border-bottom-color: var(--signal); background: none; }
-
-    input.grow { flex: 1; min-width: 260px; }
-    #doc-drop {
-      margin-top: 14px; padding: 18px; text-align: center;
-      border: 1px dashed var(--rule); border-radius: 3px;
-      font-size: 12.5px; color: var(--mid);
-    }
-    #doc-drop.is-over { border-color: var(--signal); color: var(--ink); background: rgba(98, 95, 255, 0.08); }
     #doc-ingest-row { margin-top: 10px; }
     #doc-ingest-row .grow input { width: 100%; box-sizing: border-box; }
-
-    input[type=date], input[type=number], select {
-      font: inherit; font-size: 13px; font-family: var(--sans); padding: 6px 8px;
-      border-radius: 3px; border: 1px solid var(--rule); background: #0b1220; color: var(--ink);
-    }
-    input[type=number] { width: 74px; }
-    select { text-transform: none; letter-spacing: normal; }
-
-    /* Rendered markdown — the assistant writes it, so these are the elements
-       every answer and reply is actually made of. Tight margins: these live
-       inside bubbles and cards, not on a page of their own. */
-    .md > :first-child { margin-top: 0; }
-    .md > :last-child { margin-bottom: 0; }
-    .md p { margin: 0 0 0.7em; }
-    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
-      margin: 1.1em 0 0.45em; line-height: 1.3; font-weight: 600;
-    }
-    .md h1 { font-size: 1.3em; }
-    .md h2 { font-size: 1.18em; }
-    .md h3 { font-size: 1.06em; }
-    .md h4, .md h5, .md h6 { font-size: 1em; color: var(--mid); }
-    .md ul, .md ol { margin: 0 0 0.7em; padding-left: 1.35em; }
-    .md li { margin: 0.2em 0; }
-    .md li > ul, .md li > ol { margin-bottom: 0; }
-    .md code {
-      font-family: var(--mono); font-size: 0.88em;
-      background: rgba(255, 255, 255, 0.07); border: 1px solid var(--rule);
-      border-radius: 3px; padding: 0.5px 4px;
-    }
-    .md pre {
-      margin: 0 0 0.7em; padding: 9px 11px; overflow-x: auto;
-      background: rgba(0, 0, 0, 0.45); border: 1px solid var(--rule); border-radius: 3px;
-    }
-    .md pre code { background: none; border: none; padding: 0; font-size: 12px; line-height: 1.5; }
-    .md blockquote {
-      margin: 0 0 0.7em; padding-left: 10px;
-      border-left: 2px solid var(--rule); color: var(--mid);
-    }
-    .md hr { border: none; border-top: 1px solid var(--rule); margin: 1em 0; }
-    .md a { color: #c7d2ff; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-    .md a:hover { color: #fff; }
-    .md table { border-collapse: collapse; margin: 0 0 0.7em; font-size: 0.93em; display: block; overflow-x: auto; }
-    .md th, .md td { border: 1px solid var(--rule); padding: 4px 9px; text-align: left; }
-    .md th { background: rgba(255, 255, 255, 0.05); font-weight: 600; }
-
     /* The answer, and the citations that make it checkable. */
     .answer { font-size: 14.5px; line-height: 1.65; margin: 14px 0 0; }
     .answer:empty { display: none; }
@@ -291,7 +32,6 @@
       border-radius: 3px; padding: 1px 4px; margin: 0 1px; cursor: pointer;
     }
     .cite:hover { background: var(--signal); color: #fff; }
-
     .source {
       border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
       padding: 10px 12px; margin-top: 8px; transition: border-color 0.2s, box-shadow 0.2s;
@@ -311,27 +51,6 @@
     }
     .source .actions { margin-top: 8px; display: flex; gap: 8px; }
     .source .actions button { font-size: 12px; padding: 4px 10px; }
-
-    /* Chat: the console's porthole, redrawn on this surface. */
-    .chat-scroll {
-      min-height: 200px; max-height: 48vh; overflow-y: auto;
-      display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
-    }
-    .chat-msg {
-      padding: 8px 11px; border: 1px solid var(--rule); border-radius: 3px;
-      background: rgba(0, 0, 0, 0.35); font-size: 13.5px; line-height: 1.55;
-      overflow-wrap: anywhere; max-width: 86%;
-    }
-    /* The user's own words are shown exactly as typed, so their line breaks
-       have to survive; the assistant's arrive as markdown and get laid out. */
-    .chat-msg.user {
-      align-self: flex-end; white-space: pre-wrap;
-      border-color: rgba(98, 95, 255, 0.45); background: rgba(98, 95, 255, 0.10);
-    }
-    .chat-msg.assistant { align-self: flex-start; }
-    .chat-working { font-family: var(--mono); font-size: 12px; color: var(--mid); padding: 2px 1px; }
-    .chat-empty { color: var(--faint); font-size: 13px; padding: 6px 1px; }
-
     /* The claim this whole product rests on, said out loud. Green when every word
        stays on the machine; amber and specific when some of it does not. */
     .privacy {
@@ -352,7 +71,6 @@
     }
     @keyframes sweep { 0%, 60% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
     @media (prefers-reduced-motion: reduce) { .privacy::after { animation: none; } }
-
     .privacy-shield { flex: none; display: flex; align-items: center; }
     .privacy-words { min-width: 0; }
     .privacy-headline { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
@@ -366,7 +84,6 @@
     }
     .privacy-cta:hover { background: var(--lit); border-color: var(--lit); color: #04140c;
       box-shadow: 0 0 18px rgba(62, 207, 142, 0.45); }
-
     /* Somewhere else's computer is in the loop: amber, and it names names. */
     .privacy.cloud {
       border-color: rgba(220, 170, 55, 0.45); color: #dcaa37;
@@ -375,28 +92,21 @@
         rgba(220, 170, 55, 0.05);
     }
     .privacy.cloud #privacy-tick { display: none; }
-
     .privacy-detail { font-size: 12.5px; color: var(--mid); margin: -8px 0 16px; padding: 0 16px; }
     .privacy-detail div { padding: 2px 0; font-family: var(--mono); font-size: 12px; }
-
-    .role {
-      display: flex; gap: 10px; align-items: center; padding: 9px 12px; margin-bottom: 8px;
-      border: 1px solid var(--rule); border-radius: 3px; background: rgba(0, 0, 0, 0.35);
-    }
     .role .what { flex: 1; min-width: 0; }
     .role .name { font-family: var(--mono); font-size: 12px; color: #c7d2ff; }
     .role .says { font-size: 12px; color: var(--faint); }
     .role select { min-width: 250px; }
     .role .local { font-family: var(--mono); font-size: 10px; color: var(--lit);
       border: 1px solid rgba(62, 207, 142, 0.4); border-radius: 3px; padding: 1px 5px; }
-
     .summary { margin-top: 10px; font-size: 13px; color: var(--ink); font-weight: 600; }
     #receipt { margin-top: 12px; display: grid; gap: 3px; }
     #fact-list { margin-bottom: 12px; }
   </style>
 </head>
 <body>
-  <canvas id="graphbg" aria-hidden="true"></canvas>
+  <canvas id="graphbg" class="embabel-backdrop" aria-hidden="true"></canvas>
   <div class="titlebar"></div>
 
   <div class="console">
@@ -573,6 +283,24 @@
         </div>
       </div>
     </section>
+    <section class="panel">
+      <h2>Appearance</h2>
+      <div class="panel-body">
+        <p class="hint">
+          Themes are installed on your appliance, and the list is the same one the
+          appliance's own web UI offers — pick here and it is the same choice. Every
+          window follows, including the Query Studio.
+        </p>
+        <div class="row">
+          <label class="field">Theme
+            <select id="theme-pick" title="Themes installed on your appliance">
+              <option value="">Embabel (default)</option>
+            </select>
+          </label>
+          <span id="theme-status" class="status inline-status"></span>
+        </div>
+      </div>
+    </section>
     </div><!-- /sensor -->
 
     <div class="tabpanel" data-panel="documents" hidden>
@@ -627,7 +355,7 @@
           chunked and embedded — and is answerable above once it lands. Shared folders you
           tick to index on the Machine tab arrive on their own; this is for the one-off.
         </p>
-        <div id="doc-drop">
+        <div id="doc-drop" class="dropzone">
           Drop files here to add them to your documents — you'll be asked for tags first.
         </div>
         <div class="row" id="doc-ingest-row" hidden>
@@ -711,7 +439,7 @@
           template ships, ones your realms brought. Each opens in its own window,
           already signed in.
         </p>
-        <div id="app-grid" class="app-grid"></div>
+        <div id="app-grid" class="card-grid"></div>
         <div class="row">
           <button id="apps-refresh">Refresh</button>
           <span id="apps-status" class="status"></span>
@@ -786,6 +514,7 @@
   <script src="src/vendor/purify.js"></script>
   <script src="src/markdown.js"></script>
   <script src="src/graph.js"></script>
+  <script src="src/theme.js"></script>
   <script src="src/renderer.js"></script>
 </body>
 </html>

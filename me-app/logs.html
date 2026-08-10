@@ -5,27 +5,9 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
   <title>Embabel Me — Container logs</title>
+  <link rel="stylesheet" href="src/vendor/embabel-ui/index.css" />
+  <style id="theme"></style>
   <style>
-    /* The studio's skin, minus the aurora: a dense mono log over a moving
-       background is unreadable, and this window is for reading. */
-    :root {
-      --ink: #e6e6e6;
-      --mid: #99a1af;
-      --faint: #6a7282;
-      --rule: rgba(230, 230, 230, 0.14);
-      --mono: "SF Mono", ui-monospace, Menlo, monospace;
-      --sans: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background: rgba(230, 230, 230, 0.18); border-radius: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    body {
-      margin: 0; background: #05060f; color: var(--ink);
-      font-family: var(--sans); font-size: 13px;
-      display: flex; flex-direction: column;
-    }
     .dragbar {
       -webkit-app-region: drag; height: 40px; flex: none;
       display: flex; align-items: center; padding: 0 16px 0 84px;
@@ -36,23 +18,15 @@
       flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       padding: 8px 16px; border-bottom: 1px solid var(--rule);
     }
-    label.field { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); }
     select, input[type=text] {
       background: rgba(0,0,0,0.5); color: var(--ink); border: 1px solid var(--rule);
       border-radius: 3px; padding: 3px 6px; font-family: var(--mono); font-size: 11.5px;
     }
     input[type=text] { min-width: 14em; }
-    button {
-      background: rgba(0,0,0,0.5); color: var(--ink); border: 1px solid var(--rule);
-      border-radius: 3px; padding: 3px 10px; font-size: 11px; cursor: pointer;
-    }
     button:hover { border-color: rgba(230,230,230,0.3); }
-    button { display: inline-flex; align-items: center; gap: 5px; }
     .ico { width: 9px; height: 9px; fill: currentColor; }
     /* Frozen is a state you must not forget you are in — the button carries it. */
     #follow.paused { border-color: #e3b341; color: #e3b341; }
-    .status { font-size: 11px; color: var(--faint); margin-left: auto; }
-
     #log {
       flex: 1; overflow: auto; margin: 0; padding: 8px 16px 24px;
       font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
@@ -93,6 +67,7 @@
   </div>
   <div id="log"></div>
 
+  <script src="src/theme.js"></script>
   <script src="src/logview.js"></script>
 </body>
 </html>

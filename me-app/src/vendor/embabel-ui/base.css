@@ -1,0 +1,173 @@
+/* Element defaults: the reset, and the form controls every surface uses.
+ *
+ * These are bare-element rules on purpose. A button in either door should look
+ * like an Embabel button without being told, because the alternative — every
+ * app remembering a class — is exactly how the two drifted apart.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+/* Author display rules (a `.row`'s flex, say) otherwise beat the UA's [hidden]. */
+[hidden] {
+  display: none !important;
+}
+
+/* ── Type ──────────────────────────────────────────────────────────────── */
+
+/* The mono caption: uppercase and letterspaced. Section headings, field
+   labels, meta, status — the schematic's annotation layer. */
+.caption,
+.panel > h2,
+label.field,
+.status,
+.meta {
+  font-family: var(--mono);
+  font-size: var(--caption-size);
+  text-transform: uppercase;
+  letter-spacing: var(--caption-tracking);
+  font-weight: 500;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--link-hover);
+}
+
+code, pre, kbd, samp {
+  font-family: var(--mono);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid var(--rule);
+  background: var(--signal-wash);
+  /* The accent ITSELF, not the pale tint of it. `--sb-accent-light` is a theme's
+     hover variant and is lighter than its accent by definition — fine as ink on a
+     black ground, unreadable as ink on a white one. The accent is the one colour
+     every theme guarantees contrasts with its own page. */
+  color: var(--signal-label);
+  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+/* Hover and keyboard focus land in the SAME place: a keyboard user should get
+   the affordance a mouse user gets, not a second, quieter one. */
+button:hover:not(:disabled),
+button:focus-visible:not(:disabled) {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+  outline: none;
+  box-shadow: var(--signal-glow);
+}
+
+button.primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* A button that is really a text affordance — "more", "show the rest". It
+   carries no chrome, so it must not inherit any on hover either. */
+/* It follows prose directly ("…as tools. more"), so it carries its own leading
+   space rather than relying on the markup to leave one. */
+button.link {
+  background: none;
+  border: none;
+  padding: 0 0 0 6px;
+  margin: 0;
+  color: var(--signal-ink);
+  font-size: 11.5px;
+}
+
+button.link:hover,
+button.link:focus-visible {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--on-signal);
+  text-decoration: underline;
+  outline: none;
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────── */
+
+input[type=text],
+input[type=password],
+input[type=search],
+input[type=url],
+input[type=email],
+input[type=date],
+input[type=number],
+select,
+textarea {
+  font: inherit;
+  font-size: 13px;
+  font-family: var(--sans);
+  padding: 7px 9px;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule);
+  background: var(--field-bg);
+  color: var(--ink);
+  /* Fields sit inside `label.field`, which is uppercase and letterspaced —
+     neither of which should reach the value the user typed. */
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px var(--signal-edge);
+}
+
+input[type=text],
+input[type=password] {
+  min-width: 190px;
+}
+
+input[type=number] {
+  width: 74px;
+}
+
+input[type=checkbox],
+input[type=radio] {
+  accent-color: var(--signal);
+}
+
+/* A field that should take the rest of its row. */
+input.grow,
+select.grow {
+  flex: 1;
+  min-width: 260px;
+}

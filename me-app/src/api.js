@@ -601,6 +601,8 @@ async function realmGaps(settings) {
 }
 
 module.exports = {
+  listThemes,
+  themeCss,
   loadedLocalModels,
   modelsInUse,
   getWorldConfig,
@@ -673,6 +675,41 @@ async function setRole(settings, roleId, model) {
 }
 
 /** The world's own config — needed to know HOW chat is currently pinned. */
+/**
+ * The appliance's installed themes. Same service the Vaadin UI's Theme tab uses
+ * (`GET /api/v1/themes`), so a theme chosen anywhere is the same list here.
+ */
+async function listThemes(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/themes`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, themes: [] }
+    return { ok: true, message: '', themes: (await readJson(res)) ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), themes: [] }
+  }
+}
+
+/**
+ * One theme's stylesheet. TEXT, not JSON — this endpoint serves `text/css`, and
+ * the renderer cannot fetch it itself (no HTTP in the renderer, by design), so
+ * it travels over IPC and is injected into `<style id="theme">`.
+ */
+async function themeCss(settings, name) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/themes/${encodeURIComponent(name)}.css`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, css: '' }
+    return { ok: true, message: '', css: await res.text() }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), css: '' }
+  }
+}
+
 async function getWorldConfig(settings) {
   try {
     const res = await fetch(`${settings.baseUrl}/api/v1/config`, {

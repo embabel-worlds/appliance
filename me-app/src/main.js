@@ -422,6 +422,11 @@ handle('models:set-role', (settings, roleId, model) => {
 // the main window stays a sensor panel rather than a database console. One
 // instance — a second open focuses the first.
 let studioWindow = null
+// Themes: the appliance owns the list and the stylesheet. The renderer has no
+// HTTP of its own, so both cross here and it only paints the result.
+handle('themes:list', (settings) => api.listThemes(settings))
+handle('themes:css', (settings, name) => api.themeCss(settings, name))
+
 handle('query:popout', () => {
   if (studioWindow) {
     studioWindow.show()

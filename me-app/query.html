@@ -7,32 +7,9 @@
   <title>Embabel Me — Query Studio</title>
   <link rel="stylesheet" href="src/vendor/codemirror.css" />
   <link rel="stylesheet" href="src/vendor/show-hint.css" />
+  <link rel="stylesheet" href="src/vendor/embabel-ui/index.css" />
+  <style id="theme"></style>
   <style>
-    /* Same skin as index.html — the studio is a second window of the SAME app,
-       and it should read that way at a glance. */
-    :root {
-      --ink: #e6e6e6;
-      --mid: #99a1af;
-      --faint: #6a7282;
-      --rule: rgba(230, 230, 230, 0.14);
-      --signal: #625fff;
-      --mono: "SF Mono", ui-monospace, Menlo, monospace;
-      --sans: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
-    }
-    * { box-sizing: border-box; }
-    /* Author display rules (.row's flex) would otherwise beat the UA's [hidden]. */
-    [hidden] { display: none !important; }
-    html, body { height: 100%; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background: rgba(230, 230, 230, 0.18); border-radius: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    body {
-      margin: 0; background: #05060f; color: var(--ink);
-      font-family: var(--sans); font-size: 13px; line-height: 1.5;
-      display: flex; flex-direction: column;
-    }
-    /* The living-graph background, exactly as the main window has it. */
-    #graphbg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
     .dragbar {
       -webkit-app-region: drag; height: 40px; flex: none; z-index: 10;
       display: flex; align-items: center; padding: 0 16px 0 84px;
@@ -45,22 +22,6 @@
       padding: 0 16px 16px;
     }
     .col { min-height: 0; overflow-y: auto; }
-
-    h2 {
-      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
-      letter-spacing: 0.14em; color: var(--mid); font-weight: 500; margin: 14px 0 8px;
-    }
-    .panel {
-      border: 1px solid var(--rule); border-radius: 4px; background: rgba(5, 6, 15, 0.72);
-      padding: 12px 14px; margin-bottom: 12px;
-    }
-    .hint { font-size: 12px; color: var(--mid); margin: 0 0 10px; }
-    .row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-    .row:last-child { margin-bottom: 0; }
-    label.field {
-      display: flex; flex-direction: column; font-size: 11px; gap: 4px;
-      font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint);
-    }
     label.field input, label.field select { width: 100%; min-width: 110px; }
     .grow { flex: 1; min-width: 0; }
     input[type=text], input[type=date], input[type=number], select, textarea {
@@ -71,21 +32,6 @@
     input:focus, select:focus, textarea:focus {
       outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4);
     }
-    button {
-      font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 3px; cursor: pointer;
-      border: 1px solid var(--rule); background: rgba(98, 95, 255, 0.16); color: #c7d2ff;
-      transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
-    }
-    button:hover:not(:disabled), button:focus-visible:not(:disabled) {
-      background: var(--signal); border-color: var(--signal); color: #fff;
-      outline: none; box-shadow: 0 0 18px rgba(98, 95, 255, 0.45);
-    }
-    button.primary { background: var(--signal); border-color: var(--signal); color: #fff; }
-    button:disabled { opacity: 0.4; cursor: default; }
-    .status { font-size: 12.5px; font-family: var(--mono); color: var(--mid); }
-    .status.ok { color: #3ecf8e; }
-    .status.error { color: #ff6b6b; }
-
     /* The target picker: one card per thing virtual Cypher can reach. */
     .targets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .target {
@@ -95,12 +41,10 @@
     .target .t-name { font-weight: 600; font-size: 12.5px; display: block; }
     .target .t-what { font-size: 11px; color: var(--mid); display: block; margin-top: 2px; }
     .target.is-on { border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4); background: rgba(98, 95, 255, 0.12); }
-
     /* The mode's price tag — honest at the moment of choice. */
     .cost { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; }
     .cost.cheap { color: #3ecf8e; }
     .cost.dear { color: #f5a97f; }
-
     /* CodeMirror, reskinned to this surface. The default theme is a white page;
        every color here is the app's own palette, not a borrowed theme. */
     .CodeMirror {
@@ -126,7 +70,6 @@
     .CodeMirror-hint { color: var(--ink); }
     li.CodeMirror-hint-active { background: var(--signal); color: #fff; }
     .hint-kind { color: var(--faint); font-size: 10px; margin-left: 8px; }
-
     /* Saving a query as a view, and running saved ones. */
     #save-form { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); }
     .param-row { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 6px; flex-wrap: wrap; }
@@ -157,7 +100,6 @@
     .view-row button { font-size: 11px; padding: 2px 9px; }
     .view-row .vactions { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
     .view-row .vparams { font-family: var(--mono); font-size: 11px; color: var(--faint); margin: 2px 0 4px; }
-
     /* Running a parameterized view: its arguments are asked for in a modal. */
     .param-dialog {
       background: #0b0d1a; color: var(--ink); border: 1px solid var(--rule);
@@ -171,11 +113,9 @@
       font-size: 12px; padding: 3px 6px; min-width: 10em;
     }
     .param-dialog input:invalid { border-color: #ff6b6b; }
-
     /* Validation verdicts, under the editor. */
     #verdict { margin-top: 8px; }
     #verdict .violation { color: #ff6b6b; font-family: var(--mono); font-size: 12px; margin: 2px 0; }
-
     /* The schema browser: every node type this world can reach. */
     #schema-filter { width: 100%; margin-bottom: 8px; }
     .schema-label { margin-bottom: 2px; }
@@ -396,6 +336,7 @@
   <script src="src/vendor/cypher.js"></script>
   <script src="src/vendor/show-hint.js"></script>
   <script src="src/graph.js"></script>
+  <script src="src/theme.js"></script>
   <script src="src/studio.js"></script>
 </body>
 </html>

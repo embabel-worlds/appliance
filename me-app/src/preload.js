@@ -28,6 +28,9 @@ const api = {
   vcLensModel: (settings) => ipcRenderer.invoke('vc:lens-model', settings),
   vcSetLensModel: (settings, model) => ipcRenderer.invoke('vc:set-lens-model', settings, model),
   openQueryStudio: () => ipcRenderer.invoke('query:popout'),
+  // Themes: the appliance owns the list and the CSS; the renderer only paints it.
+  listThemes: (settings) => ipcRenderer.invoke('themes:list', settings),
+  themeCss: (settings, name) => ipcRenderer.invoke('themes:css', settings, name),
   // Container logs — for the log window only; opening it is a menu action, so
   // there is no popout channel here. Read-only: list, follow, stop. The two
   // `on*` calls return an unsubscribe, and the stream itself is owned by the

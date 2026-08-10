@@ -1,7 +1,7 @@
 {
   "name": "embabel-me-app",
   "version": "0.0.1",
-  "description": "Embabel Me sensor app — reads local macOS signals and sends them to your appliance",
+  "description": "Embabel Me sensor app \u2014 reads local macOS signals and sends them to your appliance",
   "main": "src/main.js",
   "scripts": {
     "prestart": "node -e \"require('fs').existsSync('node_modules/electron') || process.exit(1)\" || npm install",
@@ -9,7 +9,8 @@
     "smoke": "node -e \"require('./src/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\"",
     "vendor": "cp node_modules/marked/lib/marked.umd.js src/vendor/marked.umd.js && cp node_modules/dompurify/dist/purify.js src/vendor/purify.js && cp node_modules/codemirror/lib/codemirror.js node_modules/codemirror/lib/codemirror.css node_modules/codemirror/mode/cypher/cypher.js node_modules/codemirror/addon/hint/show-hint.js node_modules/codemirror/addon/hint/show-hint.css src/vendor/",
     "package": "electron-builder --mac --dir",
-    "dist": "electron-builder --mac"
+    "dist": "electron-builder --mac",
+    "sync:ui": "cp ../../embabel-appliance-client/packages/appliance-ui/css/*.css src/vendor/embabel-ui/"
   },
   "license": "Apache-2.0",
   "devDependencies": {
@@ -22,7 +23,7 @@
   "build": {
     "appId": "com.embabel.me",
     "productName": "Embabel Me",
-    "copyright": "Copyright © Embabel",
+    "copyright": "Copyright \u00a9 Embabel",
     "directories": {
       "output": "release",
       "buildResources": "build"

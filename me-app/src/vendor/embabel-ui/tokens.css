@@ -1,0 +1,104 @@
+/*
+ * THE SEMANTIC LAYER: what a colour is FOR, in terms of the theme's palette.
+ *
+ * Every value here resolves through a `--sb-*` variable, so swapping the
+ * palette — by loading a theme from `GET /api/v1/themes/{name}.css` after this
+ * file — restyles the whole vocabulary without touching a component. That is the
+ * entire point: components name intent (`--signal`, `--rule`, `--panel-bg`) and
+ * never a colour, so a theme can move the colour underneath them.
+ *
+ * NO COLOUR IS WRITTEN HERE. Every value resolves to an `--sb-*` variable with
+ * no fallback, so `palette.css` — or a theme that replaces it — is the single
+ * place a colour exists. A fallback here would be a second palette, free to
+ * disagree with the first and impossible to notice when it did.
+ *
+ * The consequence, stated plainly: load `palette.css` (or a full theme) BEFORE
+ * this file. `index.css` does. A surface that loads this alone gets no colour,
+ * which is the loud failure rather than the quiet one.
+ *
+ * THE TINTS ARE DERIVED, NOT DECLARED. A wash, an edge and a glow are all the
+ * accent at different strengths, so they are mixed from it with `color-mix`
+ * rather than written down. Otherwise every one of the bundled themes would have
+ * to define six more variables to stay coherent — and the day one forgot, its
+ * panels would glow indigo on a green theme.
+ */
+
+:root {
+  /* Ground and surfaces */
+  --paper: var(--sb-bg-dark);
+  --card: var(--sb-bg-light);
+
+  /* Ink, in three weights: body, secondary, captions and meta. */
+  --ink: var(--sb-text-primary);
+  --mid: var(--sb-text-secondary);
+  --faint: var(--sb-text-muted);
+  --heading: var(--sb-heading, var(--ink));
+
+  /* The hairline every panel, field and card is drawn with. */
+  --rule: var(--sb-border);
+
+  /* The one signal colour: focus, selection, the live edge. */
+  --signal: var(--sb-accent);
+  /* Ink for text and icons sitting ON a signal-tinted ground. */
+  --signal-ink: var(--sb-accent-light);
+  /* Text on a solid accent fill — a filled button, a hovered tab. */
+  --on-signal: var(--sb-accent-contrast);
+  /* Text on an accent-TINTED surface: a secondary button, a monogram tile. Must
+     read on the page's own ground, whichever way that ground goes. */
+  --signal-label: var(--sb-accent);
+
+  --link: var(--sb-link, var(--signal-ink));
+  --link-hover: var(--sb-link-hover);
+
+  /* Lamps. Never decorative. */
+  --lit: var(--sb-success);
+  --alert: var(--sb-error);
+  --caution: var(--sb-warning);
+  --unlit: var(--sb-unlit);
+
+  --mono: var(--sb-font-mono, ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace);
+  --sans: var(--sb-font-sans, system-ui, -apple-system, 'Segoe UI', sans-serif);
+
+  /* ── Derived surfaces and tints ─────────────────────────────────────────
+     All mixed from the palette, so they follow a theme automatically. */
+
+  --signal-wash: color-mix(in srgb, var(--signal) 16%, transparent);
+  --signal-edge: color-mix(in srgb, var(--signal) 45%, transparent);
+  --signal-glow: 0 0 18px color-mix(in srgb, var(--signal) 45%, transparent);
+  --signal-quiet: color-mix(in srgb, var(--signal) 10%, transparent);
+
+  /* Panels float above the ground: the medium surface, mostly transparent so
+     the aurora reads through. */
+  --panel-bg: color-mix(in srgb, var(--sb-bg-medium) 70%, transparent);
+  --panel-edge: color-mix(in srgb, var(--ink) 20%, transparent);
+  --panel-head-bg: color-mix(in srgb, var(--paper) 75%, transparent);
+
+  /* Inset surfaces — cards and rows sitting inside a panel. */
+  --inset-bg: color-mix(in srgb, var(--paper) 65%, transparent);
+  --hairline: color-mix(in srgb, var(--ink) 14%, transparent);
+  --field-bg: var(--sb-bg-light);
+
+  /* The graph-paper ruling, and the ink of a code background. */
+  --grid-line: color-mix(in srgb, var(--ink) 3%, transparent);
+  --code-bg: color-mix(in srgb, var(--ink) 7%, transparent);
+
+  /* The mono caption: uppercase, letterspaced. Section headings, meta, status. */
+  --caption-size: 11px;
+  --caption-tracking: 0.14em;
+
+  --radius: 3px;
+  --radius-panel: 4px;
+
+  color-scheme: dark;
+}
+
+/*
+ * A light theme sets `--sb-bg-dark` to something pale, at which point
+ * `color-scheme: dark` is a lie: scrollbars and form-control chrome render dark
+ * on a light page. Such a theme says so with `data-color-scheme="light"` on the
+ * root element — the same shape as the `--brand-logo` override the appliance's
+ * light themes (corporate, cubicle) already carry for the same reason.
+ */
+[data-color-scheme="light"] {
+  color-scheme: light;
+}

@@ -1,0 +1,353 @@
+/* The shared vocabulary: the pieces both doors build their surfaces out of.
+ *
+ * What is here is what BOTH products need. Navigation, landing and density are
+ * each door's own business — Me is a single-user instrument with the host
+ * machine in reach, the console is a multi-user control room — and nothing
+ * about that belongs in a shared file.
+ *
+ * Where the two had drifted, Me's version is the one kept: it is the more
+ * restrained of the two, and restraint is the house style.
+ */
+
+/* ── Masthead ──────────────────────────────────────────────────────────── */
+
+.masthead {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+}
+
+.masthead h1 {
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.masthead p {
+  color: var(--mid);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.masthead-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ── Panel ─────────────────────────────────────────────────────────────── */
+
+.panel {
+  min-width: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-panel);
+  margin-bottom: 16px;
+  backdrop-filter: blur(2px);
+}
+
+.panel > h2 {
+  color: var(--mid);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-head-bg);
+}
+
+.panel-body {
+  padding: 14px 16px;
+}
+
+/* ── Rows and fields ───────────────────────────────────────────────────── */
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--faint);
+  letter-spacing: 0.08em;
+}
+
+label.check {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--faint);
+  margin: 2px 0 10px;
+}
+
+.hint code {
+  font-size: 11.5px;
+  color: var(--signal-ink);
+}
+
+/* A button or status sharing a row with captioned fields sits on the INPUT
+   line, not centred against the taller caption+input stack. */
+.row .inline-action { align-self: flex-end; }
+.row .inline-status { align-self: flex-end; padding-bottom: 7px; }
+
+/* ── Status and lamps ──────────────────────────────────────────────────── */
+
+.status {
+  font-size: 12.5px;
+  color: var(--mid);
+  /* Status text is a sentence, not an annotation — the mono family carries the
+     register without shouting it. */
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.status.ok { color: var(--lit); }
+.status.error { color: var(--alert); }
+.status.caution { color: var(--caution); }
+
+/* The pill: a light that tells the truth at a glance, and is clickable when it
+   doesn't. */
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--inset-bg);
+  border: 1px solid var(--rule);
+  color: var(--mid);
+}
+
+.pill:hover {
+  background: var(--signal-wash);
+  border-color: var(--rule);
+  box-shadow: none;
+  color: var(--ink);
+}
+
+.pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--unlit);
+  flex: none;
+}
+
+/* A lit lamp glows; an unlit one is simply dim. An unverified state must never
+   borrow the glow — that is how a console starts lying about what it knows. */
+.pill.ok .dot { background: var(--lit); box-shadow: 0 0 7px color-mix(in srgb, var(--lit) 60%, transparent); }
+.pill.error .dot { background: var(--alert); box-shadow: 0 0 7px color-mix(in srgb, var(--alert) 50%, transparent); }
+.pill.caution .dot { background: var(--caution); box-shadow: 0 0 7px color-mix(in srgb, var(--caution) 50%, transparent); }
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
+
+/* Underlined, not chipped. Tabs are a place-marker, and a bordered chip reads
+   as an action you could press. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tab {
+  font-family: var(--mono);
+  font-size: var(--caption-size);
+  text-transform: uppercase;
+  letter-spacing: var(--caption-tracking);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--faint);
+  padding: 8px 14px;
+  border-radius: 0;
+}
+
+.tab:hover:not(.is-on) {
+  background: none;
+  color: var(--mid);
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.tab.is-on {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+  background: none;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+/* One card, several jobs. `.fact`, `.realm`, `.mount` and `.role` were four
+   near-identical rules in one app and two in the other; they are this. */
+.card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--inset-bg);
+}
+
+.card.is-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card.is-clickable:hover,
+.card.is-clickable:focus-visible {
+  border-color: var(--signal);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--signal) 30%, transparent);
+  outline: none;
+}
+
+.card .body { flex: 1; min-width: 0; }
+.card .name { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+/* Meta sits alongside the name — a version, a count — and needs its own air. */
+.card .meta { font-size: 11px; color: var(--faint); margin-left: 8px; }
+.card p { font-size: 12.5px; color: var(--mid); margin: 0; overflow-wrap: anywhere; }
+/* An action button in a card sits against the middle of the row, not its top. */
+.card > button { align-self: center; }
+
+/* The monogram tile. Nothing in this product ships an icon, so a letter on a
+   tinted square is the honest stand-in rather than a guessed glyph. */
+.tile {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--signal-label);
+  text-transform: uppercase;
+  background: var(--signal-wash);
+  border: 1px solid var(--rule);
+}
+
+.tile.lg { width: 44px; height: 44px; border-radius: 10px; font-size: 19px; }
+
+/* A grid of cards — app launchers, realm catalogues. */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* One line of prose however much the source shipped, with the rest one click
+   away. The toggle is a text affordance (`button.link`), not a button. */
+.desc-line {
+  font-size: 12.5px;
+  color: var(--mid);
+  margin-top: 2px;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.desc-line .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Chat ──────────────────────────────────────────────────────────────── */
+
+.chat-scroll {
+  min-height: 200px;
+  max-height: 48vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chat-msg {
+  padding: 8px 11px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--inset-bg);
+  font-size: 13.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  max-width: 86%;
+}
+
+/* The user's own words are painted exactly as typed, so their line breaks have
+   to survive. The assistant's arrive as MARKDOWN and are laid out by
+   `markdown.css` — a bubble that pre-wraps both shows the model's raw source,
+   which is the state the console shipped in. */
+.chat-msg.user {
+  align-self: flex-end;
+  white-space: pre-wrap;
+  border-color: var(--signal-edge);
+  background: var(--signal-quiet);
+}
+
+.chat-msg.assistant {
+  align-self: flex-start;
+}
+
+.chat-working {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--mid);
+  padding: 2px 1px;
+}
+
+.chat-empty {
+  color: var(--faint);
+  font-size: 13px;
+  padding: 6px 1px;
+}
+
+/* ── Drop target ───────────────────────────────────────────────────────── */
+
+.dropzone {
+  margin-top: 14px;
+  padding: 18px;
+  text-align: center;
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  color: var(--mid);
+}
+
+.dropzone.is-over {
+  border-color: var(--signal);
+  color: var(--ink);
+  background: var(--signal-quiet);
+}
