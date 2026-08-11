@@ -103,6 +103,21 @@
     .summary { margin-top: 10px; font-size: 13px; color: var(--ink); font-weight: 600; }
     #receipt { margin-top: 12px; display: grid; gap: 3px; }
     #fact-list { margin-bottom: 12px; }
+    /* An app card is a launcher, not a list row. The shared .card lays its
+       children out in a row, which inside a 200px grid column leaves the tile,
+       the name, the description and the badge each squeezed into a sliver and
+       wrapping a word at a time. Stack them, and let the card be a button
+       without looking like one: no centred label, no accent-coloured text. */
+    .app-card { flex-direction: column; align-items: stretch; gap: 6px;
+      padding: 12px; margin-bottom: 0; text-align: left; color: var(--ink); }
+    .app-card .name { overflow-wrap: break-word; }
+    /* The description is however long the app's author made it; two lines of it
+       keep the cards on a shared baseline instead of one card three times the
+       height of its neighbours. */
+    .app-card p { display: -webkit-box; -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2; overflow: hidden; }
+    /* Pinned to the bottom edge, so the badges line up across the row. */
+    .app-card .meta { margin-left: 0; margin-top: auto; padding-top: 2px; }
   </style>
 </head>
 <body>

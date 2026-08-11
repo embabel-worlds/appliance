@@ -28,6 +28,12 @@
  *   that need per-app permission — where the OS has no such concept, a platform
  *   may ignore the flag entirely.
  *
+ * @property {(app: string | undefined) => boolean} [tier1Volatile]
+ *   Does this frontmost app's tier-1 detail change WITHOUT an app switch? A
+ *   browser is the case that matters: the user reads three pages without ever
+ *   leaving Chrome, and a sampler that re-probes only on app change reports the
+ *   first one for as long as it waits. Omit where tier 1 is empty anyway.
+ *
  * @property {() => Promise<GrantState[]>} grantStates
  *   Per-app permission status for tier-1 sources. Empty on platforms with no
  *   per-app consent model (Windows and Linux today) — which is a *weaker*

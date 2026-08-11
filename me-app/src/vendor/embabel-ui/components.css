@@ -234,8 +234,10 @@ label.check {
 /* Meta sits alongside the name — a version, a count — and needs its own air. */
 .card .meta { font-size: 11px; color: var(--faint); margin-left: 8px; }
 .card p { font-size: 12.5px; color: var(--mid); margin: 0; overflow-wrap: anywhere; }
-/* An action button in a card sits against the middle of the row, not its top. */
-.card > button { align-self: center; }
+/* An action button in a card sits against the middle of the row, not its top,
+   and keeps its label on one line — it is the narrowest thing in the row, so
+   shrinking it buys nothing and costs "Installing…" three lines. */
+.card > button { align-self: center; flex: none; white-space: nowrap; }
 
 /* The monogram tile. Nothing in this product ships an icon, so a letter on a
    tinted square is the honest stand-in rather than a guessed glyph. */
@@ -281,6 +283,14 @@ label.check {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* The toggle is what the clipping is FOR, so it never gives up width. As a flex
+   item it shrinks alongside the text by default, and "more" then breaks across
+   two lines a letter at a time — taller than the line it was saving. */
+.desc-line .more {
+  flex: none;
+  white-space: nowrap;
 }
 
 /* ── Chat ──────────────────────────────────────────────────────────────── */

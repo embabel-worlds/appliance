@@ -603,7 +603,10 @@ ipcMain.handle('index:state', () => indexer.state())
 // samples every TICK_MS and catches app switches within seconds. Tier 1 (the
 // browser tab and now playing) is an AppleScript round-trip per app, so it runs
 // only when the frontmost app CHANGED — the moment its answer can actually
-// differ — or every TIER1_EVERY_TICKS as a refresh.
+// differ — or every TIER1_EVERY_TICKS as a refresh. The exception is an app
+// whose tier-1 answer moves under it, a browser above all: while one of those
+// is frontmost, tier 1 samples at TICK_MS like everything else, because a new
+// page is exactly as much of an event as a new app.
 //
 // Sampling is cheap; SENDING is not (a request, a merge, a nudge to every
 // consumer of context), so a tick only sends when the picture changed, with a
@@ -645,8 +648,15 @@ async function streamTick(settings) {
     lastApp = base.app
     ticksSinceTier1++
 
+    /* An app switch is not the only moment tier 1 can differ: someone reading
+     * three pages in a row never leaves the browser, and waiting for the slow
+     * refresh reports the first page for up to TIER1_EVERY_TICKS afterwards.
+     * While the frontmost app is one that rewrites its own tier-1 answer, probe
+     * every tick — the cost is one AppleScript round-trip, and only while the
+     * user is actually sitting in that app. */
+    const every = platform.tier1Volatile?.(base.app) ? 1 : TIER1_EVERY_TICKS
     const wantTier1 =
-      streamState.tier1 && base.locked !== true && (appChanged || ticksSinceTier1 >= TIER1_EVERY_TICKS)
+      streamState.tier1 && base.locked !== true && (appChanged || ticksSinceTier1 >= every)
 
     let sample = base
     if (wantTier1) {

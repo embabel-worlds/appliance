@@ -483,6 +483,11 @@ const macos = {
     return sample
   },
 
+  /** @param {string | undefined} app */
+  tier1Volatile(app) {
+    return BROWSERS.some((b) => b.app === app)
+  },
+
   runningApps,
   machineState,
   speak,
