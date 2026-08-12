@@ -32,7 +32,7 @@
  * point: the console builds the same queries from the same package rather than
  * from a second, drifting reading of VIRTUAL_CYPHER.md.
  */
-const { TARGETS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, compose: composeCypher } = EmbabelVc
+const { TARGETS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, relationshipTypesFor, connectedLabels, edgeContext, nodeContext, propertyMapContext, compose: composeCypher } = EmbabelVc
 /** The schema-aware lookup, curried with whatever snapshot we last loaded. */
 const propertiesOf = (label) => EmbabelVc.propertiesOf(schema, label)
 
@@ -83,6 +83,20 @@ function setStatus(el, ok, message) {
   el.className = ok === null ? 'status' : ok ? 'status ok' : 'status error'
 }
 
+/**
+ * '31691 ms' reads as a code, not a wait. Milliseconds up to a second, then
+ * seconds, then minutes — a cold extract/aggregate really does take minutes.
+ * @param {number} ms
+ */
+function formatDuration(ms) {
+  if (ms < 1000) return `${ms} ms`
+  const seconds = Math.round(ms / 100) / 10
+  if (seconds < 60) return `${seconds.toFixed(1)} s`
+  const whole = Math.round(ms / 1000)
+  const rest = whole % 60
+  return rest ? `${Math.floor(whole / 60)} min ${rest} s` : `${Math.floor(whole / 60)} min`
+}
+
 // ---------------------------------------------------------------------------
 // The editor: CodeMirror over the textarea — Cypher highlighting, completion
 // from the schema, ⌘⏎ to run. Vendored like every other browser library here.
@@ -122,10 +136,10 @@ cm.on('change', () => {
 cm.on('inputRead', (_cm, change) => {
   if (change.origin !== '+input') return
   const ch = change.text[change.text.length - 1]
-  if (/[:.']/.test(ch) || /\w/.test(ch)) {
+  if (/[:.'{]/.test(ch) || /\w/.test(ch)) {
     const cursor = cm.getCursor()
     const before = cm.getLine(cursor.line).slice(0, cursor.ch)
-    if (/(\(\s*\w*:\w*|\[\s*\w*:\w*|\w+\.\w*|via:\s*'\w*|ai:\s*\{\s*\w*)$/.test(before)) {
+    if (/(\(\s*\w*:\w*|\[\s*\w*:\w*|\w+\.\w*|via:\s*'\w*|ai:\s*\{\s*\w*|\(\s*\w*\s*(?::\s*\w+)?\s*\{[^{}]*)$/.test(before)) {
       cm.showHint({ completeSingle: false })
     }
   }
@@ -151,23 +165,36 @@ CodeMirror.registerHelper('hint', 'cypher', (editor) => {
   const line = editor.getLine(cursor.line)
   const before = line.slice(0, cursor.ch)
 
+  // Every list alphabetical: completion is for scanning, not for whatever
+  // order the schema snapshot happened to arrive in.
   const found = (list, from) => ({
-    list,
+    list: [...list].sort((a, b) => a.localeCompare(b)),
     from: CodeMirror.Pos(cursor.line, from),
     to: CodeMirror.Pos(cursor.line, cursor.ch),
   })
 
   let m
-  // (x:Lab… or (:Lab… → labels
+  // (x:Lab… or (:Lab… → labels; behind a relationship, only the labels the
+  // schema has seen at its far end — (n:Document)-[:MENTIONS]-(c: asks what a
+  // Document can mention, not for every label under the sun.
   if ((m = before.match(/[([]\s*\w*:(\w*)$/)) && before.lastIndexOf('(') > before.lastIndexOf('[')) {
     const stem = m[1]
-    const labels = (schema?.labels ?? []).map((l) => l.label)
+    const context = nodeContext(before, aliasMap(editor.getValue()))
+    const labels = context
+      ? connectedLabels(schema, context.label, context.type, context.direction)
+      : (schema?.labels ?? []).map((l) => l.label)
     return found(labels.filter((l) => l.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
   }
-  // [r:REL… → relationship types
+  // [r:REL… → relationship types, scoped to the node on the left when the
+  // pattern names one — (d:Document)-[: offers only Document's sampled edges.
+  // The helper widens in tiers: typed direction, then either direction, then —
+  // only for a label the snapshot doesn't know — the full vocabulary. A known
+  // label with no edges at all (gov-au's Electorate joins by property) offers
+  // nothing: a hint offers and never forbids, so typing past it still works.
   if ((m = before.match(/\[\s*\w*:(\w*)$/))) {
     const stem = m[1]
-    const rels = [...new Set((schema?.relationships ?? []).map((r) => r.type))]
+    const context = edgeContext(before, aliasMap(editor.getValue()))
+    const rels = relationshipTypesFor(schema, context?.label, context?.direction)
     return found(rels.filter((r) => r.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
   }
   // via:'… → the mode selector's vocabulary
@@ -179,6 +206,15 @@ CodeMirror.registerHelper('hint', 'cypher', (editor) => {
   if ((m = before.match(/ai:\s*\{[^}]*?(\w*)$/))) {
     const stem = m[1]
     return found(AI_KEYS.filter((k) => k.startsWith(stem)), cursor.ch - stem.length)
+  }
+  // (c:Concept {na… → that label's own property KEYS. A map is a conjunction
+  // of equalities, so what fits is what the label has minus what the map
+  // already binds; value positions and edge maps get nothing from this branch.
+  const mapContext = propertyMapContext(before, aliasMap(editor.getValue()))
+  if (mapContext) {
+    const stem = before.match(/(\w*)$/)[1]
+    const props = mapContext.label ? propertiesOf(mapContext.label).filter((p) => !mapContext.used.includes(p)) : []
+    return found(props.filter((p) => p.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
   }
   // alias.prop… → that alias's label's properties
   if ((m = before.match(/(\w+)\.(\w*)$/))) {
@@ -538,7 +574,7 @@ async function generate() {
     // The server generated, PREFLIGHTED, and self-corrected before handing this
     // over — say so, with the price paid (attempts), and skip the re-check.
     const tries = result.attempts && result.attempts > 1 ? ` after ${result.attempts} attempts` : ''
-    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${result.durationMs} ms` : ''}${tries} — review, then Run`)
+    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${formatDuration(result.durationMs)}` : ''}${tries} — review, then Run`)
     setStatus(els.validity, true, '✓ schema-valid')
   } else if (result.valid === false) {
     // The generator could not reach a valid query — honest, with the verdict.
@@ -552,7 +588,7 @@ async function generate() {
     }
   } else {
     // Older appliance: no server-side verdict — validate here as before.
-    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${result.durationMs} ms` : ''} — review, edit if you like, then Run`)
+    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${formatDuration(result.durationMs)}` : ''} — review, edit if you like, then Run`)
     scheduleValidation()
   }
   if (result.explain) {
@@ -711,7 +747,7 @@ async function run() {
   if (!result.ok) return setStatus(els.runStatus, false, result.message)
   if (result.error) return setStatus(els.runStatus, false, result.error)
   const parts = [`${result.rowCount} row(s)`]
-  if (result.durationMs != null) parts.push(`${result.durationMs} ms`)
+  if (result.durationMs != null) parts.push(formatDuration(result.durationMs))
   for (const warning of result.warnings) parts.push(warning)
   if (!result.rowCount && result.hint) parts.push(result.hint)
   setStatus(els.runStatus, result.warnings.length ? null : true, parts.join(' · '))

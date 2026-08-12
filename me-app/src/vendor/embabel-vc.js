@@ -27,11 +27,16 @@ var EmbabelVc = (() => {
     VIA_VALUES: () => VIA_VALUES,
     aliasMap: () => aliasMap,
     compose: () => compose,
+    connectedLabels: () => connectedLabels,
     declaredParams: () => declaredParams,
+    edgeContext: () => edgeContext,
     esc: () => esc,
     labelNames: () => labelNames,
+    nodeContext: () => nodeContext,
     propertiesOf: () => propertiesOf,
-    relationshipTypes: () => relationshipTypes
+    propertyMapContext: () => propertyMapContext,
+    relationshipTypes: () => relationshipTypes,
+    relationshipTypesFor: () => relationshipTypesFor
   });
 
   // src/targets.ts
@@ -209,7 +214,68 @@ var EmbabelVc = (() => {
     return schema?.labels.map((l) => l.label) ?? [];
   }
   function relationshipTypes(schema) {
-    return [...new Set(schema?.relationships.map((r) => r.type) ?? [])];
+    return [...new Set(schema?.relationships.map((r) => r.type) ?? [])].sort((a, b) => a.localeCompare(b));
+  }
+  function relationshipTypesFor(schema, label, direction = "any") {
+    if (!label || !schema?.labels.some((l) => l.label === label)) return relationshipTypes(schema);
+    const types = (dir) => dedupeSorted(
+      (schema.relationships ?? []).filter((r) => dir !== "in" && r.from === label || dir !== "out" && r.to === label).map((r) => r.type)
+    );
+    const scoped = types(direction);
+    return scoped.length ? scoped : types("any");
+  }
+  var dedupeSorted = (xs) => [...new Set(xs)].sort((a, b) => a.localeCompare(b));
+  function connectedLabels(schema, label, type, direction = "any") {
+    const rels = schema?.relationships ?? [];
+    const known = !!label && (schema?.labels.some((l) => l.label === label) ?? false);
+    const typeKnown = !!type && rels.some((r) => r.type === type);
+    const bySource = (dir) => dedupeSorted(
+      rels.flatMap((r) => [
+        ...dir !== "in" && r.from === label && (!type || r.type === type) ? [r.to] : [],
+        ...dir !== "out" && r.to === label && (!type || r.type === type) ? [r.from] : []
+      ])
+    );
+    const byType = (dir) => dedupeSorted(
+      rels.flatMap(
+        (r) => r.type === type ? [...dir !== "in" ? [r.to] : [], ...dir !== "out" ? [r.from] : []] : []
+      )
+    );
+    if (known) {
+      const exact = bySource(direction);
+      if (exact.length) return exact;
+      const either = bySource("any");
+      if (either.length) return either;
+    }
+    if (typeKnown) {
+      const scoped = byType(direction);
+      return scoped.length ? scoped : byType("any");
+    }
+    if (known && !type) return [];
+    return dedupeSorted(labelNames(schema));
+  }
+  function edgeContext(before, aliases) {
+    const m = before.match(/\(\s*(\w*)\s*(?::\s*(\w+))?\s*(?:\{[^{}]*\})?\s*\)\s*(<-|-)\s*\[[^\]]*$/);
+    if (!m) return null;
+    const label = m[2] ?? aliases[m[1] ?? ""] ?? null;
+    return { label, direction: m[3] === "<-" ? "in" : "out" };
+  }
+  function nodeContext(before, aliases) {
+    const m = before.match(
+      /\(\s*(\w*)\s*(?::\s*(\w+))?\s*(?:\{[^{}]*\})?\s*\)\s*(<-|-)\s*(?:\[\s*\w*\s*(?::\s*(\w+))?[^\]]*\])?\s*(->|-)\s*\(\s*\w*\s*:?\s*\w*$/
+    );
+    if (!m) return null;
+    const label = m[2] ?? aliases[m[1] ?? ""] ?? null;
+    const direction = m[3] === "<-" ? "in" : m[5] === "->" ? "out" : "any";
+    return { label, type: m[4] ?? null, direction };
+  }
+  function propertyMapContext(before, aliases) {
+    const m = before.match(/\(\s*(\w*)\s*(?::\s*(\w+))?\s*\{([^{}]*?)(\w*)$/);
+    if (!m) return null;
+    const body = m[3] ?? "";
+    if ((body.split("'").length - 1) % 2) return null;
+    if (/:\s*$/.test(body)) return null;
+    const label = m[2] ?? aliases[m[1] ?? ""] ?? null;
+    return { label, used: [...body.matchAll(/(\w+)\s*:/g)].flatMap((k) => k[1] ? [k[1]] : []) };
   }
 
   // src/params.ts
