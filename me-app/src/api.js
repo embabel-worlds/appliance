@@ -475,6 +475,166 @@ async function kgExecute(settings, cypher) {
 }
 
 /*
+ * Handlers — the user's TypeScript event handlers, over the same admin surface
+ * the appliance's own console and MCP tools use. The studio adds an editor,
+ * not a mechanism: save is tsc-gated server-side, dry-run is observe-only and
+ * binds a real sampled signal, and generation reports the compiler's verdict
+ * alongside the source. Every endpoint acts as the authenticated user.
+ */
+
+/** The user's handlers plus inactive realm-shipped ones available to adopt. */
+async function handlersList(settings) {
+  try {
+    const res = await post(settings, '/api/v1/admin/handlers/list', {})
+    if (res.status === 404) return { ok: false, message: 'no handlers surface — older appliance' }
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const body = await readJson(res)
+    return { ok: true, yours: body?.yours ?? [], available: body?.available ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** One handler's source and metadata, for open → edit → save. */
+async function handlerOpen(settings, name) {
+  try {
+    const res = await post(settings, `/api/v1/admin/handlers/open?name=${encodeURIComponent(name)}`, {})
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return {
+      ok: true,
+      name: body?.name ?? name,
+      description: body?.description ?? '',
+      source: body?.source ?? '',
+      signalType: body?.signalType ?? '*',
+      schedule: body?.schedule ?? null,
+      autonomous: body?.autonomous === true,
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Create or update a handler — the appliance type-checks before persisting. */
+async function handlerSave(settings, spec) {
+  try {
+    const res = await post(settings, '/api/v1/admin/handlers/save', spec, 60_000)
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return { ok: body?.ok === true, message: body?.message ?? (body?.ok ? 'saved' : 'save failed') }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Delete a user-authored handler (realm handlers can only be disabled). */
+async function handlerDelete(settings, name) {
+  try {
+    const res = await post(settings, `/api/v1/admin/handlers/delete?name=${encodeURIComponent(name)}`, {})
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return { ok: body?.ok === true, message: body?.message ?? '' }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Enable (adopt) or disable a handler for this user. */
+async function handlerSetEnabled(settings, name, enabled) {
+  try {
+    const res = await post(settings, `/api/v1/admin/handlers/set-enabled?name=${encodeURIComponent(name)}&enabled=${enabled}`, {})
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Set (or clear, with blank) a per-user cron schedule for a handler. */
+async function handlerSetSchedule(settings, name, schedule) {
+  try {
+    const query = `name=${encodeURIComponent(name)}${schedule ? `&schedule=${encodeURIComponent(schedule)}` : ''}`
+    const res = await post(settings, `/api/v1/admin/handlers/set-schedule?${query}`, {})
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * Run a handler OBSERVE-ONLY against the most recent real signal of the given
+ * type (or a cron tick), changing nothing external. The studio's primary verb.
+ */
+async function handlerDryRun(settings, source, signalType) {
+  try {
+    const res = await post(settings, '/api/v1/admin/handlers/dry-run', { source, signalType: signalType || null }, 120_000)
+    if (res.status === 404) return { ok: false, message: 'no handlers surface — older appliance' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return {
+      ok: true,
+      ran: body?.ok === true,
+      ranAgainst: body?.ranAgainst ?? null,
+      stdout: body?.stdout ?? '',
+      error: body?.error ?? null,
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** English → handler source, with the server's tsc verdict on the result. */
+async function handlerGenerate(settings, english) {
+  try {
+    const res = await post(settings, '/api/v1/admin/handlers/generate', { english }, 180_000)
+    if (res.status === 404) return { ok: false, message: 'no generate endpoint — older appliance' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return {
+      ok: true,
+      source: body?.source ?? '',
+      valid: typeof body?.valid === 'boolean' ? body.valid : null,
+      violations: body?.violations ?? [],
+      attempts: body?.attempts ?? null,
+      durationMs: body?.durationMs ?? null,
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Type-check a handler body without saving or running — the editor's debounced verdict. */
+async function handlerValidate(settings, source) {
+  try {
+    const res = await post(settings, '/api/v1/admin/handlers/validate', { source }, 60_000)
+    if (res.status === 404) return { ok: false, message: 'no validate endpoint — older appliance' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return { ok: true, valid: body?.valid === true, violations: body?.violations ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * The user's typed gateway surface (interfaces.ts) — generated from the same
+ * pass that types code-mode, so completion and the compiler cannot drift.
+ */
+async function gatewaySurface(settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/apps-runtime/interfaces.ts`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, text: '' }
+    return { ok: true, text: await res.text() }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), text: '' }
+  }
+}
+
+/*
  * Realms — the units of capability a world installs. The same three endpoints
  * the Worlds console speaks: the installed list, the discovery catalog (the
  * directory's live scan of realm-* repos, grouped by provider), and install —
@@ -613,6 +773,8 @@ module.exports = {
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
   kgSchema, kgValidate, kgGenerate, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation,
+  handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
+  handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------

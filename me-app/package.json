@@ -7,10 +7,10 @@
     "prestart": "node -e \"require('fs').existsSync('node_modules/electron') || process.exit(1)\" || npm install",
     "start": "electron .",
     "smoke": "node -e \"require('./src/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\"",
-    "vendor": "cp node_modules/marked/lib/marked.umd.js src/vendor/marked.umd.js && cp node_modules/dompurify/dist/purify.js src/vendor/purify.js && cp node_modules/codemirror/lib/codemirror.js node_modules/codemirror/lib/codemirror.css node_modules/codemirror/mode/cypher/cypher.js node_modules/codemirror/addon/hint/show-hint.js node_modules/codemirror/addon/hint/show-hint.css src/vendor/",
+    "vendor": "cp node_modules/marked/lib/marked.umd.js src/vendor/marked.umd.js && cp node_modules/dompurify/dist/purify.js src/vendor/purify.js && cp node_modules/codemirror/lib/codemirror.js node_modules/codemirror/lib/codemirror.css node_modules/codemirror/mode/cypher/cypher.js node_modules/codemirror/mode/javascript/javascript.js node_modules/codemirror/addon/hint/show-hint.js node_modules/codemirror/addon/hint/show-hint.css src/vendor/",
     "package": "electron-builder --mac --dir",
     "dist": "electron-builder --mac",
-    "sync:ui": "cp ../../embabel-appliance-client/packages/appliance-ui/css/*.css src/vendor/embabel-ui/ && cp ../../embabel-appliance-client/packages/vc/dist/global/embabel-vc.js src/vendor/"
+    "sync:ui": "cp ../../embabel-appliance-client/packages/appliance-ui/css/*.css src/vendor/embabel-ui/ && cp ../../embabel-appliance-client/packages/vc/dist/global/embabel-vc.js ../../embabel-appliance-client/packages/code-surface/dist/global/embabel-code-surface.js src/vendor/"
   },
   "license": "Apache-2.0",
   "devDependencies": {

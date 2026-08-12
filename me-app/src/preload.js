@@ -28,6 +28,18 @@ const api = {
   vcLensModel: (settings) => ipcRenderer.invoke('vc:lens-model', settings),
   vcSetLensModel: (settings, model) => ipcRenderer.invoke('vc:set-lens-model', settings, model),
   openQueryStudio: () => ipcRenderer.invoke('query:popout'),
+  openHandlerStudio: () => ipcRenderer.invoke('handlers:popout'),
+  // Handlers — the Handler Studio's surface. All effects happen server-side.
+  handlersList: (settings) => ipcRenderer.invoke('handlers:list', settings),
+  handlerOpen: (settings, name) => ipcRenderer.invoke('handlers:open', settings, name),
+  handlerSave: (settings, spec) => ipcRenderer.invoke('handlers:save', settings, spec),
+  handlerDelete: (settings, name) => ipcRenderer.invoke('handlers:delete', settings, name),
+  handlerSetEnabled: (settings, name, enabled) => ipcRenderer.invoke('handlers:set-enabled', settings, name, enabled),
+  handlerSetSchedule: (settings, name, schedule) => ipcRenderer.invoke('handlers:set-schedule', settings, name, schedule),
+  handlerDryRun: (settings, source, signalType) => ipcRenderer.invoke('handlers:dry-run', settings, source, signalType),
+  handlerGenerate: (settings, english) => ipcRenderer.invoke('handlers:generate', settings, english),
+  handlerValidate: (settings, source) => ipcRenderer.invoke('handlers:validate', settings, source),
+  gatewaySurface: (settings) => ipcRenderer.invoke('handlers:surface', settings),
   // Themes: the appliance owns the list and the CSS; the renderer only paints it.
   listThemes: (settings) => ipcRenderer.invoke('themes:list', settings),
   themeCss: (settings, name) => ipcRenderer.invoke('themes:css', settings, name),

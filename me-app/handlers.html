@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>Embabel Me — Handler Studio</title>
+  <link rel="stylesheet" href="src/vendor/codemirror.css" />
+  <link rel="stylesheet" href="src/vendor/show-hint.css" />
+  <link rel="stylesheet" href="src/vendor/embabel-ui/index.css" />
+  <style id="theme"></style>
+  <style>
+    .dragbar {
+      -webkit-app-region: drag; height: 40px; flex: none; z-index: 10;
+      display: flex; align-items: center; padding: 0 16px 0 84px;
+      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--mid);
+    }
+    /* Same fixed-height two-column workbench as the Query Studio, for the same
+       reason: this window is a workbench, not a scrolling document, and a flex
+       child sizing itself from a min-height parent collapses to nothing. */
+    html, body { height: 100%; }
+    body { display: flex; flex-direction: column; font-size: 13px; }
+    main {
+      position: relative; z-index: 1; height: calc(100vh - 40px); min-height: 0;
+      display: grid; grid-template-columns: 350px 1fr; gap: 14px;
+      padding: 0 16px 16px;
+    }
+    .col { min-height: 0; overflow-y: auto; }
+    .grow { flex: 1; min-width: 0; }
+    label.field input, label.field select { width: 100%; min-width: 110px; }
+    input[type=text], select, textarea {
+      font: inherit; font-size: 13px; padding: 7px 9px;
+      border-radius: 3px; border: 1px solid var(--rule); background: #0b1220;
+      color: var(--ink); text-transform: none; letter-spacing: normal;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4);
+    }
+    /* CodeMirror, reskinned to this surface — the Query Studio's palette. */
+    .CodeMirror {
+      height: auto; min-height: 260px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+      border: 1px solid var(--rule); border-radius: 3px; background: #0b1220; color: var(--ink);
+    }
+    .CodeMirror-focused { border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4); }
+    .CodeMirror-gutters { background: #0b1220; border-right: 1px solid var(--rule); }
+    .CodeMirror-linenumber { color: var(--faint); }
+    .CodeMirror-cursor { border-left-color: var(--ink); }
+    .CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: rgba(98, 95, 255, 0.25); }
+    .cm-s-default .cm-keyword { color: #a778ff; }
+    .cm-s-default .cm-atom { color: #3ecf8e; }
+    .cm-s-default .cm-number { color: #f5a97f; }
+    .cm-s-default .cm-string, .cm-s-default .cm-string-2 { color: #8fd3a7; }
+    .cm-s-default .cm-comment { color: var(--faint); font-style: italic; }
+    .cm-s-default .cm-variable, .cm-s-default .cm-variable-2, .cm-s-default .cm-def, .cm-s-default .cm-property { color: #c7d2ff; }
+    .cm-s-default .cm-operator, .cm-s-default .cm-punctuation { color: var(--mid); }
+    .CodeMirror-hints {
+      background: #0b1220; border: 1px solid var(--rule); border-radius: 4px;
+      font-family: var(--mono); font-size: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); z-index: 20;
+    }
+    .CodeMirror-hint { color: var(--ink); }
+    li.CodeMirror-hint-active { background: var(--signal); color: #fff; }
+    /* Validation verdicts, under the editor. */
+    #verdict { margin-top: 8px; }
+    #verdict .violation { color: #ff6b6b; font-family: var(--mono); font-size: 12px; margin: 2px 0; white-space: pre-wrap; }
+    /* Handler rows — the saved-views idiom next door. */
+    .handler-group { border: 1px solid var(--rule); border-radius: 3px; margin-bottom: 6px; }
+    .handler-group > summary {
+      cursor: pointer; padding: 6px 10px; display: flex; align-items: baseline; gap: 8px;
+      background: rgba(0,0,0,0.35); user-select: none;
+      font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .handler-group[open] > summary { border-bottom: 1px solid var(--rule); }
+    .handler-group > summary .gcount { font-size: 10.5px; color: var(--faint); }
+    .handler-row { padding: 8px 10px; }
+    .handler-row + .handler-row { border-top: 1px solid var(--rule); }
+    .handler-row .hname { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+    .handler-row .hmeta { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin: 2px 0 4px; }
+    .handler-row .hmeta .on { color: #3ecf8e; }
+    .handler-row .hactions { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+    .handler-row button { font-size: 11px; padding: 2px 9px; }
+    /* The trigger sample — what dry-run will bind. */
+    #sample {
+      font-family: var(--mono); font-size: 11px; color: var(--mid);
+      background: rgba(0,0,0,0.35); border: 1px solid var(--rule); border-radius: 3px;
+      padding: 8px 10px; margin-top: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap;
+    }
+    /* The gateway surface browser — the schema panel's idiom. */
+    #surface-filter { width: 100%; margin-bottom: 8px; }
+    .ns { margin-bottom: 2px; }
+    .ns summary {
+      cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--ink);
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .ns summary .count { color: var(--faint); font-size: 10.5px; }
+    .ns .methods { margin: 4px 0 8px 16px; font-family: var(--mono); font-size: 11px; color: var(--mid); }
+    .ns .sig { color: #8fd3a7; overflow-wrap: anywhere; }
+    .ns .doc { color: var(--faint); margin: 1px 0 6px; font-family: inherit; font-size: 11px; }
+    /* Dry-run output. */
+    #run-output {
+      font-family: var(--mono); font-size: 12px; color: var(--ink);
+      background: rgba(0,0,0,0.35); border: 1px solid var(--rule); border-radius: 3px;
+      padding: 10px 12px; margin-top: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap;
+    }
+    #run-output.error { color: #ff6b6b; }
+    #ran-against { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-top: 6px; }
+    /* Going-live acts are visually distinct from the safe verb. */
+    .arm { border-color: #f5a97f; color: #f5a97f; }
+    #save-form { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); }
+  </style>
+</head>
+<body>
+  <canvas id="graphbg" class="embabel-backdrop" aria-hidden="true"></canvas>
+  <div class="dragbar">Handler Studio — TypeScript that reacts</div>
+  <main>
+    <div class="col">
+      <section class="panel">
+        <h2>Your handlers</h2>
+        <p class="hint">
+          TypeScript that runs when a signal arrives or a cron tick fires — yours,
+          plus realm-shipped ones you can adopt. Open one to edit; enabling and
+          scheduling are the acts that make it live.
+        </p>
+        <div id="handlers"><p class="hint">Loading handlers…</p></div>
+        <div class="row"><span id="handlers-status" class="status"></span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Trigger</h2>
+        <p class="hint">
+          The signal a dry-run binds: the most recent real one of this type, shown
+          below exactly as your code will see <code>signal</code>. No type means a
+          cron tick.
+        </p>
+        <div class="row">
+          <label class="field grow">Signal type
+            <select id="signal-type">
+              <option value="">cron tick — as a scheduled run</option>
+              <option value="*">any signal — most recent</option>
+            </select>
+          </label>
+        </div>
+        <div id="sample" hidden></div>
+      </section>
+
+      <section class="panel">
+        <h2>Gateway — your typed surface</h2>
+        <p class="hint">
+          Everything a handler can call, generated for your world — the same file
+          completion reads, so what it offers and what compiles cannot disagree.
+        </p>
+        <input type="text" id="surface-filter" placeholder="filter namespaces…" />
+        <div id="surface"><p class="hint">Loading surface…</p></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <h2>Ask — English in, TypeScript out</h2>
+        <div class="row">
+          <input type="text" id="ask-request" class="grow"
+                 placeholder="when a github PR review lands, judge urgency and notify me · every morning, summarize new documents…" />
+          <button id="generate" class="primary">Write the handler</button>
+        </div>
+        <div class="row"><span id="ask-status" class="status"></span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Handler</h2>
+        <textarea id="editor" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button id="dry-run" class="primary">Dry-run — observe only</button>
+          <button id="save-toggle">Save / schedule…</button>
+          <button id="copy">Copy</button>
+          <span id="validity" class="status"></span>
+          <span id="run-status" class="status"></span>
+        </div>
+        <div id="verdict"></div>
+
+        <div id="save-form" hidden>
+          <div class="row">
+            <label class="field">Name
+              <input type="text" id="save-name" placeholder="flag_vip_email" />
+            </label>
+            <label class="field">Reacts to
+              <input type="text" id="save-signal" list="signal-types" placeholder="* — any signal" />
+              <datalist id="signal-types"></datalist>
+            </label>
+            <label class="field">Cron schedule
+              <input type="text" id="save-schedule" placeholder="0 0 7 * * * — blank for none" />
+            </label>
+          </div>
+          <div class="row">
+            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--mid);">
+              <input type="checkbox" id="save-autonomous" /> autonomous — may act without asking first
+            </label>
+          </div>
+          <p class="hint">
+            Saving type-checks on the appliance first — a handler that cannot compile
+            cannot be saved. Saved is not live: enable it in the list when ready.
+          </p>
+          <div class="row">
+            <button id="save-confirm" class="arm">Save to my world</button>
+            <button id="save-cancel">Cancel</button>
+            <span id="save-status" class="status"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Dry-run result</h2>
+        <p class="hint">
+          Observe-only, on the appliance: effects are suppressed, output comes back.
+          What it ran against is named below — a real signal, or a cron tick.
+        </p>
+        <div id="ran-against" hidden></div>
+        <div id="run-output" hidden></div>
+        <p class="hint" id="run-empty">Nothing run yet.</p>
+      </section>
+    </div>
+  </main>
+  <!-- Shared semantics load before handlers.js, which binds at parse time:
+       @embabel/code-surface reads the typed gateway, @embabel/vc the Cypher
+       inside kg calls — the same packages the Worlds console composes from. -->
+  <script src="src/vendor/embabel-code-surface.js"></script>
+  <script src="src/vendor/embabel-vc.js"></script>
+  <script src="src/vendor/codemirror.js"></script>
+  <script src="src/vendor/javascript.js"></script>
+  <script src="src/vendor/show-hint.js"></script>
+  <script src="src/graph.js"></script>
+  <script src="src/theme.js"></script>
+  <script src="src/handlers.js"></script>
+</body>
+</html>

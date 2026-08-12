@@ -452,6 +452,63 @@ handle('query:popout', () => {
   })
 })
 
+// The Handler Studio: the sibling surface for TypeScript event handlers —
+// same one-instance rule, same reasons.
+let handlersWindow = null
+
+handle('handlers:popout', () => {
+  if (handlersWindow) {
+    handlersWindow.show()
+    handlersWindow.focus()
+    return
+  }
+  handlersWindow = new BrowserWindow({
+    width: 1180,
+    height: 840,
+    title: 'Embabel Me — Handler Studio',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  void handlersWindow.loadFile(path.join(__dirname, '..', 'handlers.html'))
+  handlersWindow.on('closed', () => {
+    handlersWindow = null
+  })
+})
+
+// Handlers — the admin surface behind the Handler Studio. Effects only ever
+// happen server-side; dry-run is observe-only by construction there.
+handle('handlers:list', (settings) => api.handlersList(settings))
+handle('handlers:open', (settings, name) => api.handlerOpen(settings, name))
+handle('handlers:save', (settings, spec) => {
+  log(`[me-app] handler save '${spec?.name}'`)
+  return api.handlerSave(settings, spec)
+})
+handle('handlers:delete', (settings, name) => {
+  log(`[me-app] handler delete '${name}'`)
+  return api.handlerDelete(settings, name)
+})
+handle('handlers:set-enabled', (settings, name, enabled) => {
+  log(`[me-app] handler '${name}' enabled=${enabled}`)
+  return api.handlerSetEnabled(settings, name, enabled)
+})
+handle('handlers:set-schedule', (settings, name, schedule) => {
+  log(`[me-app] handler '${name}' schedule='${schedule ?? ''}'`)
+  return api.handlerSetSchedule(settings, name, schedule)
+})
+handle('handlers:dry-run', (settings, source, signalType) => api.handlerDryRun(settings, source, signalType))
+handle('handlers:generate', (settings, english) => {
+  log('[me-app] handler generate')
+  return api.handlerGenerate(settings, english)
+})
+handle('handlers:validate', (settings, source) => api.handlerValidate(settings, source))
+handle('handlers:surface', (settings) => api.gatewaySurface(settings))
+
 /*
  * Container logs — what the appliance is actually doing, in its own window.
  * Reached from the menus (both of them, like Update) rather than from a panel:

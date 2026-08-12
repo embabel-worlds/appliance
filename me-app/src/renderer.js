@@ -856,8 +856,9 @@ async function runIngest() {
 
 docIngestButton.addEventListener('click', () => void runIngest())
 
-// The studio: the advanced surface lives in its own window.
+// The studios: each advanced surface lives in its own window.
 $('vc-open').addEventListener('click', () => void window.me.openQueryStudio())
+$('handlers-open').addEventListener('click', () => void window.me.openHandlerStudio())
 
 // ---------------------------------------------------------------------------
 // Models: which model does what.
