@@ -32,7 +32,7 @@
  * point: the console builds the same queries from the same package rather than
  * from a second, drifting reading of VIRTUAL_CYPHER.md.
  */
-const { TARGETS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, relationshipTypesFor, connectedLabels, edgeContext, nodeContext, propertyMapContext, compose: composeCypher } = EmbabelVc
+const { TARGETS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, anchorLabels, relationshipTypesFor, connectedLabels, edgeContext, nodeContext, propertyMapContext, compose: composeCypher } = EmbabelVc
 /** The schema-aware lookup, curried with whatever snapshot we last loaded. */
 const propertiesOf = (label) => EmbabelVc.propertiesOf(schema, label)
 
@@ -176,13 +176,16 @@ CodeMirror.registerHelper('hint', 'cypher', (editor) => {
   let m
   // (x:Lab… or (:Lab… → labels; behind a relationship, only the labels the
   // schema has seen at its far end — (n:Document)-[:MENTIONS]-(c: asks what a
-  // Document can mention, not for every label under the sun.
+  // Document can mention, not for every label under the sun. The pattern's
+  // FIRST node offers only labels the engine lets OPEN a pattern: bound
+  // anchors, and populations tenancy anchors implicitly (your File, your
+  // Document). Reach-only labels complete after an edge, where they are legal.
   if ((m = before.match(/[([]\s*\w*:(\w*)$/)) && before.lastIndexOf('(') > before.lastIndexOf('[')) {
     const stem = m[1]
     const context = nodeContext(before, aliasMap(editor.getValue()))
     const labels = context
       ? connectedLabels(schema, context.label, context.type, context.direction)
-      : (schema?.labels ?? []).map((l) => l.label)
+      : anchorLabels(schema)
     return found(labels.filter((l) => l.toLowerCase().startsWith(stem.toLowerCase())), cursor.ch - stem.length)
   }
   // [r:REL… → relationship types, scoped to the node on the left when the
@@ -234,6 +237,22 @@ CodeMirror.registerHelper('hint', 'cypher', (editor) => {
   return null
 })
 
+/**
+ * The query "use" starts on a label. An anchor label reads bare; a reach-only
+ * one is composed REACHED — through an edge from an anchor when the schema
+ * shows one — because the bare scan is exactly what the preflight rejects.
+ */
+function useQuery(label) {
+  const bare = `MATCH (n:${label.label})\nRETURN n LIMIT 25`
+  if (label.anchor !== false) return bare
+  const anchors = new Set(anchorLabels(schema))
+  const inbound = (schema?.relationships ?? []).find((r) => r.to === label.label && anchors.has(r.from))
+  if (inbound) return `MATCH (a:${inbound.from})-[:${inbound.type}]->(n:${label.label})\nRETURN n LIMIT 25`
+  const outbound = (schema?.relationships ?? []).find((r) => r.from === label.label && anchors.has(r.to))
+  if (outbound) return `MATCH (n:${label.label})-[:${outbound.type}]->(a:${outbound.to})\nRETURN n LIMIT 25`
+  return `// ${label.label} is reach-only: traverse to it from a bound anchor\n${bare}`
+}
+
 function renderSchema() {
   els.schema.innerHTML = ''
   if (!schema) {
@@ -255,13 +274,14 @@ function renderSchema() {
     name.textContent = label.label
     const count = document.createElement('span')
     count.className = 'count'
-    count.textContent = label.sampleCount ? `${label.sampleCount} sampled` : 'virtual'
+    count.textContent = (label.sampleCount ? `${label.sampleCount} sampled` : 'virtual') +
+      (label.anchor === false ? ' · reach-only' : '')
     const use = document.createElement('button')
     use.className = 'use'
     use.textContent = 'use'
     use.addEventListener('click', (e) => {
       e.preventDefault()
-      setEditorText(`MATCH (n:${label.label})\nRETURN n LIMIT 25`, { edited: true })
+      setEditorText(useQuery(label), { edited: true })
       scheduleValidation()
     })
     summary.append(name, count, use)

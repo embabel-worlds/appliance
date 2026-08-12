@@ -60,9 +60,13 @@
     }
     .CodeMirror-hint { color: var(--ink); }
     li.CodeMirror-hint-active { background: var(--signal); color: #fff; }
-    /* Validation verdicts, under the editor. */
+    /* Validation verdicts, under the editor. A violation that names a line is
+       clickable and paints that line in the editor. */
     #verdict { margin-top: 8px; }
     #verdict .violation { color: #ff6b6b; font-family: var(--mono); font-size: 12px; margin: 2px 0; white-space: pre-wrap; }
+    #verdict .violation.locatable { cursor: pointer; }
+    #verdict .violation.locatable:hover { text-decoration: underline; }
+    .CodeMirror .error-line { background: rgba(255, 107, 107, 0.14); }
     /* Handler rows — the saved-views idiom next door. */
     .handler-group { border: 1px solid var(--rule); border-radius: 3px; margin-bottom: 6px; }
     .handler-group > summary {
@@ -186,18 +190,20 @@
               <input type="text" id="save-signal" list="signal-types" placeholder="* — any signal" />
               <datalist id="signal-types"></datalist>
             </label>
-            <label class="field">Cron schedule
-              <input type="text" id="save-schedule" placeholder="0 0 7 * * * — blank for none" />
+            <label class="field grow">Schedule — plain English
+              <input type="text" id="save-schedule" placeholder="every morning at 7 — blank for none" />
             </label>
           </div>
+          <div class="row"><span id="schedule-status" class="status"></span></div>
           <div class="row">
             <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--mid);">
               <input type="checkbox" id="save-autonomous" /> autonomous — may act without asking first
             </label>
           </div>
           <p class="hint">
-            Saving type-checks on the appliance first — a handler that cannot compile
-            cannot be saved. Saved is not live: enable it in the list when ready.
+            The schedule compiles to cron on the appliance — you never write cron.
+            Saving type-checks first: a handler that cannot compile cannot be saved.
+            Saved is not live — enable it in the list when ready.
           </p>
           <div class="row">
             <button id="save-confirm" class="arm">Save to my world</button>

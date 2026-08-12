@@ -618,6 +618,24 @@ async function handlerValidate(settings, source) {
 }
 
 /**
+ * English → a 6-field cron expression, through the appliance's own compiler —
+ * the same one the Vaadin cron drawer uses. The user never writes cron: a 200
+ * carries either a cron key (parse-validated server-side) or an error key
+ * worth showing verbatim, since it says how to rephrase.
+ */
+async function compileSchedule(settings, schedule) {
+  try {
+    const res = await post(settings, '/api/v1/cron/compile-schedule', { schedule }, 60_000)
+    if (res.status === 404) return { ok: false, message: 'no schedule compiler — older appliance' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return { ok: true, cron: body?.cron ?? null, error: body?.error ?? null }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
  * The user's typed gateway surface (interfaces.ts) — generated from the same
  * pass that types code-mode, so completion and the compiler cannot drift.
  */
@@ -774,7 +792,7 @@ module.exports = {
   kgSchema, kgValidate, kgGenerate, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
-  handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface,
+  handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
 
 // ---------------------------------------------------------------------------

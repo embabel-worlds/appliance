@@ -26,6 +26,7 @@ var EmbabelVc = (() => {
     TARGETS: () => TARGETS,
     VIA_VALUES: () => VIA_VALUES,
     aliasMap: () => aliasMap,
+    anchorLabels: () => anchorLabels,
     compose: () => compose,
     connectedLabels: () => connectedLabels,
     declaredParams: () => declaredParams,
@@ -212,6 +213,9 @@ var EmbabelVc = (() => {
   }
   function labelNames(schema) {
     return schema?.labels.map((l) => l.label) ?? [];
+  }
+  function anchorLabels(schema) {
+    return (schema?.labels ?? []).filter((l) => l.anchor !== false).map((l) => l.label).sort((a, b) => a.localeCompare(b));
   }
   function relationshipTypes(schema) {
     return [...new Set(schema?.relationships.map((r) => r.type) ?? [])].sort((a, b) => a.localeCompare(b));

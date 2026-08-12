@@ -42,6 +42,7 @@ const els = {
   saveName: $('save-name'),
   saveSignal: $('save-signal'),
   saveSchedule: $('save-schedule'),
+  scheduleStatus: $('schedule-status'),
   saveAutonomous: $('save-autonomous'),
   saveConfirm: $('save-confirm'),
   saveCancel: $('save-cancel'),
@@ -106,7 +107,39 @@ function setEditorText(text) {
   scheduleValidation()
 }
 
-cm.on('change', () => scheduleValidation())
+cm.on('change', () => {
+  // A verdict — and its painted lines — is stale the moment the text changes.
+  clearErrorLines()
+  scheduleValidation()
+})
+
+// ---------------------------------------------------------------------------
+// Failure lines. tsc violations arrive in the SOURCE's own coordinates (the
+// server rebases away its wrapper), so `handler.ts(3,…)` is editor line 3 —
+// painted in place, and each locatable violation clicks through to its line.
+// ---------------------------------------------------------------------------
+
+/** @type {number[]} zero-based editor lines currently painted as failures */
+let errorLines = []
+
+function clearErrorLines() {
+  for (const line of errorLines) cm.removeLineClass(line, 'background', 'error-line')
+  errorLines = []
+}
+
+/** The (line, column) a violation names, zero-based for CodeMirror — or null. */
+function violationPosition(violation) {
+  const m = violation.match(/handler\.ts\((\d+),(\d+)\)/)
+  if (!m) return null
+  const line = Number(m[1]) - 1
+  if (line < 0 || line >= cm.lineCount()) return null
+  return { line, ch: Math.max(0, Number(m[2]) - 1) }
+}
+
+function markErrorLine(position) {
+  cm.addLineClass(position.line, 'background', 'error-line')
+  errorLines.push(position.line)
+}
 
 // Completion opens as you type into the things it can complete: a `gateway.`
 // or `signal.` chain, or the characters that begin a completable Cypher thing
@@ -196,14 +229,15 @@ CodeMirror.registerHelper('hint', 'javascript', (editor) => {
  * @param {string} cypher @returns {{list: string[], stemLength: number} | null}
  */
 function cypherCompletions(cypher) {
-  const { aliasMap, propertiesOf, relationshipTypesFor, connectedLabels, edgeContext, nodeContext } = EmbabelVc
+  const { aliasMap, propertiesOf, anchorLabels, relationshipTypesFor, connectedLabels, edgeContext, nodeContext } = EmbabelVc
   let m
   if ((m = cypher.match(/[([]\s*\w*:(\w*)$/)) && cypher.lastIndexOf('(') > cypher.lastIndexOf('[')) {
     const stem = m[1]
     const context = nodeContext(cypher, aliasMap(cypher))
+    // First node → only labels the engine lets OPEN a pattern, same as next door.
     const labels = context
       ? connectedLabels(schema, context.label, context.type, context.direction)
-      : (schema?.labels ?? []).map((l) => l.label)
+      : anchorLabels(schema)
     return { list: labels.filter((l) => l.toLowerCase().startsWith(stem.toLowerCase())), stemLength: stem.length }
   }
   if ((m = cypher.match(/\[\s*\w*:(\w*)$/))) {
@@ -266,16 +300,27 @@ async function validateNow() {
 
 function renderVerdict(valid, violations) {
   els.verdict.innerHTML = ''
+  clearErrorLines()
   if (valid) {
     setStatus(els.validity, true, '✓ type-checks')
     return
   }
   setStatus(els.validity, false, `${violations.length} type problem(s)`)
   for (const violation of violations) {
-    const line = document.createElement('div')
-    line.className = 'violation'
-    line.textContent = violation
-    els.verdict.append(line)
+    const row = document.createElement('div')
+    row.className = 'violation'
+    row.textContent = violation
+    const position = violationPosition(violation)
+    if (position) {
+      markErrorLine(position)
+      row.classList.add('locatable')
+      row.title = 'jump to the line'
+      row.addEventListener('click', () => {
+        cm.setCursor(position)
+        cm.focus()
+      })
+    }
+    els.verdict.append(row)
   }
 }
 
@@ -471,7 +516,10 @@ async function openHandler(name, status) {
   setEditorText(result.source)
   els.saveName.value = result.name
   els.saveSignal.value = result.signalType ?? '*'
+  // The stored schedule is cron and shows as such — it round-trips through the
+  // cron passthrough on save; a reworded English schedule recompiles.
   els.saveSchedule.value = result.schedule ?? ''
+  els.scheduleStatus.textContent = ''
   els.saveAutonomous.checked = result.autonomous
   els.saveForm.hidden = false
   setStatus(status, true, 'in the editor')
@@ -489,15 +537,55 @@ els.saveCancel.addEventListener('click', () => {
   els.saveForm.hidden = true
 })
 
+/*
+ * The schedule is written in ENGLISH and compiled to cron on the appliance —
+ * the user never writes cron. A text that already IS a cron expression passes
+ * through untouched (an opened handler's stored schedule round-trips, and a
+ * power user can still paste one): six tokens of cron vocabulary — digits,
+ * `*,/-?LW#` and uppercase day/month names — which no English phrase matches,
+ * every word being lowercase.
+ */
+const CRON_SHAPE = /^(?:[\dA-Z*,/\-?LW#]+\s+){5}[\dA-Z*,/\-?LW#]+$/
+let compiledSchedule = { from: null, cron: null }
+
+/** English (or cron, or blank) → cron | null (none) | undefined (failed — status shown). */
+async function resolveSchedule(text) {
+  if (!text) {
+    els.scheduleStatus.textContent = ''
+    return null
+  }
+  if (CRON_SHAPE.test(text)) return text
+  if (compiledSchedule.from === text) return compiledSchedule.cron
+  setStatus(els.scheduleStatus, null, 'compiling — an LLM call…')
+  let result
+  try {
+    result = await window.me.compileSchedule(settings, text)
+  } catch (e) {
+    result = { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+  if (!result.ok || result.error) {
+    setStatus(els.scheduleStatus, false, result.error ?? result.message)
+    return undefined
+  }
+  compiledSchedule = { from: text, cron: result.cron }
+  setStatus(els.scheduleStatus, true, `→ ${result.cron}`)
+  return result.cron
+}
+
+// Compile as soon as the field settles, so the cron is on screen before Save.
+els.saveSchedule.addEventListener('change', () => void resolveSchedule(els.saveSchedule.value.trim()))
+
 els.saveConfirm.addEventListener('click', async () => {
   const name = els.saveName.value.trim()
   if (!name) return setStatus(els.saveStatus, false, 'a handler needs a name')
+  const schedule = await resolveSchedule(els.saveSchedule.value.trim())
+  if (schedule === undefined) return setStatus(els.saveStatus, false, 'fix the schedule first')
   setStatus(els.saveStatus, null, 'saving — the appliance compiles it first…')
   const result = await window.me.handlerSave(settings, {
     name,
     source: editorText(),
     signalType: els.saveSignal.value.trim() || '*',
-    schedule: els.saveSchedule.value.trim() || null,
+    schedule,
     autonomous: els.saveAutonomous.checked,
   })
   setStatus(els.saveStatus, result.ok, result.message)

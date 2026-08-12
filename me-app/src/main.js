@@ -508,6 +508,7 @@ handle('handlers:generate', (settings, english) => {
 })
 handle('handlers:validate', (settings, source) => api.handlerValidate(settings, source))
 handle('handlers:surface', (settings) => api.gatewaySurface(settings))
+handle('handlers:compile-schedule', (settings, english) => api.compileSchedule(settings, english))
 
 /*
  * Container logs — what the appliance is actually doing, in its own window.

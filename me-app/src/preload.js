@@ -40,6 +40,7 @@ const api = {
   handlerGenerate: (settings, english) => ipcRenderer.invoke('handlers:generate', settings, english),
   handlerValidate: (settings, source) => ipcRenderer.invoke('handlers:validate', settings, source),
   gatewaySurface: (settings) => ipcRenderer.invoke('handlers:surface', settings),
+  compileSchedule: (settings, english) => ipcRenderer.invoke('handlers:compile-schedule', settings, english),
   // Themes: the appliance owns the list and the CSS; the renderer only paints it.
   listThemes: (settings) => ipcRenderer.invoke('themes:list', settings),
   themeCss: (settings, name) => ipcRenderer.invoke('themes:css', settings, name),
