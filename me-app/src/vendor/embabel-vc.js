@@ -24,6 +24,7 @@ var EmbabelVc = (() => {
     AI_KEYS: () => AI_KEYS,
     RESERVED_PARAMS: () => RESERVED_PARAMS,
     TARGETS: () => TARGETS,
+    TIPS: () => TIPS,
     VIA_VALUES: () => VIA_VALUES,
     aliasMap: () => aliasMap,
     anchorLabels: () => anchorLabels,
@@ -37,7 +38,10 @@ var EmbabelVc = (() => {
     propertiesOf: () => propertiesOf,
     propertyMapContext: () => propertyMapContext,
     relationshipTypes: () => relationshipTypes,
-    relationshipTypesFor: () => relationshipTypesFor
+    relationshipTypesFor: () => relationshipTypesFor,
+    rowColumns: () => rowColumns,
+    rowsToCsv: () => rowsToCsv,
+    rowsToMarkdown: () => rowsToMarkdown
   });
 
   // src/targets.ts
@@ -128,13 +132,7 @@ var EmbabelVc = (() => {
       `MATCH (:Concept {value:'${esc(seed)}'})-[r:RELEVANT_TO${edgeProps(spec)}]->(d:Document)`,
       where.length ? `WHERE ${where.join("\n  AND ")}` : null,
       `RETURN d.title AS title, ${evidence}`,
-      `ORDER BY r.score DESC LIMIT ${limitOf(spec)}`,
-      "",
-      "// Per-row LLM judgment over the fetched rows \u2014 one uncomment away:",
-      "//   AND ai.relevant(d, 'genuinely about <your criterion>')      -- filter",
-      "//   ORDER BY ai.score(d, '<your criterion>') DESC               -- rerank",
-      "// Content, not metadata: MATCH (d)-[:HAS_SUMMARY]->(s:Summary) RETURN s.summary",
-      "// AND at the document: a second seed meeting the same d asserts BOTH terms."
+      `ORDER BY r.score DESC LIMIT ${limitOf(spec)}`
     );
   }
   function composeFiles(spec) {
@@ -144,10 +142,7 @@ var EmbabelVc = (() => {
       return lines(
         `MATCH (:Concept {value:'${esc(seed2)}'})-[r:RELEVANT_TO {via:'keyword'}]->(f:File)`,
         `RETURN f.name AS name, f.dir AS dir, f.content AS excerpt, f.modifiedAt AS modified`,
-        `ORDER BY modified DESC LIMIT ${limitOf(spec)}`,
-        "",
-        "// The excerpt holds the matching lines, never the whole file body.",
-        "// For summarization use the Documents target \u2014 files are metadata + grep."
+        `ORDER BY modified DESC LIMIT ${limitOf(spec)}`
       );
     }
     const seed = str(spec.seed).trim() || "your idea";
@@ -166,30 +161,42 @@ var EmbabelVc = (() => {
       `MATCH ${anchor.pattern(seed)}-[r:RELEVANT_TO]->(t:RelevantEmailThread)`,
       `WHERE r.score >= ${floor}`,
       `RETURN t.subject AS subject, t.snippet AS snippet, r.score AS score`,
-      `ORDER BY r.score DESC LIMIT ${limitOf(spec)}`,
-      "",
-      "// RELEVANT_TO is semantic \u2014 'reads as being about', never 'corresponded with'.",
-      "// Compose with structure: (me:AssistantUser)-[:EMAILED]->(p:Person)-[r:RELEVANT_TO]->(t)"
+      `ORDER BY r.score DESC LIMIT ${limitOf(spec)}`
     );
   }
   function composeCanvas(_spec) {
     return lines(
-      "// The whole graph is yours \u2014 the Schema panel lists every node type here.",
-      "// Shapes the engine serves:",
-      "//   (:Concept {value:'\u2026'})-[r:RELEVANT_TO]->(d:Document)            -- about (vector)",
-      "//   (:Concept {value:'\u2026'})-[r:RELEVANT_TO {via:'keyword'}]->(d)     -- mentions",
-      "//   (:Concept)-[r:RELEVANT_TO {via:'agentic-rag', intent:'\u2026'}]->(d) -- judged",
-      "//   (:Concept {value:'\u2026'})-[r:RELEVANT_TO {via:'keyword'}]->(f:File)",
-      "//   (:Person|Organization|Meeting)-[r:RELEVANT_TO]->(t:RelevantEmailThread)",
-      "//   (d:Document)-[:HAS_SUMMARY]->(s:Summary)",
-      "//   WHERE 'tag' IN d.tags \u2014 membership, never CONTAINS (tags is a list)",
-      "//   ai.relevant(n, '\u2026') / ai.score(n, '\u2026') / ai.classify(n, '\u2026') \u2014 per-row LLM judgment",
-      "",
       "MATCH (d:Document)",
       "RETURN d.title AS title, d.tags AS tags, d.uri AS uri",
       "ORDER BY d.ingestionTimestamp DESC LIMIT 25"
     );
   }
+  var TIPS = {
+    documents: [
+      "Per-row LLM judgment over the fetched rows \u2014 add AND ai.relevant(d, 'genuinely about <your criterion>') to filter, or ORDER BY ai.score(d, '<your criterion>') DESC to rerank.",
+      "Content, not metadata: MATCH (d)-[:HAS_SUMMARY]->(s:Summary) RETURN s.summary.",
+      "AND at the document: a second seed meeting the same d asserts BOTH terms."
+    ],
+    files: [
+      "The excerpt holds the matching lines, never the whole file body.",
+      "For summarization use the Documents target \u2014 files are metadata + grep."
+    ],
+    threads: [
+      "RELEVANT_TO is semantic \u2014 'reads as being about', never 'corresponded with'.",
+      "Compose with structure: (me:AssistantUser)-[:EMAILED]->(p:Person)-[r:RELEVANT_TO]->(t)."
+    ],
+    canvas: [
+      "The whole graph is yours \u2014 the Schema panel lists every node type here.",
+      "About (vector): (:Concept {value:'\u2026'})-[r:RELEVANT_TO]->(d:Document).",
+      "Mentions (keyword): (:Concept {value:'\u2026'})-[r:RELEVANT_TO {via:'keyword'}]->(d).",
+      "Judged (agentic): (:Concept)-[r:RELEVANT_TO {via:'agentic-rag', intent:'\u2026'}]->(d).",
+      "Files by keyword: (:Concept {value:'\u2026'})-[r:RELEVANT_TO {via:'keyword'}]->(f:File).",
+      "Threads: (:Person|Organization|Meeting)-[r:RELEVANT_TO]->(t:RelevantEmailThread).",
+      "Summaries: (d:Document)-[:HAS_SUMMARY]->(s:Summary).",
+      "Tags are a list: WHERE 'tag' IN d.tags \u2014 membership, never CONTAINS.",
+      "Per-row LLM judgment: ai.relevant(n, '\u2026') / ai.score(n, '\u2026') / ai.classify(n, '\u2026')."
+    ]
+  };
   var COMPOSERS = {
     documents: composeDocuments,
     files: composeFiles,
@@ -286,6 +293,33 @@ var EmbabelVc = (() => {
   var RESERVED_PARAMS = ["ai", "realm", "userId", "anchors", "exclude", "want", "hint"];
   function declaredParams(cypher) {
     return [...new Set([...cypher.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]))].filter((p) => !RESERVED_PARAMS.includes(p));
+  }
+
+  // src/rows.ts
+  function rowColumns(rows) {
+    const columns = [];
+    for (const row of rows) for (const key of Object.keys(row)) if (!columns.includes(key)) columns.push(key);
+    return columns;
+  }
+  var cell = (value) => value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  function rowsToMarkdown(rows) {
+    const columns = rowColumns(rows);
+    if (!columns.length) return "";
+    const md = (value) => cell(value).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+    return [
+      `| ${columns.map(md).join(" | ")} |`,
+      `| ${columns.map(() => "---").join(" | ")} |`,
+      ...rows.map((row) => `| ${columns.map((column) => md(row[column])).join(" | ")} |`)
+    ].join("\n");
+  }
+  function rowsToCsv(rows) {
+    const columns = rowColumns(rows);
+    if (!columns.length) return "";
+    const csv = (value) => {
+      const s = cell(value);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return [columns, ...rows.map((row) => columns.map((column) => row[column]))].map((values) => values.map(csv).join(",")).join("\n");
   }
   return __toCommonJS(index_exports);
 })();

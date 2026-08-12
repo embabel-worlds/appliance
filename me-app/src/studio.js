@@ -32,7 +32,7 @@
  * point: the console builds the same queries from the same package rather than
  * from a second, drifting reading of VIRTUAL_CYPHER.md.
  */
-const { TARGETS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, anchorLabels, relationshipTypesFor, connectedLabels, edgeContext, nodeContext, propertyMapContext, compose: composeCypher } = EmbabelVc
+const { TARGETS, TIPS, VIA_VALUES, AI_KEYS, aliasMap, declaredParams, anchorLabels, relationshipTypesFor, connectedLabels, edgeContext, nodeContext, propertyMapContext, rowColumns, rowsToMarkdown, rowsToCsv, compose: composeCypher } = EmbabelVc
 /** The schema-aware lookup, curried with whatever snapshot we last loaded. */
 const propertiesOf = (label) => EmbabelVc.propertiesOf(schema, label)
 
@@ -453,6 +453,8 @@ function renderTargets() {
       renderTargets()
       applyTarget()
       compose()
+      // An open Tips panel follows the target — its teaching is per-target.
+      if (!tipsPanel.hidden) renderTips()
     })
     els.targets.append(button)
   }
@@ -519,7 +521,51 @@ for (const el of [
 els.compose.addEventListener('click', () => {
   compose()
 })
-els.copy.addEventListener('click', () => void navigator.clipboard.writeText(editorText()))
+/** Copy [text] and say it landed — a copy with no acknowledgement gets clicked three times. */
+async function copyWithNod(button, label, text) {
+  await navigator.clipboard.writeText(text)
+  button.textContent = 'Copied ✓'
+  setTimeout(() => {
+    button.textContent = label
+  }, 1200)
+}
+
+els.copy.addEventListener('click', () => void copyWithNod(els.copy, 'Copy', editorText()))
+
+// The results, copyable in the two shapes people paste: a Markdown table for a
+// doc or a chat, CSV for a spreadsheet. Serialized by @embabel/vc under the
+// same column rule the table renders with, so what you copy is what you saw.
+const copyMd = $('copy-md')
+const copyCsv = $('copy-csv')
+/** @type {Array<Record<string, unknown>>} */
+let lastRows = []
+
+copyMd.addEventListener('click', () => void copyWithNod(copyMd, 'Copy as Markdown', rowsToMarkdown(lastRows)))
+copyCsv.addEventListener('click', () => void copyWithNod(copyCsv, 'Copy as CSV', rowsToCsv(lastRows)))
+
+// ---------------------------------------------------------------------------
+// Tips — the teaching that used to trail every composed query as comment
+// lines. Same knowledge, now on demand: a tip in the query text made a
+// three-line query read as complex, and vanished on the next compose anyway.
+// ---------------------------------------------------------------------------
+
+const tipsButton = $('tips')
+const tipsPanel = $('tips-panel')
+
+function renderTips() {
+  tipsPanel.innerHTML = ''
+  for (const tip of TIPS[target] ?? []) {
+    const line = document.createElement('div')
+    line.className = 'tip'
+    line.textContent = tip
+    tipsPanel.append(line)
+  }
+}
+
+tipsButton.addEventListener('click', () => {
+  tipsPanel.hidden = !tipsPanel.hidden
+  if (!tipsPanel.hidden) renderTips()
+})
 
 // ---------------------------------------------------------------------------
 // The tag universe — same query the main window's dropdown uses.
@@ -674,6 +720,9 @@ lensModelSelect.addEventListener('change', async () => {
 /** Every cell textContent — row values come from documents, and documents lie. */
 function renderRows(rows) {
   els.results.innerHTML = ''
+  lastRows = rows
+  copyMd.hidden = !rows.length
+  copyCsv.hidden = !rows.length
   if (!rows.length) {
     const p = document.createElement('p')
     p.className = 'hint'
@@ -681,8 +730,7 @@ function renderRows(rows) {
     els.results.append(p)
     return
   }
-  const columns = []
-  for (const row of rows) for (const key of Object.keys(row)) if (!columns.includes(key)) columns.push(key)
+  const columns = rowColumns(rows)
   const table = document.createElement('table')
   table.className = 'results-table'
   const head = table.createTHead().insertRow()
