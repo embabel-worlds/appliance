@@ -107,6 +107,73 @@ app.setName('Embabel Me')
 
 let updating = false
 
+/* The appliance's themes, as the menu last saw them. Empty until a fetch
+ * succeeds — which needs credentials, so the menu is built once without them at
+ * launch and rebuilt when refreshThemes() returns. */
+/** @type {{name: string, displayName?: string, description?: string}[]} */
+let themes = []
+
+/**
+ * The Theme submenu: radio items, so the menu itself shows which theme is on
+ * without anyone having to open a panel to find out.
+ *
+ * "Embabel (default)" is always present and always first — it is the palette in
+ * the shared stylesheet, not an appliance theme, so it exists even when the
+ * appliance has none installed or cannot be reached. An appliance that answers
+ * with nothing gets a disabled line saying so, because a lone default reads as
+ * "there is only one theme" rather than "none are installed".
+ */
+function themeSubmenu() {
+  const chosen = loadSettings().theme || ''
+  const items = [
+    {
+      label: 'Embabel (default)',
+      type: 'radio',
+      checked: chosen === '',
+      click: () => void chooseTheme(''),
+    },
+  ]
+  if (themes.length) {
+    items.push({ type: 'separator' })
+    for (const theme of themes) {
+      items.push({
+        label: theme.displayName || theme.name,
+        type: 'radio',
+        checked: chosen === theme.name,
+        click: () => void chooseTheme(theme.name),
+      })
+    }
+  } else {
+    items.push({ type: 'separator' }, { label: 'No themes on your appliance', enabled: false })
+  }
+  return items
+}
+
+/**
+ * Pick a theme: persist it, then tell every open window to repaint. The windows
+ * do not poll and are not reloaded — a theme change must not cost the Query
+ * Studio the query someone was halfway through writing.
+ */
+async function chooseTheme(name) {
+  saveSettings({ theme: name })
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('theme:changed', name)
+  buildMenus()
+}
+
+/**
+ * Re-read the appliance's theme list and rebuild the menu around it. Called
+ * once at start-up and again whenever settings are saved, since the first
+ * launch has no credentials and the list is unreachable until it does.
+ */
+async function refreshThemes() {
+  const result = await api.listThemes(loadSettings())
+  // A failed fetch leaves the previous list alone: an appliance that is briefly
+  // down should not empty a menu that was correct a moment ago.
+  if (!result.ok) return
+  themes = result.themes
+  buildMenus()
+}
+
 /** Build (or rebuild — the update item's state changes) both menus. */
 function buildMenus() {
   const updateItem = updating
@@ -121,6 +188,10 @@ function buildMenus() {
         label: 'Embabel Me',
         submenu: [
           { role: 'about', label: 'About Embabel Me' },
+          { type: 'separator' },
+          // Appearance belongs where someone looks for a preference, not at the
+          // foot of a settings panel that folds away once connected.
+          { label: 'Theme', submenu: themeSubmenu() },
           { type: 'separator' },
           { ...updateItem },
           { label: 'Container Logs…', click: openLogsWindow },
@@ -180,6 +251,7 @@ void app.whenReady().then(() => {
   tray.setTitle('Me')
   tray.setToolTip('Embabel Me')
   buildMenus()
+  void refreshThemes()
 
   createWindow()
   app.on('activate', createWindow)
@@ -263,6 +335,9 @@ function handle(channel, fn) {
 ipcMain.handle('settings:load', () => loadSettings())
 ipcMain.handle('settings:save', (_e, settings) => {
   saveSettings(settings)
+  // Credentials may have only just arrived — the theme list is unreachable
+  // without them, so this is the moment the menu can finally be filled.
+  void refreshThemes()
   return true
 })
 handle('connection:test', (settings) => api.testConnection(settings))

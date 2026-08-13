@@ -276,46 +276,6 @@
         </div>
       </div>
     </section>
-    <section class="panel">
-      <h2>Local files</h2>
-      <div class="panel-body">
-        <p class="hint">
-          Share folders — Documents, a projects directory — with your appliance. Each
-          appears read-only inside the assistant container under <code>/local</code>,
-          and Apply wires it into the assistant's virtual Cypher: "what changed this
-          week?", "which files mention the renewal?" are answered by walking your
-          folders live — nothing is copied or stored. Tick <strong>index contents</strong>
-          to go further for a folder: its documents (PDFs included) are embedded into
-          the knowledge base, for summarization and semantic search. Applying rewrites
-          <code>docker-compose.override.yml</code> and restarts the assistant container;
-          the graph and everything it remembers stay up.
-        </p>
-        <div id="mount-list"></div>
-        <div class="row">
-          <button id="mount-add">Share a folder…</button>
-          <button id="mount-apply" class="primary">Apply — restarts the assistant</button>
-          <span id="mount-status" class="status"></span>
-        </div>
-      </div>
-    </section>
-    <section class="panel">
-      <h2>Appearance</h2>
-      <div class="panel-body">
-        <p class="hint">
-          Themes are installed on your appliance, and the list is the same one the
-          appliance's own web UI offers — pick here and it is the same choice. Every
-          window follows, including the Query Studio.
-        </p>
-        <div class="row">
-          <label class="field">Theme
-            <select id="theme-pick" title="Themes installed on your appliance">
-              <option value="">Embabel (default)</option>
-            </select>
-          </label>
-          <span id="theme-status" class="status inline-status"></span>
-        </div>
-      </div>
-    </section>
     </div><!-- /sensor -->
 
     <div class="tabpanel" data-panel="documents" hidden>
@@ -368,7 +328,7 @@
         <p class="hint">
           A dropped file is ingested the same way an indexed folder's files are — converted,
           chunked and embedded — and is answerable above once it lands. Shared folders you
-          tick to index on the Machine tab arrive on their own; this is for the one-off.
+          tick to index below arrive on their own; this is for the one-off.
         </p>
         <div id="doc-drop" class="dropzone">
           Drop files here to add them to your documents — you'll be asked for tags first.
@@ -382,6 +342,29 @@
           <button id="doc-ingest-cancel">Cancel</button>
         </div>
         <div id="doc-ingest-status" class="status"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Local files</h2>
+      <div class="panel-body">
+        <p class="hint">
+          Share folders — Documents, a projects directory — with your appliance. Each
+          appears read-only inside the assistant container under <code>/local</code>,
+          and Apply wires it into the assistant's virtual Cypher: "what changed this
+          week?", "which files mention the renewal?" are answered by walking your
+          folders live — nothing is copied or stored. Tick <strong>index contents</strong>
+          to go further for a folder: its documents (PDFs included) are embedded into
+          the knowledge base, so they answer above alongside anything you dropped in.
+          Applying rewrites <code>docker-compose.override.yml</code> and restarts the
+          assistant container; the graph and everything it remembers stay up.
+        </p>
+        <div id="mount-list"></div>
+        <div class="row">
+          <button id="mount-add">Share a folder…</button>
+          <button id="mount-apply" class="primary">Apply — restarts the assistant</button>
+          <span id="mount-status" class="status"></span>
+        </div>
       </div>
     </section>
     </div><!-- /documents -->

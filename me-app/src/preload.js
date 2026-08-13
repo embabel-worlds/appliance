@@ -44,6 +44,13 @@ const api = {
   // Themes: the appliance owns the list and the CSS; the renderer only paints it.
   listThemes: (settings) => ipcRenderer.invoke('themes:list', settings),
   themeCss: (settings, name) => ipcRenderer.invoke('themes:css', settings, name),
+  // Picked from the application menu, which lives in the main process — so the
+  // choice arrives at every open window this way rather than being read back.
+  onThemeChanged: (cb) => {
+    const listener = (_e, name) => cb(name)
+    ipcRenderer.on('theme:changed', listener)
+    return () => ipcRenderer.removeListener('theme:changed', listener)
+  },
   // Container logs — for the log window only; opening it is a menu action, so
   // there is no popout channel here. Read-only: list, follow, stop. The two
   // `on*` calls return an unsubscribe, and the stream itself is owned by the

@@ -156,6 +156,11 @@ window.me.onLogEnd((message) => {
 })
 
 async function init() {
+  // This window carries the theme element and the script but never painted one.
+  // Now that the theme is a menu away from any window, "every window follows"
+  // has to include this one.
+  void window.meTheme.restoreTheme(await window.me.loadSettings())
+
   for (const n of [200, 1000, 5000]) {
     const option = document.createElement('option')
     option.value = String(n)

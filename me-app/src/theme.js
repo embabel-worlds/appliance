@@ -44,10 +44,22 @@ async function applyTheme(settings, name) {
   return result
 }
 
-/** Apply whatever the settings already say, at window start-up. */
+/**
+ * Apply whatever the settings already say, at window start-up, and follow the
+ * application menu from then on.
+ *
+ * The menu lives in the main process and writes the choice to settings.json, so
+ * this page's `settings` is stale the moment someone picks one. Mutating the
+ * object the page handed us keeps it honest — the connection form saves that
+ * same object back, and a stale `theme` on it would quietly undo the choice.
+ */
 async function restoreTheme(settings) {
   const name = chosenTheme(settings)
   if (name) await applyTheme(settings, name)
+  window.me.onThemeChanged((chosen) => {
+    settings.theme = chosen
+    void applyTheme(settings, chosen)
+  })
 }
 
 window.meTheme = { applyTheme, restoreTheme, chosenTheme }

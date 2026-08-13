@@ -38,50 +38,11 @@ function setStatus(el, ok, message) {
   el.className = ok === null ? 'status' : ok ? 'status ok' : 'status error'
 }
 
-/**
- * The theme picker, filled from the appliance. An older appliance has no theme
- * service; the list simply stays at its one built-in entry and the control still
- * works — the shared stylesheet's own palette IS "Embabel (default)".
- */
-async function initThemes(settings) {
-  const pick = document.getElementById('theme-pick')
-  const status = document.getElementById('theme-status')
-  if (!pick) return
-
-  await window.meTheme.restoreTheme(settings)
-
-  const result = await window.me.listThemes(settings)
-  if (result.ok) {
-    for (const theme of result.themes) {
-      const option = document.createElement('option')
-      option.value = theme.name
-      option.textContent = theme.displayName || theme.name
-      option.title = theme.description || ''
-      pick.append(option)
-    }
-    // An appliance that answers but ships nothing is a real answer; say so rather
-    // than leaving a lone default that looks like the whole list.
-    if (result.themes.length === 0) {
-      setStatus(status, null, 'Your appliance has no themes installed.')
-    }
-  } else {
-    // The one-entry list below is the built-in palette, NOT "you have one theme".
-    // Silence here reads as "there is only one", which is the wrong thing to learn.
-    setStatus(status, false, `Couldn't read your appliance's themes — ${result.message}`)
-  }
-  pick.value = window.meTheme.chosenTheme(settings)
-
-  pick.addEventListener('change', async () => {
-    settings.theme = pick.value
-    await window.me.saveSettings(settings)
-    const applied = await window.meTheme.applyTheme(settings, pick.value)
-    setStatus(status, applied.ok ? null : false, applied.ok ? '' : applied.message)
-  })
-}
-
 async function init() {
   const settings = await window.me.loadSettings()
-  void initThemes(settings)
+  // The theme is chosen from the application menu (Embabel Me → Theme); this
+  // window only paints what was already chosen and follows it from there.
+  void window.meTheme.restoreTheme(settings)
   baseUrlInput.value = settings.baseUrl
   usernameInput.value = settings.username
   passwordInput.value = settings.password
