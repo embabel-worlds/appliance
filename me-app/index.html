@@ -535,11 +535,10 @@
 
   <script src="src/vendor/marked.umd.js"></script>
   <script src="src/vendor/purify.js"></script>
-  <script src="src/markdown.js"></script>
   <!-- The shared backdrop animation, then this window's content and volume for it. -->
   <script src="src/vendor/embabel-backdrop.js"></script>
-  <script src="src/graph.js"></script>
-  <script src="src/theme.js"></script>
-  <script src="src/renderer.js"></script>
+  <!-- One bundle per window: esbuild output, a classic script like the
+       vendored libraries above (ES modules are refused over file://). -->
+  <script src="dist/renderer.js"></script>
 </body>
 </html>

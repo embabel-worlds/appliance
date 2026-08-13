@@ -1,0 +1,36 @@
+{
+  // The app is TypeScript; esbuild emits, this only checks (`npm run typecheck`).
+  //
+  // ONE project spanning two runtimes, which is why lib and types are both wide:
+  // the main process is Node with `__dirname` and `process`, the renderer is a
+  // sandboxed page with `document` and `fetch` and no Node at all. TypeScript
+  // will therefore believe a renderer file could reach `process`. That is the
+  // price of a single config; the runtime is what actually refuses.
+  //
+  // MIGRATION STATE: `noImplicitAny` is on — every parameter has to say what it
+  // takes, which is the check that made this conversion worth doing at all.
+  // `strictNullChecks` is NOT on yet: this code was written for years against a
+  // checker that did not have it, and turning it on in the same change would
+  // bury the conversion under thousands of "possibly undefined" reports that
+  // want reading one at a time. It is the obvious next step, on its own.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    // esbuild is the emitter; tsc never writes anything.
+    "noEmit": true,
+    // The vendored builds and Electron's own d.ts are not ours to answer for.
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.mjs"],
+  "exclude": ["node_modules", "src/vendor", "dist", "release"]
+}

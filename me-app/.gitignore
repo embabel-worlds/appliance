@@ -1,2 +1,7 @@
 node_modules/
 release/
+
+# Build output — esbuild writes it, `npm start` rebuilds it, and it is derived
+# from src/ by definition. The packaged app ships it (see build.files in
+# package.json); the repository does not.
+dist/

@@ -2,13 +2,18 @@
   "name": "embabel-me-app",
   "version": "0.0.1",
   "description": "Embabel Me sensor app \u2014 reads local macOS signals and sends them to your appliance",
-  "main": "src/main.js",
+  "main": "dist/main.js",
   "scripts": {
     "prestart": "node -e \"require('fs').existsSync('node_modules/electron') || process.exit(1)\" || npm install",
-    "start": "electron .",
-    "smoke": "node -e \"require('./src/platform').platform.scan({}).then(f => console.log(JSON.stringify(f, null, 2)))\"",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && node dist/smoke.js",
+    "typecheck": "tsc --noEmit",
     "vendor": "cp node_modules/marked/lib/marked.umd.js src/vendor/marked.umd.js && cp node_modules/dompurify/dist/purify.js src/vendor/purify.js && cp node_modules/codemirror/lib/codemirror.js node_modules/codemirror/lib/codemirror.css node_modules/codemirror/mode/cypher/cypher.js node_modules/codemirror/mode/javascript/javascript.js node_modules/codemirror/addon/hint/show-hint.js node_modules/codemirror/addon/hint/show-hint.css src/vendor/",
+    "prepackage": "npm run build",
     "package": "electron-builder --mac --dir",
+    "predist": "npm run build",
     "dist": "electron-builder --mac",
     "sync:ui": "cp ../../embabel-appliance-client/packages/appliance-ui/css/*.css src/vendor/embabel-ui/ && cp ../../embabel-appliance-client/packages/appliance-ui/dist/global/embabel-backdrop.js ../../embabel-appliance-client/packages/vc/dist/global/embabel-vc.js ../../embabel-appliance-client/packages/code-surface/dist/global/embabel-code-surface.js ../../embabel-appliance-client/packages/studio-kit/dist/global/embabel-studio-kit.js src/vendor/"
   },
@@ -18,7 +23,9 @@
     "dompurify": "^3.4.13",
     "electron": "^33.0.0",
     "electron-builder": "^26.15.3",
-    "marked": "^18.0.9"
+    "esbuild": "^0.24.2",
+    "marked": "^18.0.9",
+    "typescript": "^5.7.2"
   },
   "build": {
     "appId": "com.embabel.me",
@@ -29,7 +36,8 @@
       "buildResources": "build"
     },
     "files": [
-      "src/**/*",
+      "dist/**/*",
+      "src/vendor/**/*",
       "index.html",
       "query-studio.html",
       "handler-studio.html",

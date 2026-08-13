@@ -241,8 +241,8 @@
   <script src="src/vendor/codemirror.js"></script>
   <script src="src/vendor/javascript.js"></script>
   <script src="src/vendor/show-hint.js"></script>
-  <script src="src/graph.js"></script>
-  <script src="src/theme.js"></script>
-  <script src="src/handler-studio.js"></script>
+  <!-- One bundle per window: esbuild output, a classic script like the
+       vendored libraries above (ES modules are refused over file://). -->
+  <script src="dist/handler-studio.js"></script>
 </body>
 </html>

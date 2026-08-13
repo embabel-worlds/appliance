@@ -14,7 +14,7 @@ obvious shared surface; it is not the only one.
 **me-app** (`appliance/me-app`) — Electron. The renderer has no bundler and no
 module system: `index.html` loads plain `<script>` tags and each file publishes
 globals. Zero HTTP in the renderer; everything goes over IPC through
-`src/preload.js` (`window.me`) to `src/api.js` in the **main process**, which
+`src/preload.ts` (`window.me`) to `src/api.ts` in the **main process**, which
 holds `settings.baseUrl` and the credentials. Query Studio is `src/studio.js`
 (1248 lines) plus `query.html` (401 lines of hand-written CSS). CodeMirror and
 friends are vendored into `src/vendor/`.
@@ -78,19 +78,25 @@ Two hand-written implementations is the same drift one layer down. It is really
   `{ baseUrl: '', headers: () => ({}) }` (relative URLs, ambient credentials).
   me-app's **main process** passes `{ baseUrl: settings.baseUrl, headers:
   basicAuth(settings) }` — main is Node, `fetch` is legal there, and that is
-  where the credential already lives. So `src/api.js` does not get a sibling; it
+  where the credential already lives. So `src/api.ts` does not get a sibling; it
   *becomes* the shared client with a different config object.
 - me-app's renderer gets the same interface as a generated IPC proxy. Every
   method is `(...args) => ipcRenderer.invoke(channel, ...args)`, so `preload.js`
   stops being hand-maintained and becomes derived. A method then cannot exist in
   the console and be silently missing from Me's bridge.
 
-Endpoints get written down once instead of twice (api.js's ~40 functions, and
+Endpoints get written down once instead of twice (api.ts's ~40 functions, and
 the console's inline `'/api/v1/...'` strings).
 
 ### 2. Module system — the `file://` problem
 
-`src/main.js:94,444,484` use `loadFile`, so the renderer's origin is `file://`,
+> **Settled: option 2 (bundle with esbuild), 2026-08.** me-app is TypeScript,
+> bundled one IIFE per window; `npm start` builds and runs. The `file://`
+> constraint below is unchanged and is exactly why bundling was the answer — the
+> output is a classic script, so the pages load it the way they loaded the
+> hand-written globals, while the sources behind it use real imports.
+
+`src/main.ts` uses `loadFile`, so the renderer's origin is `file://`,
 and Chromium blocks ESM `import` over `file://`. `<script type="module">` will
 not work as-is. Four ways out, all keeping JS if desired:
 
@@ -108,13 +114,21 @@ not work as-is. Four ways out, all keeping JS if desired:
    grows.
 4. Share only the client model and leave the renderer alone.
 
-**Note:** me-app already has a module system everywhere except the renderer —
-main-process files use CommonJS `require` (main.js 13, verbs.js 6, indexer.js 5).
-Renderer files use zero. So the client model (1) needs **no module work at all**.
+**Note (superseded):** at the time of writing, me-app had a module system
+everywhere except the renderer — main-process files used CommonJS `require`,
+renderer files none. Both are ES modules now.
 
 ### 3. TypeScript — orthogonal to the module question
 
-The stated reason me-app is plain JS is in `src/types.js:3`: "no compile step,
+> **Settled: converted, 2026-08.** All 32 files, `noImplicitAny` on and clean.
+> The prediction below held exactly: the JSDoc typedefs had drifted from the
+> code they described — `Settings` was missing `theme` and `verbs`, `MountsState`
+> was missing `env`, `SensorPlatform` was missing three methods that `verbs.ts`
+> calls — because nothing had ever read them. Converting also surfaced a live
+> bug: a click handler in `query-views.ts` referenced `status`, which resolved to
+> the global `window.status`, a string.
+
+The stated reason me-app was plain JS was in `src/types.js:3`: "no compile step,
 nothing to install beyond Electron itself." That reason evaporates the moment a
 build exists. Once it does, JSDoc-with-`checkJs` is strictly worse than TS.
 

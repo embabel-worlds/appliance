@@ -5,10 +5,10 @@ a small native app that reads local signals and **sends** them to your own
 appliance. The appliance thinks; this app senses.
 
 macOS is the implemented platform. Everything OS-specific lives behind the
-`SensorPlatform` seam in [`src/platform/`](src/platform): `common.js` holds the
+`SensorPlatform` seam in [`src/platform/`](src/platform): `common.ts` holds the
 readers whose logic is identical everywhere and whose only OS-specific part is
 where the files live (JetBrains recents, VS Code folders, Chromium history),
-`macos.js` holds the Mac-specific ones, and `windows.js`/`linux.js` implement
+`macos.ts` holds the Mac-specific ones, and `windows.ts`/`linux.ts` implement
 what already works while naming exactly what each still needs. `process.platform`
 is read in one place.
 
@@ -19,9 +19,17 @@ cd me-app
 npm start        # the first run fetches Electron by itself
 ```
 
-(`../me.py` offers to do this for you at the end of setup.) The app is plain
-JavaScript with no build step — Electron is the only thing `npm` fetches, and
-there is nothing to compile.
+(`../me.py` offers to do this for you at the end of setup.) `npm start` builds
+and launches: the build is esbuild and takes about a tenth of a second, so there
+is nothing to remember and nothing to run first.
+
+| | |
+| --- | --- |
+| `npm start` | build, then run |
+| `npm run watch` | rebuild on save (reopen the window to pick it up) |
+| `npm run typecheck` | `tsc --noEmit` — the type gate, never in the run path |
+| `npm run smoke` | print what a scan would gather, without the UI |
+| `npm run dist` | a packaged app (builds first) |
 
 Requires the Me mode up (`../me.py`) and your appliance username/password.
 
@@ -241,12 +249,23 @@ the request never left the app.
 - **Outbound-only.** The app is a client of the appliance API and never listens
   on a port. Future effect verbs (notify, open URL…) will ride the same
   direction via long-polling an outbox — the appliance never calls the host.
-- **Zero dependencies beyond Electron, and no build step.** Binary plists are
-  read via `plutil`; HTTP is Node's built-in fetch; the source is plain
-  JavaScript that Electron runs directly, so a fresh checkout needs nothing but
-  `npm start` — no compiler to have, no compiled output to go stale. The shapes
-  that would have been TypeScript interfaces live as JSDoc typedefs in
-  [`src/types.js`](src/types.js) and [`src/platform/types.js`](src/platform/types.js).
+- **Nothing ships that isn't ours.** Binary plists are read via `plutil`; HTTP
+  is Node's built-in fetch; `dependencies` is empty, so the packaged app carries
+  no runtime library at all. Everything the pages need is either bundled from
+  `src/` or vendored into `src/vendor/`.
+- **TypeScript, bundled per window.** esbuild emits, `tsc --noEmit` checks, and
+  the two are separate on purpose: the build stays in milliseconds and a type
+  error never blocks a launch. The wire shapes live as real interfaces in
+  [`src/types.ts`](src/types.ts), [`src/wire.ts`](src/wire.ts) and
+  [`src/platform/types.ts`](src/platform/types.ts).
+
+  The renderer is bundled rather than loaded as loose modules because it cannot
+  be otherwise: pages load from `file://`, where Chromium refuses ES modules,
+  and `nodeIntegration: false` rules out `require`. A classic IIFE bundle is
+  what remains, and it is what lets the sources use imports at all.
+
+  `strictNullChecks` is not on yet — the conversion turned on `noImplicitAny`
+  and stopped there deliberately, so the two reviews stay separable.
 - Settings (including the password) are stored locally in the app's userData
   directory. Fine for a spike; a real release moves the credential to the
   macOS Keychain.

@@ -66,8 +66,8 @@
     <span id="status" class="status"></span>
   </div>
   <div id="log"></div>
-
-  <script src="src/theme.js"></script>
-  <script src="src/logview.js"></script>
+  <!-- One bundle per window: esbuild output, a classic script like the
+       vendored libraries above (ES modules are refused over file://). -->
+  <script src="dist/logview.js"></script>
 </body>
 </html>

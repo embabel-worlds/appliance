@@ -6,7 +6,7 @@
 math, argument parsing — reach for the established package rather than growing a
 regex edifice that mostly works. A hand-rolled parser is fragile in exactly the
 cases nobody tested. The bar for hand-rolling is a genuinely tiny, stable format
-(the SSE parse in `me-app/src/chat.js` is one) — not "it started small".
+(the SSE parse in `me-app/src/chat.ts` is one) — not "it started small".
 
 **Block comments, not walls of `//`.** File headers and multi-line explanations
 use `/* ... */`. Single-line `//` is for a single line. This applies to JS; in
@@ -24,21 +24,37 @@ compile-time constants.
 
 ## me-app (the Electron sensor app)
 
-The renderer has no bundler and no module system: `index.html` loads plain
-`<script>` tags, and each file publishes globals. `contextIsolation` is on and
-`nodeIntegration` is off — the renderer reaches the main process only through
-the narrow `window.me` bridge defined in `src/preload.js`. A channel absent from
-preload does not exist as far as the page is concerned.
+**TypeScript, built by esbuild, checked by tsc.** `npm start` builds and runs;
+`npm run typecheck` is a separate gate that nothing in the run path invokes, so
+a type error never stops you launching the app and the build stays in
+milliseconds. `npm run watch` rebuilds on save.
+
+The renderer is bundled **per window** — one IIFE bundle each for
+`index.html`, `query-studio.html`, `handler-studio.html` and `logs.html`. That
+shape is not a preference: pages load via `loadFile`, so their origin is
+`file://`, and Chromium refuses ES module scripts from there; `nodeIntegration`
+is off and `sandbox` on, so `require` is out too. A classic script is what is
+left, and bundling is how the sources behind it get real imports.
+
+`contextIsolation` is on — the renderer reaches the main process only through
+the narrow `window.me` bridge defined in `src/preload.ts`. A channel absent from
+preload does not exist as far as the page is concerned, and no longer typechecks
+either: `window.me` is typed as `typeof import('./preload').api`, derived from
+the bridge rather than restated beside it.
+
+`strictNullChecks` is off, deliberately and temporarily — see the note in
+`tsconfig.json`. Turning it on is its own change.
 
 Third-party browser libraries are **vendored** into `src/vendor/` and loaded as
-plain scripts; the packages themselves are devDependencies, and `npm run vendor`
-re-copies the built files after an upgrade. This keeps the packaged app's
-`files` list honest and avoids shipping `node_modules` for something that is one
-file.
+plain `<script>` tags ahead of the bundles, publishing the globals that
+`src/globals.d.ts` declares. The packages themselves are devDependencies, and
+`npm run vendor` / `npm run sync:ui` re-copy the built files after an upgrade.
+This keeps the packaged app's `files` list honest and avoids shipping
+`node_modules` for something that is one file.
 
 ### Rendering model output
 
-Assistant text is markdown and is rendered as such — `src/markdown.js`, which is
+Assistant text is markdown and is rendered as such — `src/markdown.ts`, which is
 policy over `marked` (parse) and `DOMPurify` (sanitize). Rules that matter:
 
 - Everything from a model, or from a document a model quoted, is untrusted.
