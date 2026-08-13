@@ -206,192 +206,212 @@
     <div class="col">
       <section class="panel">
         <h2>Target</h2>
-        <p class="hint">
-          Or compose by hand: virtual Cypher reaches more than documents. Pick
-          what to search; the composer writes the query, and everything it — or
-          the Ask box — writes is yours to edit.
-        </p>
-        <div class="targets" id="targets"></div>
+        <div class="panel-body">
+          <p class="hint">
+            Or compose by hand: virtual Cypher reaches more than documents. Pick
+            what to search; the composer writes the query, and everything it — or
+            the Ask box — writes is yours to edit.
+          </p>
+          <div class="targets" id="targets"></div>
+        </div>
       </section>
 
       <section class="panel" id="seek-panel">
         <h2>Seek</h2>
-        <div class="row" id="anchor-row" hidden>
-          <label class="field grow">Anchor
-            <select id="anchor"></select>
-          </label>
-        </div>
-        <div class="row">
-          <label class="field grow"><span id="seed-label">Search for</span>
-            <input type="text" id="seed" placeholder="renewal terms" />
-          </label>
-        </div>
-        <div class="row">
-          <label class="field grow">Mode
-            <select id="mode"></select>
-          </label>
-          <span class="cost" id="cost"></span>
-        </div>
-        <div class="row" id="intent-row" hidden>
-          <label class="field grow">Intent — the brief every candidate is judged against
-            <input type="text" id="intent" placeholder="renewal risk for this account" />
-          </label>
+        <div class="panel-body">
+          <div class="row" id="anchor-row" hidden>
+            <label class="field grow">Anchor
+              <select id="anchor"></select>
+            </label>
+          </div>
+          <div class="row">
+            <label class="field grow"><span id="seed-label">Search for</span>
+              <input type="text" id="seed" placeholder="renewal terms" />
+            </label>
+          </div>
+          <div class="row">
+            <label class="field grow">Mode
+              <select id="mode"></select>
+            </label>
+            <span class="cost" id="cost"></span>
+          </div>
+          <div class="row" id="intent-row" hidden>
+            <label class="field grow">Intent — the brief every candidate is judged against
+              <input type="text" id="intent" placeholder="renewal risk for this account" />
+            </label>
+          </div>
         </div>
       </section>
 
       <section class="panel" id="narrow-panel">
         <h2>Narrow</h2>
-        <div class="row" id="tag-row">
-          <label class="field grow">Tag scope
-            <select id="tag"></select>
-          </label>
-        </div>
-        <div class="row" id="date-row">
-          <label class="field">Date
-            <select id="date-field">
-              <option value="">any time</option>
-              <option value="modified">modified</option>
-              <option value="created">created</option>
-              <option value="ingestionTimestamp">ingested</option>
-            </select>
-          </label>
-          <label class="field">From <input type="date" id="date-from" /></label>
-          <label class="field">To <input type="date" id="date-to" /></label>
-        </div>
-        <div class="row">
-          <label class="field">Min score
-            <input type="number" id="min-score" min="0" max="1" step="0.05" placeholder="—" />
-          </label>
-          <label class="field">Limit
-            <input type="number" id="limit" min="1" max="100" value="10" />
-          </label>
+        <div class="panel-body">
+          <div class="row" id="tag-row">
+            <label class="field grow">Tag scope
+              <select id="tag"></select>
+            </label>
+          </div>
+          <div class="row" id="date-row">
+            <label class="field">Date
+              <select id="date-field">
+                <option value="">any time</option>
+                <option value="modified">modified</option>
+                <option value="created">created</option>
+                <option value="ingestionTimestamp">ingested</option>
+              </select>
+            </label>
+            <label class="field">From <input type="date" id="date-from" /></label>
+            <label class="field">To <input type="date" id="date-to" /></label>
+          </div>
+          <div class="row">
+            <label class="field">Min score
+              <input type="number" id="min-score" min="0" max="1" step="0.05" placeholder="—" />
+            </label>
+            <label class="field">Limit
+              <input type="number" id="limit" min="1" max="100" value="10" />
+            </label>
+          </div>
         </div>
       </section>
 
       <section class="panel" id="steer-panel" hidden>
-        <details class="steering">
-          <summary>Steering — the {ai:{…}} directive map</summary>
-          <div class="row">
-            <label class="field grow">Hint — soft guidance for the loop
-              <input type="text" id="ai-hint" placeholder="prefer primary sources" />
-            </label>
-          </div>
-          <div class="row">
-            <label class="field">Model role
-              <input type="text" id="ai-model" list="roles" placeholder="inherit" />
-              <datalist id="roles">
-                <option value="best"></option>
-                <option value="workhorse"></option>
-                <option value="cheap"></option>
-                <option value="agentic_rag"></option>
-              </datalist>
-            </label>
-            <label class="field">Temperature
-              <input type="number" id="ai-temperature" min="0" max="2" step="0.1" placeholder="—" />
-            </label>
-            <label class="field">Confidence
-              <input type="number" id="ai-confidence" min="0" max="1" step="0.05" placeholder="—" />
-            </label>
-          </div>
-          <div class="row">
-            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--mid);">
-              <input type="checkbox" id="ai-fresh" /> fresh — bypass the cross-query cache
-            </label>
-          </div>
-        </details>
+        <div class="panel-body">
+          <details class="steering">
+            <summary>Steering — the {ai:{…}} directive map</summary>
+            <div class="row">
+              <label class="field grow">Hint — soft guidance for the loop
+                <input type="text" id="ai-hint" placeholder="prefer primary sources" />
+              </label>
+            </div>
+            <div class="row">
+              <label class="field">Model role
+                <input type="text" id="ai-model" list="roles" placeholder="inherit" />
+                <datalist id="roles">
+                  <option value="best"></option>
+                  <option value="workhorse"></option>
+                  <option value="cheap"></option>
+                  <option value="agentic_rag"></option>
+                </datalist>
+              </label>
+              <label class="field">Temperature
+                <input type="number" id="ai-temperature" min="0" max="2" step="0.1" placeholder="—" />
+              </label>
+              <label class="field">Confidence
+                <input type="number" id="ai-confidence" min="0" max="1" step="0.05" placeholder="—" />
+              </label>
+            </div>
+            <div class="row">
+              <label style="display:flex; gap:6px; align-items:center; font-size:12px; color: var(--mid);">
+                <input type="checkbox" id="ai-fresh" /> fresh — bypass the cross-query cache
+              </label>
+            </div>
+          </details>
+        </div>
       </section>
 
       <section class="panel">
         <h2>Saved views</h2>
-        <p class="hint">
-          Queries saved into your world by name — yours to run, and the assistant's
-          to use. A view can declare parameters; fill them in and Run.
-        </p>
-        <div id="views"><p class="hint">Loading views…</p></div>
-        <div class="row"><span id="views-status" class="status"></span></div>
+        <div class="panel-body">
+          <p class="hint">
+            Queries saved into your world by name — yours to run, and the assistant's
+            to use. A view can declare parameters; fill them in and Run.
+          </p>
+          <div id="views"><p class="hint">Loading views…</p></div>
+          <div class="row"><span id="views-status" class="status"></span></div>
+        </div>
       </section>
 
       <section class="panel">
         <h2>Schema — every node type here</h2>
-        <p class="hint">
-          The world's reachable shape, virtual labels included — the same snapshot
-          validation and completion read. Open a label for its properties and
-          edges; <em>use</em> starts a query on it.
-        </p>
-        <input type="text" id="schema-filter" placeholder="filter labels…" />
-        <div id="schema"><p class="hint">Loading schema…</p></div>
+        <div class="panel-body">
+          <p class="hint">
+            The world's reachable shape, virtual labels included — the same snapshot
+            validation and completion read. Open a label for its properties and
+            edges; <em>use</em> starts a query on it.
+          </p>
+          <input type="text" id="schema-filter" placeholder="filter labels…" />
+          <div id="schema"><p class="hint">Loading schema…</p></div>
+        </div>
       </section>
 
       <section class="panel">
         <h2>History</h2>
-        <div id="history"><p class="hint">Queries you run land here.</p></div>
+        <div class="panel-body">
+          <div id="history"><p class="hint">Queries you run land here.</p></div>
+        </div>
       </section>
     </div>
 
     <div class="col">
       <section class="panel">
         <h2>Ask — English in, Cypher out</h2>
-        <div class="row">
-          <input type="text" id="ask-question" class="grow"
-                 placeholder="which documents mention the renewal? · files about trip logistics · threads relevant to Ada…" />
-          <button id="generate" class="primary">Write the query</button>
+        <div class="panel-body">
+          <div class="row">
+            <input type="text" id="ask-question" class="grow"
+                   placeholder="which documents mention the renewal? · files about trip logistics · threads relevant to Ada…" />
+            <button id="generate" class="primary">Write the query</button>
+          </div>
+          <div class="row">
+            <input type="text" id="refine-instruction" class="grow"
+                   placeholder="refine what's in the editor: also show the margin · sort by state · drop the limit…" />
+            <button id="refine">Refine the query</button>
+          </div>
+          <div class="row">
+            <label class="field">Written by
+              <select id="lens-model"></select>
+            </label>
+            <span id="ask-status" class="status"></span>
+          </div>
+          <p class="hint" id="explain" hidden></p>
         </div>
-        <div class="row">
-          <input type="text" id="refine-instruction" class="grow"
-                 placeholder="refine what's in the editor: also show the margin · sort by state · drop the limit…" />
-          <button id="refine">Refine the query</button>
-        </div>
-        <div class="row">
-          <label class="field">Written by
-            <select id="lens-model"></select>
-          </label>
-          <span id="ask-status" class="status"></span>
-        </div>
-        <p class="hint" id="explain" hidden></p>
       </section>
 
       <section class="panel">
         <h2>Query</h2>
-        <div class="editor-wrap">
-          <textarea id="editor" spellcheck="false"></textarea>
-          <button id="copy" title="Copy the query">Copy</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button id="run" class="primary">Run ⌘⏎</button>
-          <button id="compose">Compose from controls</button>
-          <button id="save-view">Save as view…</button>
-          <button id="tips">Tips</button>
-          <span id="validity" class="status"></span>
-        </div>
-        <div id="verdict"></div>
-        <div id="tips-panel" hidden></div>
-
-        <div id="save-form" hidden>
-          <div class="row">
-            <label class="field">Name
-              <input type="text" id="save-name" placeholder="recent_contracts" />
-            </label>
-            <label class="field grow">Description
-              <input type="text" id="save-description" placeholder="what this view answers" />
-            </label>
+        <div class="panel-body">
+          <div class="editor-wrap">
+            <textarea id="editor" spellcheck="false"></textarea>
+            <button id="copy" title="Copy the query">Copy</button>
           </div>
-          <div id="save-params"></div>
-          <div class="row">
-            <button id="save-confirm" class="primary">Save to my world</button>
-            <button id="save-cancel">Cancel</button>
-            <span id="save-status" class="status"></span>
+          <div class="row" style="margin-top:10px">
+            <button id="run" class="primary">Run ⌘⏎</button>
+            <button id="compose">Compose from controls</button>
+            <button id="save-view">Save as view…</button>
+            <button id="tips">Tips</button>
+            <span id="validity" class="status"></span>
+          </div>
+          <div id="verdict"></div>
+          <div id="tips-panel" hidden></div>
+
+          <div id="save-form" hidden>
+            <div class="row">
+              <label class="field">Name
+                <input type="text" id="save-name" placeholder="recent_contracts" />
+              </label>
+              <label class="field grow">Description
+                <input type="text" id="save-description" placeholder="what this view answers" />
+              </label>
+            </div>
+            <div id="save-params"></div>
+            <div class="row">
+              <button id="save-confirm" class="primary">Save to my world</button>
+              <button id="save-cancel">Cancel</button>
+              <span id="save-status" class="status"></span>
+            </div>
           </div>
         </div>
       </section>
       <section class="panel">
         <h2>Results</h2>
-        <div id="results"><p class="hint">Nothing run yet.</p></div>
-        <!-- The run's own account — row count, duration, warnings, emptiness
-             hints — reads AFTER the rows it describes, where the eye lands. -->
-        <div class="row" style="margin-top:8px">
-          <button id="copy-md" hidden>Copy as Markdown</button>
-          <button id="copy-csv" hidden>Copy as CSV</button>
-          <span id="run-status" class="status"></span>
+        <div class="panel-body">
+          <div id="results"><p class="hint">Nothing run yet.</p></div>
+          <!-- The run's own account — row count, duration, warnings, emptiness
+               hints — reads AFTER the rows it describes, where the eye lands. -->
+          <div class="row" style="margin-top:8px">
+            <button id="copy-md" hidden>Copy as Markdown</button>
+            <button id="copy-csv" hidden>Copy as CSV</button>
+            <span id="run-status" class="status"></span>
+          </div>
         </div>
       </section>
     </div>
