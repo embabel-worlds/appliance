@@ -237,6 +237,67 @@ CodeMirror.registerHelper('hint', 'cypher', (editor) => {
   return null
 })
 
+/* The definition tooltip: one floating element, fed per anchor — a schema row
+ * or a token in the query. Clamped to the window, immediate — hover is a
+ * question and a second of OS dwell is a slow answer. */
+const deftip = $('deftip')
+
+/** @param {DOMRect | {left: number, right: number, top: number, bottom: number}} rect */
+function showDefinition(target, name, text) {
+  deftip.innerHTML = ''
+  const head = document.createElement('div')
+  head.className = 't-label'
+  head.textContent = name
+  const body = document.createElement('div')
+  body.textContent = text
+  deftip.append(head, body)
+  deftip.hidden = false
+  const rect = target.getBoundingClientRect ? target.getBoundingClientRect() : target
+  deftip.style.left = `${Math.max(12, Math.min(rect.right + 10, window.innerWidth - 480))}px`
+  deftip.style.top = `${Math.max(12, Math.min(rect.top, window.innerHeight - deftip.offsetHeight - 12))}px`
+}
+
+function hideDefinition() {
+  deftip.hidden = true
+}
+
+// A wheel-scroll under a resting cursor moves the rows without a mouseleave;
+// the tooltip must not float over a label it no longer describes.
+window.addEventListener('scroll', hideDefinition, true)
+
+// The QUERY is where labels are actually pointed at: hovering `Electorate` in
+// your own Cypher asks what it means, and the answer is the same declared
+// definition the schema panel shows. Token under the cursor → its definition.
+let hoveredToken = null
+cm.getWrapperElement().addEventListener('mousemove', (e) => {
+  const pos = cm.coordsChar({ left: e.clientX, top: e.clientY }, 'window')
+  const token = cm.getTokenAt(pos)
+  const word = token?.string ?? ''
+  // coordsChar clamps to the nearest char; only a cursor actually ON the
+  // token counts, or the last word of a line answers for the space after it.
+  const start = cm.charCoords({ line: pos.line, ch: token.start }, 'window')
+  const end = cm.charCoords({ line: pos.line, ch: token.end }, 'window')
+  const inside = e.clientX >= start.left && e.clientX <= end.right && e.clientY >= start.top && e.clientY <= start.bottom
+  if (!inside) {
+    hoveredToken = null
+    return hideDefinition()
+  }
+  if (word === hoveredToken) return
+  hoveredToken = word
+  // The cypher mode tokenizes `e:Electorate` as ONE atom — the label is what
+  // follows the colon. A bare alias (`e` in `e.division`) resolves through
+  // the query's own alias map, so hovering it answers for its label too.
+  const name = word.includes(':') ? word.slice(word.lastIndexOf(':') + 1) : word
+  const resolved = (schema?.labels ?? []).some((l) => l.label === name) ? name : aliasMap(editorText())[name]
+  const label = (schema?.labels ?? []).find((l) => l.label === resolved && l.description)
+  if (!label) return hideDefinition()
+  showDefinition({ left: start.left, right: end.right, top: start.top, bottom: start.bottom }, label.label, label.description)
+})
+cm.getWrapperElement().addEventListener('mouseleave', () => {
+  hoveredToken = null
+  hideDefinition()
+})
+
 /**
  * The query "use" starts on a label. An anchor label reads bare; a reach-only
  * one is composed REACHED — through an edge from an anchor when the schema
@@ -272,6 +333,15 @@ function renderSchema() {
     const summary = document.createElement('summary')
     const name = document.createElement('span')
     name.textContent = label.label
+    // The realm's own definition of the type, on hover — verbatim, because the
+    // registry says what a label MEANS and what its rule of use is, and a
+    // paraphrase here would drift from the source the engine reads. Our own
+    // tooltip, not the `title` attribute: native tips proved unreliable in
+    // this frameless window, and appeared only after the OS's dwell anyway.
+    if (label.description) {
+      summary.addEventListener('mouseenter', () => showDefinition(summary, label.label, label.description))
+      summary.addEventListener('mouseleave', hideDefinition)
+    }
     const count = document.createElement('span')
     count.className = 'count'
     count.textContent = (label.sampleCount ? `${label.sampleCount} sampled` : 'virtual') +
@@ -615,6 +685,40 @@ const askStatus = $('ask-status')
 const generateButton = $('generate')
 const explainEl = $('explain')
 
+/** Land a generated/refined result: editor, verdict, explain — one rule for both verbs. */
+function landGenerated(result, verb) {
+  // Marked as hand-edited: the composer's controls must not clobber a
+  // generated query on the next dropdown twitch.
+  setEditorText(result.cypher, { edited: true })
+  els.verdict.innerHTML = ''
+  const took = result.durationMs != null ? ` in ${formatDuration(result.durationMs)}` : ''
+  if (result.valid === true) {
+    // The server generated, PREFLIGHTED, and self-corrected before handing this
+    // over — say so, with the price paid (attempts), and skip the re-check.
+    const tries = result.attempts && result.attempts > 1 ? ` after ${result.attempts} attempts` : ''
+    setStatus(askStatus, true, `${verb}${took}${tries} — review, then Run`)
+    setStatus(els.validity, true, '✓ schema-valid')
+  } else if (result.valid === false) {
+    // The generator could not reach a valid query — honest, with the verdict.
+    setStatus(askStatus, false, `${verb}, but ${result.violations.length} schema problem(s) remain — edit before running`)
+    setStatus(els.validity, false, `${result.violations.length} schema problem(s)`)
+    for (const violation of result.violations) {
+      const line = document.createElement('div')
+      line.className = 'violation'
+      line.textContent = violation
+      els.verdict.append(line)
+    }
+  } else {
+    // Older appliance: no server-side verdict — validate here as before.
+    setStatus(askStatus, true, `${verb}${took} — review, edit if you like, then Run`)
+    scheduleValidation()
+  }
+  if (result.explain) {
+    explainEl.textContent = result.explain
+    explainEl.hidden = false
+  }
+}
+
 async function generate() {
   const question = askQuestion.value.trim()
   if (!question) return
@@ -632,38 +736,43 @@ async function generate() {
     setStatus(askStatus, false, result.message)
     return
   }
-  // Marked as hand-edited: the composer's controls must not clobber a
-  // generated query on the next dropdown twitch.
-  setEditorText(result.cypher, { edited: true })
-  els.verdict.innerHTML = ''
-  if (result.valid === true) {
-    // The server generated, PREFLIGHTED, and self-corrected before handing this
-    // over — say so, with the price paid (attempts), and skip the re-check.
-    const tries = result.attempts && result.attempts > 1 ? ` after ${result.attempts} attempts` : ''
-    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${formatDuration(result.durationMs)}` : ''}${tries} — review, then Run`)
-    setStatus(els.validity, true, '✓ schema-valid')
-  } else if (result.valid === false) {
-    // The generator could not reach a valid query — honest, with the verdict.
-    setStatus(askStatus, false, `generated, but ${result.violations.length} schema problem(s) remain — edit before running`)
-    setStatus(els.validity, false, `${result.violations.length} schema problem(s)`)
-    for (const violation of result.violations) {
-      const line = document.createElement('div')
-      line.className = 'violation'
-      line.textContent = violation
-      els.verdict.append(line)
-    }
-  } else {
-    // Older appliance: no server-side verdict — validate here as before.
-    setStatus(askStatus, true, `written${result.durationMs != null ? ` in ${formatDuration(result.durationMs)}` : ''} — review, edit if you like, then Run`)
-    scheduleValidation()
-  }
-  if (result.explain) {
-    explainEl.textContent = result.explain
-    explainEl.hidden = false
-  }
+  landGenerated(result, 'written')
 }
 
 generateButton.addEventListener('click', () => void generate())
+
+// Refine — the round-trip half: the instruction says what to CHANGE, and the
+// CURRENT query (hand edits included) travels with it and the schema, so what
+// the instruction doesn't name survives the model pass.
+const refineInstruction = $('refine-instruction')
+const refineButton = $('refine')
+
+async function refine() {
+  const instruction = refineInstruction.value.trim()
+  const cypher = editorText().trim()
+  if (!instruction) return
+  if (!cypher) return setStatus(askStatus, false, 'nothing to refine — the editor is empty; Ask writes first')
+  refineButton.disabled = true
+  explainEl.hidden = true
+  setStatus(askStatus, null, 'The appliance is revising your query — an LLM call, give it a moment…')
+  let result
+  try {
+    result = await window.me.vcRefine(settings, cypher, instruction)
+  } catch (e) {
+    result = { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+  refineButton.disabled = false
+  if (!result.ok) {
+    setStatus(askStatus, false, result.message)
+    return
+  }
+  landGenerated(result, 'revised')
+}
+
+refineButton.addEventListener('click', () => void refine())
+refineInstruction.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void refine()
+})
 askQuestion.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void generate()
 })

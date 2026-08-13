@@ -422,6 +422,32 @@ async function kgGenerate(settings, question) {
 }
 
 /**
+ * ROUND-TRIP generation: the CURRENT (possibly hand-edited) cypher travels with
+ * an instruction saying what to change; the revision returns with its verdict,
+ * shaped exactly like generate.
+ * @param {Settings} settings @param {string} cypher @param {string} instruction
+ */
+async function kgRefine(settings, cypher, instruction) {
+  try {
+    const res = await post(settings, '/api/v1/admin/kg/refine', { cypher, instruction }, 120_000)
+    if (res.status === 404) return { ok: false, message: 'no refine endpoint — older appliance' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
+    return {
+      ok: true,
+      cypher: body?.cypher ?? '',
+      explain: body?.explain ?? null,
+      durationMs: body?.durationMs ?? null,
+      valid: typeof body?.valid === 'boolean' ? body.valid : null,
+      violations: body?.violations ?? [],
+      attempts: body?.attempts ?? null,
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
  * The engine's strict preflight WITHOUT execution — the editor's validator.
  * @param {Settings} settings
  * @param {string} cypher
@@ -584,10 +610,11 @@ async function handlerDryRun(settings, source, signalType) {
   }
 }
 
-/** English → handler source, with the server's tsc verdict on the result. */
-async function handlerGenerate(settings, english) {
+/** English → handler source, with the server's tsc verdict on the result. With
+ *  [current], the request is a REVISION of that source — the editor's Refine. */
+async function handlerGenerate(settings, english, current) {
   try {
-    const res = await post(settings, '/api/v1/admin/handlers/generate', { english }, 180_000)
+    const res = await post(settings, '/api/v1/admin/handlers/generate', { english, current: current || null }, 180_000)
     if (res.status === 404) return { ok: false, message: 'no generate endpoint — older appliance' }
     const body = await readJson(res)
     if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
@@ -827,7 +854,7 @@ module.exports = {
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
-  kgSchema, kgValidate, kgGenerate, lensModel, setLensModel,
+  kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,

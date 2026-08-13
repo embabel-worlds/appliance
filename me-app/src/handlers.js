@@ -32,6 +32,8 @@ const els = {
   askRequest: $('ask-request'),
   askStatus: $('ask-status'),
   generate: $('generate'),
+  refineRequest: $('refine-request'),
+  refine: $('refine'),
   dryRun: $('dry-run'),
   saveToggle: $('save-toggle'),
   copy: $('copy'),
@@ -329,18 +331,25 @@ function renderVerdict(valid, violations) {
 // the code lands HERE with its verdict, and running it stays a deliberate act.
 // ---------------------------------------------------------------------------
 
-async function generate() {
-  const english = els.askRequest.value.trim()
+/**
+ * One path for both verbs: with [current], [english] is a CHANGE to the source
+ * in the editor — the round-trip Refine drives — and everything the
+ * instruction doesn't name survives the model pass.
+ */
+async function generate(english, current, button, verb) {
   if (!english) return
-  els.generate.disabled = true
-  setStatus(els.askStatus, null, 'The appliance is writing your handler — an LLM call plus a compile, give it a moment…')
+  if (current !== null && !current) {
+    return setStatus(els.askStatus, false, 'nothing to refine — the editor is empty; Ask writes first')
+  }
+  button.disabled = true
+  setStatus(els.askStatus, null, `The appliance is ${verb === 'written' ? 'writing' : 'revising'} your handler — an LLM call plus a compile, give it a moment…`)
   let result
   try {
-    result = await window.me.handlerGenerate(settings, english)
+    result = await window.me.handlerGenerate(settings, english, current ?? undefined)
   } catch (e) {
     result = { ok: false, message: e instanceof Error ? e.message : String(e) }
   }
-  els.generate.disabled = false
+  button.disabled = false
   if (!result.ok) {
     setStatus(els.askStatus, false, result.message)
     return
@@ -353,22 +362,26 @@ async function generate() {
   const tries = result.attempts && result.attempts > 1 ? ` after ${result.attempts} attempts` : ''
   if (result.valid === true) {
     // Server-generated, compiled, and self-corrected before handing over.
-    setStatus(els.askStatus, true, `written${took}${tries} — review, then dry-run`)
+    setStatus(els.askStatus, true, `${verb}${took}${tries} — review, then dry-run`)
     renderVerdict(true, [])
   } else if (result.valid === false) {
-    setStatus(els.askStatus, false, `written${took}, but type problems remain — edit before running`)
+    setStatus(els.askStatus, false, `${verb}${took}, but type problems remain — edit before running`)
     renderVerdict(false, result.violations)
   } else {
     // Older appliance: no verdict came back — check here as usual.
-    setStatus(els.askStatus, true, `written${took} — review, then dry-run`)
+    setStatus(els.askStatus, true, `${verb}${took} — review, then dry-run`)
     lastValidated = null
     scheduleValidation()
   }
 }
 
-els.generate.addEventListener('click', () => void generate())
+els.generate.addEventListener('click', () => void generate(els.askRequest.value.trim(), null, els.generate, 'written'))
 els.askRequest.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') void generate()
+  if (e.key === 'Enter') void generate(els.askRequest.value.trim(), null, els.generate, 'written')
+})
+els.refine.addEventListener('click', () => void generate(els.refineRequest.value.trim(), editorText().trim(), els.refine, 'revised'))
+els.refineRequest.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void generate(els.refineRequest.value.trim(), editorText().trim(), els.refine, 'revised')
 })
 
 // ---------------------------------------------------------------------------

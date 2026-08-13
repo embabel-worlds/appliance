@@ -670,9 +670,9 @@ handle('handlers:set-schedule', (settings, name, schedule) => {
   return api.handlerSetSchedule(settings, name, schedule)
 })
 handle('handlers:dry-run', (settings, source, signalType) => api.handlerDryRun(settings, source, signalType))
-handle('handlers:generate', (settings, english) => {
-  log('[me-app] handler generate')
-  return api.handlerGenerate(settings, english)
+handle('handlers:generate', (settings, english, current) => {
+  log(`[me-app] handler generate${current ? ' (refining)' : ''}`)
+  return api.handlerGenerate(settings, english, current)
 })
 handle('handlers:validate', (settings, source) => api.handlerValidate(settings, source))
 handle('handlers:surface', (settings) => api.gatewaySurface(settings))
@@ -742,6 +742,10 @@ handle('vc:validate', (settings, cypher) => api.kgValidate(settings, cypher))
 handle('vc:generate', (settings, question) => {
   log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
   return api.kgGenerate(settings, question)
+})
+handle('vc:refine', (settings, cypher, instruction) => {
+  log(`[me-app] cypher refine: ${JSON.stringify(instruction).slice(0, 120)}`)
+  return api.kgRefine(settings, cypher, instruction)
 })
 handle('vc:views', (settings) => api.listViews(settings))
 handle('vc:save-view', (settings, spec) => {

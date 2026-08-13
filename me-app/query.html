@@ -73,6 +73,10 @@
     .CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: rgba(98, 95, 255, 0.25); }
     .cm-s-default .cm-keyword { color: #a778ff; }
     .cm-s-default .cm-atom { color: #3ecf8e; }
+    /* The alias re-used later (`e` in `e.marginBand`) tokenizes as BUILTIN, which
+       the stock stylesheet paints #30a — invisible on this ground. Same green as
+       the atom it was bound from: the alias IS that node, and now reads as it. */
+    .cm-s-default .cm-builtin { color: #3ecf8e; }
     .cm-s-default .cm-number { color: #f5a97f; }
     .cm-s-default .cm-string { color: #8fd3a7; }
     .cm-s-default .cm-comment { color: var(--faint); font-style: italic; }
@@ -131,6 +135,20 @@
     /* Validation verdicts, under the editor. */
     #verdict { margin-top: 8px; }
     #verdict .violation { color: #ff6b6b; font-family: var(--mono); font-size: 12px; margin: 2px 0; }
+    /* The definition tooltip — OURS, not the OS's: native `title` tips proved
+       unreliable in this frameless window, and the registry's multi-line text
+       deserves real width, wrapping and immediacy anyway. */
+    #deftip {
+      position: fixed; z-index: 50; max-width: 460px; padding: 10px 12px;
+      background: #0b1220; border: 1px solid var(--signal); border-radius: 4px;
+      font-size: 12px; line-height: 1.55; color: var(--mid);
+      white-space: pre-wrap; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65);
+      pointer-events: none;
+    }
+    #deftip .t-label {
+      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.08em; color: #c7d2ff; margin-bottom: 5px;
+    }
     /* Copy lives ON the query box, where the thing being copied is. */
     .editor-wrap { position: relative; }
     .editor-wrap #copy {
@@ -182,6 +200,7 @@
 </head>
 <body>
   <canvas id="graphbg" class="embabel-backdrop" aria-hidden="true"></canvas>
+  <div id="deftip" hidden></div>
   <div class="dragbar">Query Studio — virtual Cypher</div>
   <main>
     <div class="col">
@@ -316,6 +335,11 @@
           <input type="text" id="ask-question" class="grow"
                  placeholder="which documents mention the renewal? · files about trip logistics · threads relevant to Ada…" />
           <button id="generate" class="primary">Write the query</button>
+        </div>
+        <div class="row">
+          <input type="text" id="refine-instruction" class="grow"
+                 placeholder="refine what's in the editor: also show the margin · sort by state · drop the limit…" />
+          <button id="refine">Refine the query</button>
         </div>
         <div class="row">
           <label class="field">Written by
