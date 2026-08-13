@@ -287,11 +287,19 @@ cm.getWrapperElement().addEventListener('mousemove', (e) => {
   // The cypher mode tokenizes `e:Electorate` as ONE atom — the label is what
   // follows the colon. A bare alias (`e` in `e.division`) resolves through
   // the query's own alias map, so hovering it answers for its label too.
+  const box = { left: start.left, right: end.right, top: start.top, bottom: start.bottom }
+  const labels = schema?.labels ?? []
   const name = word.includes(':') ? word.slice(word.lastIndexOf(':') + 1) : word
-  const resolved = (schema?.labels ?? []).some((l) => l.label === name) ? name : aliasMap(editorText())[name]
-  const label = (schema?.labels ?? []).find((l) => l.label === resolved && l.description)
-  if (!label) return hideDefinition()
-  showDefinition({ left: start.left, right: end.right, top: start.top, bottom: start.bottom }, label.label, label.description)
+  const resolved = labels.some((l) => l.label === name) ? name : aliasMap(editorText())[name]
+  const label = labels.find((l) => l.label === resolved && l.description)
+  if (label) return showDefinition(box, label.label, label.description)
+  // e.marginPct → the PROPERTY's declared description: the alias before the
+  // dot names the label, the token names the property.
+  const owner = cm.getLine(pos.line).slice(0, token.start).match(/(\w+)\.$/)
+  const ownerLabel = owner && labels.find((l) => l.label === aliasMap(editorText())[owner[1]])
+  const prop = ownerLabel?.properties?.find((p) => p.name === word && p.description)
+  if (prop) return showDefinition(box, `${ownerLabel.label}.${prop.name}`, prop.description)
+  hideDefinition()
 })
 cm.getWrapperElement().addEventListener('mouseleave', () => {
   hoveredToken = null
@@ -366,6 +374,11 @@ function renderSchema() {
       type.className = 'prop-type'
       type.textContent = p.type + (p.sparse ? ' · sparse' : '')
       line.append(type)
+      // The property's own declared description — same treatment as the label's.
+      if (p.description) {
+        line.addEventListener('mouseenter', () => showDefinition(line, `${label.label}.${p.name}`, p.description))
+        line.addEventListener('mouseleave', hideDefinition)
+      }
       props.append(line)
     }
     if (!label.exhaustive) {
