@@ -242,6 +242,11 @@ CodeMirror.registerHelper('hint', 'cypher', (editor) => {
  * question and a second of OS dwell is a slow answer. */
 const deftip = $('deftip')
 
+/** The tooltip's title line: the label, and where it comes from — realm or core. */
+function definitionTitle(label) {
+  return `${label.label} · ${label.realm ? `${label.realm} realm` : 'core'}`
+}
+
 /** @param {DOMRect | {left: number, right: number, top: number, bottom: number}} rect */
 function showDefinition(target, name, text) {
   deftip.innerHTML = ''
@@ -291,8 +296,8 @@ cm.getWrapperElement().addEventListener('mousemove', (e) => {
   const labels = schema?.labels ?? []
   const name = word.includes(':') ? word.slice(word.lastIndexOf(':') + 1) : word
   const resolved = labels.some((l) => l.label === name) ? name : aliasMap(editorText())[name]
-  const label = labels.find((l) => l.label === resolved && l.description)
-  if (label) return showDefinition(box, label.label, label.description)
+  const label = labels.find((l) => l.label === resolved)
+  if (label) return showDefinition(box, definitionTitle(label), label.description ?? '')
   // e.marginPct → the PROPERTY's declared description: the alias before the
   // dot names the label, the token names the property.
   const owner = cm.getLine(pos.line).slice(0, token.start).match(/(\w+)\.$/)
@@ -346,10 +351,9 @@ function renderSchema() {
     // paraphrase here would drift from the source the engine reads. Our own
     // tooltip, not the `title` attribute: native tips proved unreliable in
     // this frameless window, and appeared only after the OS's dwell anyway.
-    if (label.description) {
-      summary.addEventListener('mouseenter', () => showDefinition(summary, label.label, label.description))
-      summary.addEventListener('mouseleave', hideDefinition)
-    }
+    // Every label answers WHERE it comes from — its realm, or core.
+    summary.addEventListener('mouseenter', () => showDefinition(summary, definitionTitle(label), label.description ?? ''))
+    summary.addEventListener('mouseleave', hideDefinition)
     const count = document.createElement('span')
     count.className = 'count'
     count.textContent = (label.sampleCount ? `${label.sampleCount} sampled` : 'virtual') +
