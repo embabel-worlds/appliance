@@ -1054,12 +1054,38 @@ const realmStatus = $('realm-status')
  * @param {{name?: string, version?: string, description?: string, meta?: string}} entry
  * @param {HTMLElement | null} action
  */
+/**
+ * Put an appliance-hosted icon into a monogram tile, if there is one.
+ *
+ * The letters are painted first and stay until an icon actually arrives, so the
+ * grid is never empty while these resolve and a realm or app with no icon —
+ * still most of them — looks exactly as it always did. A fetch that fails is
+ * silent for the same reason: there is nothing for the user to do about it, and
+ * the tile they are already looking at is a perfectly good answer.
+ *
+ * @param {HTMLElement} tile @param {Settings} settings @param {string | undefined} iconUrl
+ */
+function paintIcon(tile, settings, iconUrl) {
+  if (!iconUrl) return
+  void window.me.icon(settings, iconUrl).then((result) => {
+    if (!result.ok || !result.dataUri) return
+    const img = document.createElement('img')
+    img.src = result.dataUri
+    // Decorative: the name is right beside it, and announcing "movie icon"
+    // after "movie" is noise to a screen reader.
+    img.alt = ''
+    tile.replaceChildren(img)
+    tile.classList.add('has-icon')
+  })
+}
+
 function realmRow(entry, action) {
   const row = document.createElement('div')
   row.className = 'card realm'
   const tile = document.createElement('div')
   tile.className = 'tile'
   tile.textContent = (entry.name ?? '?').slice(0, 2)
+  paintIcon(tile, currentSettings(), entry.iconUrl)
   const body = document.createElement('div')
   body.className = 'body'
   const name = document.createElement('span')
@@ -1145,6 +1171,10 @@ async function loadRealms() {
       realmInstalledEl.append(realmRow({
         name: realm.name,
         description: realm.description,
+        // Only an INSTALLED realm has an icon here: the appliance has its
+        // checkout and can serve the file. A catalogue entry is a GitHub repo
+        // nobody has cloned yet, so those keep their letters.
+        iconUrl: realm.iconUrl,
         meta: [realm.version ? `v${realm.version}` : '', (realm.tags ?? []).join(' ')].filter(Boolean).join(' · '),
       }, update))
     }
@@ -1272,6 +1302,7 @@ async function loadApps() {
     const tile = document.createElement('div')
     tile.className = 'tile'
     tile.textContent = display.slice(0, 2)
+    paintIcon(tile, settings, app.iconUrl)
     const name = document.createElement('div')
     name.className = 'name'
     name.textContent = display

@@ -560,6 +560,7 @@ handle('realms:update-all', async (settings) => {
   return result
 })
 handle('realms:gaps', (settings) => api.realmGaps(settings))
+handle('icon:get', (settings, path) => api.icon(settings, path))
 
 handle('models:list', (settings) => api.listModels(settings))
 handle('models:chat', (settings) => api.chatModel(settings))

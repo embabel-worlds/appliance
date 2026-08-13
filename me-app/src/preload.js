@@ -84,6 +84,9 @@ const api = {
   updateRealm: (settings, name) => ipcRenderer.invoke('realms:update', settings, name),
   updateAllRealms: (settings) => ipcRenderer.invoke('realms:update-all', settings),
   realmGaps: (settings) => ipcRenderer.invoke('realms:gaps', settings),
+  // Icons: realms' and apps'. Bytes, not a URL — the page cannot authenticate,
+  // so the main process fetches and hands back a data: URI.
+  icon: (settings, path) => ipcRenderer.invoke('icon:get', settings, path),
   listModels: (settings) => ipcRenderer.invoke('models:list', settings),
   getDefaultModel: () => ipcRenderer.invoke('models:default'),
   chatModel: (settings) => ipcRenderer.invoke('models:chat', settings),

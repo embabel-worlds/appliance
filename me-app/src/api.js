@@ -763,6 +763,44 @@ async function listApps(settings) {
   }
 }
 
+/**
+ * An icon — a realm's or an app's — as a `data:` URI the renderer can put in a
+ * `src`. The bytes have to come through here because the renderer has no HTTP
+ * and the credential lives in this process; a plain URL in an `<img>` would
+ * simply 401.
+ *
+ * `path` is a URL the APPLIANCE handed us (`iconUrl` from its own listings), so
+ * it is checked to be a relative path on that appliance before it is used —
+ * `//tracker.example/x.gif` in a listing must not become a fetch to a stranger.
+ *
+ * A missing or broken icon is not an error worth surfacing: the caller draws
+ * its letter tile, exactly as it did before icons existed.
+ * @param {Settings} settings @param {string} path
+ */
+async function icon(settings, path) {
+  if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) {
+    return { ok: false, message: 'not an appliance path', dataUri: null }
+  }
+  try {
+    const res = await fetch(`${settings.baseUrl}${path}`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, dataUri: null }
+    const type = res.headers.get('content-type') ?? 'application/octet-stream'
+    // Images only. The endpoints promise nothing else, and a tile is the one
+    // place a surprise content type would be rendered rather than inspected.
+    if (!type.startsWith('image/')) return { ok: false, message: `not an image (${type})`, dataUri: null }
+    const bytes = Buffer.from(await res.arrayBuffer())
+    // A tile, not a wallpaper: anything this size is a mistake or an attack on
+    // the settings file, and either way it is not going in an <img>.
+    if (bytes.length > 512_000) return { ok: false, message: 'icon too large', dataUri: null }
+    return { ok: true, message: '', dataUri: `data:${type};base64,${bytes.toString('base64')}` }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), dataUri: null }
+  }
+}
+
 /** @param {Settings} settings */
 async function realmGaps(settings) {
   try {
@@ -793,7 +831,7 @@ module.exports = {
   listViews, saveView, deleteView, viewInvocation,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
-  uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps }
+  uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a

@@ -118,6 +118,16 @@
       -webkit-line-clamp: 2; overflow: hidden; }
     /* Pinned to the bottom edge, so the badges line up across the row. */
     .app-card .meta { margin-left: 0; margin-top: auto; padding-top: 2px; }
+    /* A tile carrying a realm's or an app's own icon. The monogram styling —
+       tinted wash, hairline border — is the frame around a LETTER; an icon
+       brings its own ground and its own edges, so both are dropped rather than
+       stacked. The image fills the tile it replaced, so a grid stays aligned
+       whether or not any given thing ships one. Sized by the tile, never by the
+       file: an icon is author-supplied, and one 900px square would otherwise
+       shove a whole row off the screen. */
+    .tile.has-icon { background: none; border: none; padding: 0; overflow: hidden; }
+    .tile.has-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+    .tile.lg.has-icon img { border-radius: 10px; }
   </style>
 </head>
 <body>
