@@ -10,6 +10,7 @@ const path = require('node:path')
 const fs = require('node:fs')
 const api = require('./api')
 const appliance = require('./appliance')
+const backup = require('./backup')
 const chat = require('./chat')
 const outbox = require('./outbox')
 const indexer = require('./indexer')
@@ -101,11 +102,16 @@ app.setName('Embabel Me')
 
 // ── The menus: where maintenance lives ──────────────────────────────────────
 // The Appliance panel folds away once connected, so anything only reachable
-// there is invisible in daily use. Update sits in BOTH menus — the application
-// menu and the "Me" tray menu — because the tray is present even with every
-// window closed, which is exactly when an update is least disruptive.
+// there is invisible in daily use. Update, Back Up and Restore sit in BOTH
+// menus — the application menu and the "Me" tray menu — because the tray is
+// present even with every window closed, which is exactly when maintenance is
+// least disruptive.
 
-let updating = false
+/* One maintenance operation at a time: update, backup and restore all stop and
+ * start containers, and two of them interleaved would fight over the same
+ * appliance. The name of the one running doubles as the menu's label state. */
+/** @type {'update' | 'backup' | 'restore' | null} */
+let busyWith = null
 
 /* The appliance's themes, as the menu last saw them. Empty until a fetch
  * succeeds — which needs credentials, so the menu is built once without them at
@@ -174,11 +180,17 @@ async function refreshThemes() {
   buildMenus()
 }
 
-/** Build (or rebuild — the update item's state changes) both menus. */
+/** Build (or rebuild — the maintenance items' state changes) both menus. */
 function buildMenus() {
-  const updateItem = updating
-    ? { label: 'Updating Appliance…', enabled: false }
-    : { label: 'Update Appliance', click: () => void runMenuUpdate() }
+  const item = (name, idle, working, run) =>
+    busyWith === name
+      ? { label: working, enabled: false }
+      : { label: idle, enabled: !busyWith, click: () => void run() }
+  const maintenance = [
+    item('update', 'Update Appliance', 'Updating Appliance…', runMenuUpdate),
+    item('backup', 'Back Up Appliance…', 'Backing Up Appliance…', runMenuBackup),
+    item('restore', 'Restore Appliance…', 'Restoring Appliance…', runMenuRestore),
+  ]
   // Standard roles so ⌘Q/⌘C/⌘V work and menus carry the app name. (The bold
   // app-menu title itself still reads "Electron" in dev — that comes from the
   // binary's Info.plist and changes when the app is packaged.)
@@ -193,7 +205,7 @@ function buildMenus() {
           // foot of a settings panel that folds away once connected.
           { label: 'Theme', submenu: themeSubmenu() },
           { type: 'separator' },
-          { ...updateItem },
+          ...maintenance,
           { label: 'Container Logs…', click: openLogsWindow },
           { type: 'separator' },
           { role: 'quit' },
@@ -207,7 +219,7 @@ function buildMenus() {
     Menu.buildFromTemplate([
       { label: 'Open Embabel Me', click: createWindow },
       { type: 'separator' },
-      { ...updateItem },
+      ...maintenance,
       { label: 'Container Logs…', click: openLogsWindow },
       { label: 'About Embabel Me', click: () => app.showAboutPanel() },
       { type: 'separator' },
@@ -216,23 +228,103 @@ function buildMenus() {
   )
 }
 
-/** Update from a menu: narrated by notifications — there may be no window. */
-async function runMenuUpdate() {
-  if (updating) return
-  updating = true
+/**
+ * Run one maintenance operation with the shared narration: menus disabled, a
+ * marker on the tray title, notifications at both ends — there may be no
+ * window. The confirmation dialogs happen BEFORE this, so `busyWith` never
+ * spans a question the user might walk away from.
+ * @param {'update' | 'backup' | 'restore'} name @param {string} mark
+ * @param {{start: string, done: string, failed: string}} titles
+ * @param {() => Promise<{ok: boolean, message: string, path?: string}>} work
+ */
+async function runMaintenance(name, mark, titles, work) {
+  busyWith = name
   buildMenus()
-  tray?.setTitle('Me ↺')
-  log('[me-app] appliance update requested (menu)')
-  new Notification({ title: 'Embabel appliance', body: 'Updating — pulling the checkout and images…' }).show()
-  const result = await appliance.update()
-  log(`[me-app] appliance update: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
-  updating = false
+  tray?.setTitle(`Me ${mark}`)
+  log(`[me-app] appliance ${name} requested (menu)`)
+  new Notification({ title: 'Embabel appliance', body: titles.start }).show()
+  const result = await work()
+  log(`[me-app] appliance ${name}: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
+  busyWith = null
   buildMenus()
   tray?.setTitle('Me')
-  new Notification({
-    title: result.ok ? 'Embabel appliance updated' : 'Appliance update failed',
-    body: result.message,
-  }).show()
+  new Notification({ title: result.ok ? titles.done : titles.failed, body: result.message }).show()
+  return result
+}
+
+/** Update from a menu. */
+async function runMenuUpdate() {
+  if (busyWith) return
+  await runMaintenance(
+    'update', '↺',
+    { start: 'Updating — pulling the checkout and images…', done: 'Embabel appliance updated', failed: 'Appliance update failed' },
+    () => appliance.update(),
+  )
+}
+
+/** Back up: pick where, then copy the volumes and config out (backup.js). */
+async function runMenuBackup() {
+  if (busyWith) return
+  const picked = await dialog.showOpenDialog({
+    title: 'Where should the backup folder be created?',
+    buttonLabel: 'Back Up Here',
+    defaultPath: app.getPath('documents'),
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (picked.canceled || !picked.filePaths.length) return
+  const result = await runMaintenance(
+    'backup', '⇣',
+    {
+      start: 'Backing up — the assistant pauses while the volumes are copied…',
+      done: 'Embabel appliance backed up',
+      failed: 'Appliance backup failed',
+    },
+    () => backup.backUp(picked.filePaths[0]),
+  )
+  // Show the folder that now holds their data — the receipt IS the folder.
+  if (result.ok && result.path) shell.showItemInFolder(result.path)
+}
+
+/** Restore: pick a backup, say exactly what will be replaced, then do it. */
+async function runMenuRestore() {
+  if (busyWith) return
+  const picked = await dialog.showOpenDialog({
+    title: 'Choose a backup to restore',
+    buttonLabel: 'Choose',
+    defaultPath: app.getPath('documents'),
+    properties: ['openDirectory'],
+  })
+  if (picked.canceled || !picked.filePaths.length) return
+  const chosen = picked.filePaths[0]
+  const valid = backup.inspect(chosen)
+  if (!valid.ok) {
+    await dialog.showMessageBox({ type: 'error', message: 'Not a restorable backup', detail: valid.message })
+    return
+  }
+  // The one genuinely destructive act in this app, so the dialog names the
+  // stake and the date, and Cancel is both the default and the escape key.
+  const when = valid.createdAt ? new Date(valid.createdAt).toLocaleString() : 'an unknown time'
+  const answer = await dialog.showMessageBox({
+    type: 'warning',
+    message: `Replace this appliance with the backup from ${when}?`,
+    detail:
+      'The knowledge graph, worlds, documents and appliance settings will all be ' +
+      'replaced by what the backup holds. Everything added since it was taken is lost. ' +
+      'The appliance restarts as part of the restore.',
+    buttons: ['Cancel', 'Restore'],
+    defaultId: 0,
+    cancelId: 0,
+  })
+  if (answer.response !== 1) return
+  await runMaintenance(
+    'restore', '⇡',
+    {
+      start: 'Restoring — the appliance stops while its data is replaced…',
+      done: 'Embabel appliance restored',
+      failed: 'Appliance restore failed',
+    },
+    () => backup.restore(chosen),
+  )
 }
 
 void app.whenReady().then(() => {

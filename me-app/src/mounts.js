@@ -282,4 +282,4 @@ async function apply() {
 }
 
 module.exports = {
-  setEnv, applianceDir, state, add, remove, setIndex, isLive, apply }
+  setEnv, applianceDir, state, add, remove, setIndex, isLive, apply, MARKER }
