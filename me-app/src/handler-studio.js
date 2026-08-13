@@ -18,6 +18,9 @@
 /* global EmbabelCodeSurface, EmbabelVc, CodeMirror */
 
 const { parseSurface, membersOf, gatewayPathAt } = EmbabelCodeSurface
+/* Shared editor behavior — @embabel/studio-kit, semantics injected. */
+/* global EmbabelStudioKit */
+const { formatDuration, copyWithNod, cypherFragmentCompletions } = EmbabelStudioKit
 
 /** @param {string} id */
 const $ = (id) => document.getElementById(id)
@@ -61,19 +64,6 @@ function setStatus(el, ok, message) {
   el.className = ok === null ? 'status' : ok ? 'status ok' : 'status error'
 }
 
-/**
- * '31691 ms' reads as a code, not a wait — same scale the Query Studio uses,
- * and generation really does take a while on a local model.
- * @param {number} ms
- */
-function formatDuration(ms) {
-  if (ms < 1000) return `${ms} ms`
-  const seconds = Math.round(ms / 100) / 10
-  if (seconds < 60) return `${seconds.toFixed(1)} s`
-  const whole = Math.round(ms / 1000)
-  const rest = whole % 60
-  return rest ? `${Math.floor(whole / 60)} min ${rest} s` : `${Math.floor(whole / 60)} min`
-}
 
 // ---------------------------------------------------------------------------
 // State the completions read: the parsed gateway surface, the KG schema (for
@@ -223,40 +213,10 @@ CodeMirror.registerHelper('hint', 'javascript', (editor) => {
   return null
 })
 
-/**
- * The Query Studio's schema-aware branches, applied to the Cypher fragment
- * before the cursor: labels behind their relationship, edges scoped to the
- * node on the left, an alias's properties. Composed from @embabel/vc so this
- * and the Cypher editor next door cannot disagree.
- * @param {string} cypher @returns {{list: string[], stemLength: number} | null}
- */
+/** Cypher inside a kg call completes through the SAME kit path as the Query
+ * Studio next door — the fragment doubles as its own alias source. */
 function cypherCompletions(cypher) {
-  const { aliasMap, propertiesOf, anchorLabels, relationshipTypesFor, connectedLabels, edgeContext, nodeContext } = EmbabelVc
-  let m
-  if ((m = cypher.match(/[([]\s*\w*:(\w*)$/)) && cypher.lastIndexOf('(') > cypher.lastIndexOf('[')) {
-    const stem = m[1]
-    const context = nodeContext(cypher, aliasMap(cypher))
-    // First node → only labels the engine lets OPEN a pattern, same as next door.
-    const labels = context
-      ? connectedLabels(schema, context.label, context.type, context.direction)
-      : anchorLabels(schema)
-    return { list: labels.filter((l) => l.toLowerCase().startsWith(stem.toLowerCase())), stemLength: stem.length }
-  }
-  if ((m = cypher.match(/\[\s*\w*:(\w*)$/))) {
-    const stem = m[1]
-    const context = edgeContext(cypher, aliasMap(cypher))
-    const rels = relationshipTypesFor(schema, context?.label, context?.direction)
-    return { list: rels.filter((r) => r.toLowerCase().startsWith(stem.toLowerCase())), stemLength: stem.length }
-  }
-  if ((m = cypher.match(/(\w+)\.(\w*)$/))) {
-    const [, alias, stem] = m
-    const label = aliasMap(cypher)[alias]
-    if (label) {
-      const props = propertiesOf(schema, label)
-      return { list: props.filter((p) => p.toLowerCase().startsWith(stem.toLowerCase())), stemLength: stem.length }
-    }
-  }
-  return null
+  return cypherFragmentCompletions(EmbabelVc, schema, cypher, cypher)
 }
 
 // ---------------------------------------------------------------------------
@@ -421,7 +381,7 @@ async function dryRun() {
 }
 
 els.dryRun.addEventListener('click', () => void dryRun())
-els.copy.addEventListener('click', () => void navigator.clipboard.writeText(editorText()))
+els.copy.addEventListener('click', () => void copyWithNod(els.copy, 'Copy', editorText()))
 
 // ---------------------------------------------------------------------------
 // The handlers list — yours, and realm-shipped ones to adopt. Open → edit →

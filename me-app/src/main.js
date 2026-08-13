@@ -614,7 +614,7 @@ handle('query:popout', () => {
       sandbox: true,
     },
   })
-  void studioWindow.loadFile(path.join(__dirname, '..', 'query.html'))
+  void studioWindow.loadFile(path.join(__dirname, '..', 'query-studio.html'))
   studioWindow.on('closed', () => {
     studioWindow = null
   })
@@ -643,7 +643,7 @@ handle('handlers:popout', () => {
       sandbox: true,
     },
   })
-  void handlersWindow.loadFile(path.join(__dirname, '..', 'handlers.html'))
+  void handlersWindow.loadFile(path.join(__dirname, '..', 'handler-studio.html'))
   handlersWindow.on('closed', () => {
     handlersWindow = null
   })
