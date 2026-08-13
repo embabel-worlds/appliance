@@ -64,6 +64,15 @@ services:
     image: ghcr.io/embabel/docling-serve:${DOCLING_VERSION:-v1.29.0}
     container_name: embabel-appliance-docling
     restart: unless-stopped
+    # Conversion memory is bounded by the LARGEST single document, not corpus size:
+    # one 10-K-sized PDF was measured pushing docling past 6GB (2026-08-13, dev).
+    # Uncapped, it competes with neo4j and the app JVM (MaxRAMPercentage=75) for the
+    # whole host and the OOM killer picks a victim at random — capped, an OOM stays
+    # inside docling and `restart: unless-stopped` brings it back for the next
+    # document. The app treats a mid-conversion death as a failed conversion (logged
+    # at ERROR; strict-conversion mode fails the ingest instead of falling back to
+    # flat Tika text). Raise on hosts that routinely convert very large filings.
+    mem_limit: ${DOCLING_MEM_LIMIT:-8g}
     environment:
       - DOCLING_SERVE_ENABLE_UI=0
 
