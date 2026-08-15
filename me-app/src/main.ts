@@ -18,6 +18,7 @@ import * as indexer from './indexer'
 import * as mounts from './mounts'
 import * as documents from './documents'
 import * as logs from './logs'
+import * as agents from './agents'
 import { platform } from './platform'
 import * as pkg from '../package.json'
 import type { Fact, ScanOptions, Settings, StreamState, VerbConsent } from './types'
@@ -566,6 +567,55 @@ handle('realms:update-all', async (settings: Settings) => {
 })
 handle('realms:gaps', (settings: Settings) => api.realmGaps(settings))
 handle('icon:get', (settings: Settings, path: string) => api.icon(settings, path))
+
+/* The MCP surface: which mode a connected agent is in, and whether /mcp is live. */
+handle('mcp:mode', (settings: Settings) => api.mcpMode(settings))
+handle('mcp:set-mode', async (settings: Settings, mode: string) => {
+  log(`[me-app] MCP mode -> ${mode}`)
+  return api.setMcpMode(settings, mode)
+})
+handle('mcp:probe', (settings: Settings) => api.mcpProbe(settings))
+
+/* Wiring a coding agent. The token is supplied by the operator per call and is never stored
+   here — the appliance minted it once at setup and does not return it again. */
+handle('agents:available', async () => ({
+  claude: agents.claudeAvailable(),
+  // Whether we can read the appliance's own token. The renderer asks so it can hide the
+  // paste field entirely in the normal case — a field nobody needs is a field that
+  // teaches people the token is theirs to look after.
+  token: (await agents.applianceToken()) !== null,
+}))
+
+/**
+ * The token for a wiring call: the appliance's own unless the operator supplied one.
+ *
+ * Never logged, never returned to the renderer, never written to settings — it lives for
+ * the length of the call that uses it. A pasted token wins because that is the escape
+ * hatch for an appliance this machine cannot reach through Docker.
+ */
+async function wiringToken(supplied: string): Promise<string | null> {
+  const given = supplied.trim()
+  if (given) return given
+  return agents.applianceToken()
+}
+
+handle('agents:wire-claude', async (settings: Settings, token: string) => {
+  const resolved = await wiringToken(token)
+  if (!resolved) return { ok: false, message: 'No token: the appliance is not reachable through Docker from here, so paste one.' }
+  log('[me-app] wiring Claude Code')
+  const result = await agents.wireClaudeCode(settings.baseUrl, resolved)
+  log(`[me-app] wire Claude Code: ${result.ok ? 'ok' : 'FAILED'}`)
+  return result
+})
+handle('agents:wire-codex', async (settings: Settings, token: string) => {
+  const resolved = await wiringToken(token)
+  if (!resolved) return { ok: false, message: 'No token: the appliance is not reachable through Docker from here, so paste one.' }
+  log('[me-app] wiring Codex')
+  const result = agents.wireCodex(settings.baseUrl, resolved)
+  log(`[me-app] wire Codex: ${result.ok ? 'ok' : 'FAILED'}`)
+  return result
+})
+handle('agents:command', (settings: Settings) => agents.manualCommand(settings.baseUrl))
 
 handle('models:list', (settings: Settings) => api.listModels(settings))
 handle('models:chat', (settings: Settings) => api.chatModel(settings))

@@ -89,6 +89,14 @@ const api = {
   // Icons: realms' and apps'. Bytes, not a URL — the page cannot authenticate,
   // so the main process fetches and hands back a data: URI.
   icon: (settings: Settings, path: string) => ipcRenderer.invoke('icon:get', settings, path),
+  // The MCP surface — mode, liveness, and wiring a coding agent to it.
+  mcpMode: (settings: Settings) => ipcRenderer.invoke('mcp:mode', settings),
+  setMcpMode: (settings: Settings, mode: string) => ipcRenderer.invoke('mcp:set-mode', settings, mode),
+  mcpProbe: (settings: Settings) => ipcRenderer.invoke('mcp:probe', settings),
+  agentsAvailable: () => ipcRenderer.invoke('agents:available'),
+  wireClaudeCode: (settings: Settings, token: string) => ipcRenderer.invoke('agents:wire-claude', settings, token),
+  wireCodex: (settings: Settings, token: string) => ipcRenderer.invoke('agents:wire-codex', settings, token),
+  agentCommand: (settings: Settings) => ipcRenderer.invoke('agents:command', settings),
   listModels: (settings: Settings) => ipcRenderer.invoke('models:list', settings),
   getDefaultModel: () => ipcRenderer.invoke('models:default'),
   chatModel: (settings: Settings) => ipcRenderer.invoke('models:chat', settings),

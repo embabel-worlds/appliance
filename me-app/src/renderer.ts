@@ -1324,6 +1324,153 @@ async function loadApps() {
   setStatus(appsStatus, true, `${result.apps.length} app(s)`)
 }
 
+// ---------------------------------------------------------------------------
+// Connect — the MCP surface, as a ladder of circuits.
+//
+// The TAB is named for the act (Connect); the panel and this code are named for
+// the subject (coding agents), which is why `agents.ts` keeps its name. "Agents"
+// alone was the wrong label for the tab: in this codebase an agent is as likely
+// to be one of the appliance's own as a coding tool someone points at it.
+//
+// The same shape the Worlds console uses for commissioning, deliberately: both
+// products should teach the same thing the same way. Every lamp is read from
+// the live appliance — a lamp that lit because the page assumed something would
+// be worse than no lamp at all.
+//
+// What this app can do that the console cannot: RUN the wiring. The console is
+// a web page and can only print `claude mcp add` for you to paste; this has a
+// main process, so it can wire Claude Code and write Codex's config directly.
+// ---------------------------------------------------------------------------
+
+/** Paint one rung's lamp and its line. `null` means "still asking". */
+function setRung(id: string, lit: boolean | null, line?: string) {
+  const rung = $(id)
+  const lamp = rung.querySelector('.lamp')
+  if (lamp) lamp.className = `lamp ${lit === null ? '' : lit ? 'lamp-lit' : 'lamp-alert'}`.trim()
+  if (line !== undefined) {
+    const p = rung.querySelector('.hint')
+    if (p) p.textContent = line
+  }
+}
+
+async function loadAgents() {
+  const settings = currentSettings()
+  setStatus($('agents-status'), null, 'checking…')
+
+  // The probe is unauthenticated on purpose: a 401 is the GOOD answer, because it
+  // proves something is serving /mcp and refusing anonymous callers.
+  const [probe, mode, available, command] = await Promise.all([
+    window.me.mcpProbe(settings),
+    window.me.mcpMode(settings),
+    window.me.agentsAvailable(),
+    window.me.agentCommand(settings),
+  ])
+
+  setRung('rung-endpoint', probe.state === 'guarded' || probe.state === 'open',
+    probe.state === 'guarded' ? `Live at ${settings.baseUrl}/mcp — bearer auth enforced.`
+      : probe.state === 'open' ? `Live at ${settings.baseUrl}/mcp — but answering unauthenticated callers.`
+      : probe.state === 'missing' ? 'Nothing is served at /mcp on this appliance.'
+      : `Could not reach ${settings.baseUrl}/mcp — ${probe.message}`)
+
+  const modeSelect = $('mcp-mode')
+  if (mode.ok && mode.mode) {
+    modeSelect.value = mode.mode
+    modeSelect.disabled = false
+    // Lit for either mode: this rung reports that the appliance ANSWERED, not that
+    // one mode is better than the other. Developer is not an achievement.
+    setRung('rung-mode', true)
+    setStatus($('mcp-mode-status'), null, mode.mode === 'DEVELOPER' ? 'agents may build' : 'agents may read your data')
+  } else {
+    modeSelect.disabled = true
+    setRung('rung-mode', false)
+    // An older appliance has no mode endpoint; say that rather than "error".
+    setStatus($('mcp-mode-status'), false, mode.message.includes('404')
+      ? 'this appliance is too old to have modes — update it'
+      : mode.message)
+  }
+
+  const wireClaude = $('wire-claude')
+  wireClaude.disabled = !available.claude
+  wireClaude.title = available.claude ? '' : 'The claude CLI is not on PATH'
+  $('agent-command').textContent = command
+
+  // The token is the appliance's, not the user's. When this app can read it — the normal
+  // case, since it already runs docker against the same container — the field is not shown
+  // at all: a field nobody needs teaches people they must look after a secret they need not
+  // ever see. It appears only when we genuinely cannot get one.
+  $('token-row').hidden = available.token
+  setStatus($('token-source'), null, available.token
+    ? 'Using the token stored on your appliance — never shown, never saved here.'
+    : 'This appliance is not reachable through Docker from here, so paste its token: it lives in /data/embabel/assistant/admin/providers.env.')
+
+  setStatus($('agents-status'), true, '')
+}
+
+/**
+ * Whatever the operator typed, which is usually nothing.
+ *
+ * Empty is the normal answer and not an error: the main process then reads the appliance's
+ * own token. Only when it cannot — a remote appliance, a stopped container — does the field
+ * appear at all, and the failure is reported by the wiring call rather than guessed at here.
+ */
+function suppliedToken(): string {
+  return $('agent-token').value.trim()
+}
+
+$('wire-claude').addEventListener('click', async () => {
+  const token = suppliedToken()
+  const button = $('wire-claude')
+  button.disabled = true
+  setStatus($('wire-status'), null, 'wiring Claude Code…')
+  const result = await window.me.wireClaudeCode(currentSettings(), token)
+  setStatus($('wire-status'), result.ok, result.message)
+  if (result.ok) {
+    setRung('rung-wire', true)
+    // The token has done its work. Holding it on screen is a hazard with no upside.
+    $('agent-token').value = ''
+  }
+  button.disabled = false
+})
+
+$('wire-codex').addEventListener('click', async () => {
+  const token = suppliedToken()
+  setStatus($('wire-status'), null, 'writing Codex config…')
+  const result = await window.me.wireCodex(currentSettings(), token)
+  setStatus($('wire-status'), result.ok, result.message)
+  if (result.ok) {
+    setRung('rung-wire', true)
+    $('agent-token').value = ''
+  }
+})
+
+$('agent-copy').addEventListener('click', () => {
+  void navigator.clipboard?.writeText($('agent-command').textContent ?? '')
+  setStatus($('wire-status'), null, 'copied — fill in your own token')
+})
+
+$('mcp-mode').addEventListener('change', async () => {
+  const select = $('mcp-mode')
+  const chosen = select.value
+  select.disabled = true
+  const result = await window.me.setMcpMode(currentSettings(), chosen)
+  select.disabled = false
+  setStatus($('mcp-mode-status'), result.ok, result.message)
+  // Only after a REAL change, and only then: an agent already connected is holding a
+  // tool list from before this moment, and no notification tells it otherwise.
+  $('mcp-reconnect').hidden = !result.ok
+})
+
+let agentsLoaded = false
+for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
+  tab.addEventListener('click', () => {
+    if (tab.dataset['tab'] === 'connect' && !agentsLoaded) {
+      agentsLoaded = true
+      void loadAgents()
+    }
+  })
+}
+$('agents-refresh').addEventListener('click', () => void loadAgents())
+
 let appsLoaded = false
 for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
   tab.addEventListener('click', () => {

@@ -684,6 +684,71 @@ async function gatewaySurface(settings: Settings) {
  * are inert until a key is set, and which variable unlocks each.
  */
 
+/**
+ * The MCP surface: what a connected coding agent may do, and whether the endpoint is live.
+ *
+ * `mode` is ASSISTANT or DEVELOPER — see McpMode on the server. `requiresReconnect` comes from
+ * the appliance rather than being asserted here, because it is the server's fact: the MCP tool
+ * list is fixed when a session starts, so a switch reaches an already-connected agent only
+ * after it reconnects.
+ */
+async function mcpMode(settings: Settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/config/mcp-mode`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, mode: null as string | null, modes: [] as string[] }
+    const body = await readJson(res)
+    return {
+      ok: true, message: '',
+      mode: body?.mode ?? 'ASSISTANT',
+      modes: body?.modes ?? ['ASSISTANT', 'DEVELOPER'],
+      requiresReconnect: body?.requiresReconnect !== false,
+    }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), mode: null as string | null, modes: [] as string[] }
+  }
+}
+
+/** @param {Settings} settings @param {string} mode */
+async function setMcpMode(settings: Settings, mode: string) {
+  try {
+    const res = await post(settings, '/api/v1/config/mcp-mode', { mode }, 15000, 'PUT')
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.message ?? `HTTP ${res.status}` }
+    return { ok: true, message: `switched to ${(body?.mode ?? mode).toLowerCase()} mode` }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * Is the MCP endpoint actually there, and is it guarded?
+ *
+ * Deliberately UNAUTHENTICATED, which reads backwards until you see what it proves: a 401 is
+ * the good answer. It says something is serving /mcp and refusing anonymous callers — the
+ * console verifies the same way. A 200 would mean the endpoint is open to anyone who can
+ * reach the port, which is worth showing differently.
+ * @param {Settings} settings
+ */
+async function mcpProbe(settings: Settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(8000),
+    })
+    if (res.status === 401 || res.status === 403) return { ok: true, state: 'guarded', message: 'live, bearer auth enforced' }
+    if (res.status === 404) return { ok: false, state: 'missing', message: 'nothing served at /mcp' }
+    if (res.ok) return { ok: true, state: 'open', message: 'live, but answering unauthenticated callers' }
+    return { ok: true, state: 'up', message: `live (HTTP ${res.status})` }
+  } catch (e) {
+    return { ok: false, state: 'down', message: errorMessage(e) }
+  }
+}
+
 /** @param {Settings} settings */
 async function listRealms(settings: Settings) {
   try {
@@ -853,7 +918,7 @@ export {
   listViews, saveView, deleteView, viewInvocation,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
-  uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon }
+  uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a

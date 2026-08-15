@@ -118,6 +118,24 @@
       -webkit-line-clamp: 2; overflow: hidden; }
     /* Pinned to the bottom edge, so the badges line up across the row. */
     .app-card .meta { margin-left: 0; margin-top: auto; padding-top: 2px; }
+    /* Lamps, in the console's vocabulary: a circuit is either carrying or it is not,
+       and the lamp is read from the live appliance rather than asserted by the page. */
+    .lamp { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none;
+      margin-top: 5px; border: 1px solid rgba(230, 230, 230, 0.18); background: var(--faint); }
+    .lamp-lit { background: var(--lit); box-shadow: 0 0 7px rgba(62, 207, 142, 0.5);
+      animation: breathe 3.2s ease-in-out infinite; }
+    @keyframes breathe { 50% { box-shadow: 0 0 13px rgba(62, 207, 142, 0.85); } }
+    /* Alive, not blinking at you — and still when asked for less motion. */
+    @media (prefers-reduced-motion: reduce) { .lamp-lit { animation: none; } }
+    .lamp-alert { background: #f87171; box-shadow: 0 0 7px rgba(248, 113, 113, 0.45); }
+    .ladder { display: grid; gap: 14px; margin: 4px 0 14px; }
+    .rung { display: flex; gap: 10px; align-items: flex-start; }
+    .rung-body { min-width: 0; flex: 1; }
+    .rung-body > strong { font-size: 13px; }
+    .rung-body p { margin: 3px 0 8px; }
+    .cmd { font-family: var(--mono); font-size: 11.5px; color: var(--mid); background: rgba(0,0,0,.35);
+      border: 1px solid var(--rule); border-radius: 3px; padding: 7px 9px; flex: 1;
+      overflow-wrap: anywhere; white-space: pre-wrap; }
     /* A tile carrying a realm's or an app's own icon. The monogram styling —
        tinted wash, hairline border — is the frame around a LETTER; an icon
        brings its own ground and its own edges, so both are dropped rather than
@@ -178,6 +196,7 @@
 
     <nav class="tabs" role="tablist">
       <button class="tab is-on" role="tab" data-tab="sensor">Machine</button>
+      <button class="tab" role="tab" data-tab="connect">Connect</button>
       <button class="tab" role="tab" data-tab="documents">Documents</button>
       <button class="tab" role="tab" data-tab="query">Query</button>
       <button class="tab" role="tab" data-tab="realms">Realms</button>
@@ -452,6 +471,83 @@
       </div>
     </section>
     </div><!-- /realms -->
+
+    <div class="tabpanel" data-panel="connect" hidden>
+    <section class="panel">
+      <h2>Coding agents</h2>
+      <div class="panel-body">
+        <p class="hint">
+          Your appliance speaks <strong>MCP</strong>, so Claude Code and Codex can use it
+          directly — your documents, your graph, your realms, from inside the terminal you
+          already work in. Each lamp below is read from the live appliance, not asserted.
+        </p>
+
+        <div class="ladder">
+          <div class="rung" id="rung-endpoint">
+            <span class="lamp lamp-unlit"></span>
+            <div class="rung-body">
+              <strong>The endpoint</strong>
+              <p class="hint" id="mcp-endpoint-line">checking…</p>
+            </div>
+          </div>
+
+          <div class="rung" id="rung-mode">
+            <span class="lamp lamp-unlit"></span>
+            <div class="rung-body">
+              <strong>What an agent may do</strong>
+              <p class="hint">
+                <em>Assistant</em> is your data and nothing else — the right default.
+                <em>Developer</em> also lets an agent install a realm and ask how to write one,
+                and makes its orientation lead with realms rather than stay silent about them.
+              </p>
+              <div class="row">
+                <label class="field">Mode
+                  <select id="mcp-mode">
+                    <option value="ASSISTANT">Assistant — my data</option>
+                    <option value="DEVELOPER">Developer — also build realms</option>
+                  </select>
+                </label>
+                <span id="mcp-mode-status" class="status inline-status"></span>
+              </div>
+              <p class="hint" id="mcp-reconnect" hidden>
+                An agent that is already connected will not see this until it reconnects — the
+                tool list is fixed when a session starts. Restart the agent, or run
+                <code>/mcp</code> in Claude Code to reconnect it.
+              </p>
+            </div>
+          </div>
+
+          <div class="rung" id="rung-wire">
+            <span class="lamp lamp-unlit"></span>
+            <div class="rung-body">
+              <strong>Point an agent at it</strong>
+              <p class="hint" id="token-source">checking where the token comes from…</p>
+              <div class="row" id="token-row" hidden>
+                <label class="field grow">Token
+                  <input type="password" id="agent-token" placeholder="the bearer token from setup" />
+                </label>
+              </div>
+              <div class="row">
+                <button id="wire-claude" class="primary">Wire Claude Code</button>
+                <button id="wire-codex">Wire Codex</button>
+                <span id="wire-status" class="status"></span>
+              </div>
+              <p class="hint">Or wire anything else by hand:</p>
+              <div class="row">
+                <code id="agent-command" class="cmd"></code>
+                <button id="agent-copy">copy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="agents-refresh">Refresh</button>
+          <span id="agents-status" class="status"></span>
+        </div>
+      </div>
+    </section>
+    </div><!-- /agents -->
 
     <div class="tabpanel" data-panel="apps" hidden>
     <section class="panel">
