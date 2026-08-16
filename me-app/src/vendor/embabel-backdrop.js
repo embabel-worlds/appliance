@@ -18,7 +18,7 @@ var EmbabelBackdrop = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/backdrop.ts
+  // src/backdrop/backdrop.ts
   var backdrop_exports = {};
   __export(backdrop_exports, {
     startBackdrop: () => startBackdrop

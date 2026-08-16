@@ -15,7 +15,7 @@
     "package": "electron-builder --mac --dir",
     "predist": "npm run build",
     "dist": "electron-builder --mac",
-    "sync:ui": "cp ../../embabel-appliance-client/packages/appliance-ui/css/*.css src/vendor/embabel-ui/ && cp ../../embabel-appliance-client/packages/appliance-ui/dist/global/embabel-backdrop.js ../../embabel-appliance-client/packages/vc/dist/global/embabel-vc.js ../../embabel-appliance-client/packages/code-surface/dist/global/embabel-code-surface.js ../../embabel-appliance-client/packages/studio-kit/dist/global/embabel-studio-kit.js src/vendor/"
+    "sync:ui": "cp node_modules/@embabel/appliance-kit/css/*.css src/vendor/embabel-ui/ && cp node_modules/@embabel/appliance-kit/dist/global/*.js src/vendor/"
   },
   "license": "Apache-2.0",
   "devDependencies": {
@@ -72,5 +72,8 @@
     "dmg": {
       "title": "Embabel Me"
     }
+  },
+  "dependencies": {
+    "@embabel/appliance-kit": "github:johnsonr/appliance-kit#v0.1.0"
   }
 }

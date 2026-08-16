@@ -18,7 +18,7 @@ var EmbabelVc = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/index.ts
+  // src/vc/index.ts
   var index_exports = {};
   __export(index_exports, {
     AI_KEYS: () => AI_KEYS,
@@ -44,7 +44,7 @@ var EmbabelVc = (() => {
     rowsToMarkdown: () => rowsToMarkdown
   });
 
-  // src/targets.ts
+  // src/vc/targets.ts
   var esc = (s) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   var TARGETS = {
     documents: {
@@ -88,7 +88,7 @@ var EmbabelVc = (() => {
   var VIA_VALUES = ["keyword", "agentic-rag"];
   var AI_KEYS = ["hint", "model", "temperature", "confidence", "fresh"];
 
-  // src/compose.ts
+  // src/vc/compose.ts
   var str = (v) => v === void 0 || v === null ? "" : String(v);
   var limitOf = (spec) => Math.max(1, Number(str(spec.limit)) || 10);
   function edgeProps(spec) {
@@ -207,7 +207,7 @@ var EmbabelVc = (() => {
     return COMPOSERS[spec.target](spec);
   }
 
-  // src/schema.ts
+  // src/vc/schema.ts
   function aliasMap(cypher) {
     const map = {};
     for (const m of cypher.matchAll(/\(\s*(\w+)\s*:\s*(\w+)/g)) {
@@ -289,13 +289,13 @@ var EmbabelVc = (() => {
     return { label, used: [...body.matchAll(/(\w+)\s*:/g)].flatMap((k) => k[1] ? [k[1]] : []) };
   }
 
-  // src/params.ts
+  // src/vc/params.ts
   var RESERVED_PARAMS = ["ai", "realm", "userId", "anchors", "exclude", "want", "hint"];
   function declaredParams(cypher) {
     return [...new Set([...cypher.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]))].filter((p) => !RESERVED_PARAMS.includes(p));
   }
 
-  // src/rows.ts
+  // src/vc/rows.ts
   function rowColumns(rows) {
     const columns = [];
     for (const row of rows) for (const key of Object.keys(row)) if (!columns.includes(key)) columns.push(key);

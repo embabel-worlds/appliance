@@ -18,7 +18,7 @@ var EmbabelCodeSurface = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/index.ts
+  // src/code-surface/index.ts
   var index_exports = {};
   __export(index_exports, {
     gatewayPathAt: () => gatewayPathAt,
@@ -27,7 +27,7 @@ var EmbabelCodeSurface = (() => {
     parseSurface: () => parseSurface
   });
 
-  // src/surface.ts
+  // src/code-surface/surface.ts
   var METHOD = /^\s*(\w+)\((.*)\):\s*(.+);\s*$/;
   var NAMESPACE_OPEN = /^\s*(\w+):\s*\{\s*$/;
   function parseSurface(interfacesTs) {

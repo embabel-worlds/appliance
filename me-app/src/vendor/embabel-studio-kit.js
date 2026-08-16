@@ -18,7 +18,7 @@ var EmbabelStudioKit = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/index.ts
+  // src/studio-kit/index.ts
   var index_exports = {};
   __export(index_exports, {
     copyWithNod: () => copyWithNod,
@@ -30,7 +30,7 @@ var EmbabelStudioKit = (() => {
     setStatus: () => setStatus
   });
 
-  // src/format.ts
+  // src/studio-kit/format.ts
   function formatDuration(ms) {
     if (ms < 1e3) return `${ms} ms`;
     const seconds = Math.round(ms / 100) / 10;
@@ -40,13 +40,13 @@ var EmbabelStudioKit = (() => {
     return rest ? `${Math.floor(whole / 60)} min ${rest} s` : `${Math.floor(whole / 60)} min`;
   }
 
-  // src/status.ts
+  // src/studio-kit/status.ts
   function setStatus(el, ok, message) {
     el.textContent = message;
     el.className = ok === null ? "status" : ok ? "status ok" : "status error";
   }
 
-  // src/copy.ts
+  // src/studio-kit/copy.ts
   async function copyWithNod(button, label, text) {
     await navigator.clipboard.writeText(text);
     button.textContent = "Copied \u2713";
@@ -55,7 +55,7 @@ var EmbabelStudioKit = (() => {
     }, 1200);
   }
 
-  // src/tooltip.ts
+  // src/studio-kit/tooltip.ts
   function definitionTitle(label) {
     return `${label.label} \xB7 ${label.realm ? `${label.realm} realm` : "core"}`;
   }
@@ -92,7 +92,7 @@ var EmbabelStudioKit = (() => {
     };
   }
 
-  // src/hints.ts
+  // src/studio-kit/hints.ts
   function cypherFragmentCompletions(vc, schema, before, aliasSource) {
     let m;
     if ((m = before.match(/[([]\s*\w*:(\w*)$/)) && before.lastIndexOf("(") > before.lastIndexOf("[")) {
