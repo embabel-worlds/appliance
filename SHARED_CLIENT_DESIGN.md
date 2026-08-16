@@ -260,11 +260,102 @@ from preload does not exist. That guarantee is doing real work.
 - The console's README still describes it as a one-evening concept with mock
   data, while the git log (image build, nginx proxy, commissioning fixes,
   document upload) says it is a real client. Fix before investing in sharing.
+  `KnowledgeLedgerCenter` is the one part where that description is still
+  accurate — it is a design mock with no endpoint behind it, and its types now
+  say so.
 
-## Current work: prerequisite
+## Both studios are on the console now, 2026-08
 
-Before any generated client, the OpenAPI has to be worth generating from. In
-progress on branch `openapi-kg-surface` in the assistant repo — see that PR.
+> **Settled.** The console has **Query Studio** and **Handler Studio**, both built
+> on `@embabel/appliance-kit` — the same client, semantics and editor behaviour
+> the Me app runs on. The drift table near the top of this document is now
+> historical: composer, schema panel, strict preflight, NL→Cypher, save/delete
+> view, params and history are all present on both sides.
+
+What it took, in order, and why the order was forced:
+
+1. **The handlers surface had to be typed first.** `OpenApiKgContractTest` only
+   guarded `/api/v1/admin/kg`; `HandlerAdminController` sat at `/admin/handlers`
+   answering `ResponseEntity<Map<String, Any?>>` on all nine endpoints, so
+   `/v3/api-docs` described every payload as a bare `{"type": "object"}` and a
+   generated client got `unknown`. Me's Handler Studio consumed those shapes
+   anyway, from a hand-written reading in `me-app/src/api.ts` — the exact drift
+   this package exists to end. Fixed in the assistant: wire types in
+   `HandlerAdminApi.kt`, `@ApiResponse` 200/401 per operation, and request DTOs
+   renamed `Handler*` because `SaveRequest` and `ValidateRequest` were one
+   collision away from the `AskRequest` bug.
+2. **The contract test now guards both prefixes**, and is renamed
+   `OpenApiClientContractTest` (snapshot: `client-surface.json`) because it no
+   longer guards only the KG surface. `GUARDED_PREFIXES` is the list; adding to
+   it is how a surface becomes generateable. It immediately earned its keep —
+   the new `required` invariant caught `signalType` and `autonomous` advertised
+   as mandatory on `HandlerSaveRequest`, the same Kotlin-defaults defect listed
+   below.
+3. **`HandlerAdminWireFormatTest`** pins the bytes, following
+   `KgAskControllerWireFormatTest`: the payloads were `mapOf`s emitting explicit
+   nulls, and a data class with `@JsonInclude(NON_NULL)` would have silently
+   dropped `error` on a clean dry run and `schedule` on an unscheduled handler.
+   Both are keys consumers branch on.
+4. **The kit gained `HandlersClient`** and, from the refreshed snapshot, three
+   KG operations it had been missing: `refine`, `propertyValues` and `runView`.
+
+### Decisions this forced, recorded
+
+- **CodeMirror 5, from npm, in the console.** Not a preference for a
+  maintenance-mode editor: `createCypherHint` in `studio-kit` is written against
+  CM5's `registerHelper`/`showHint` and is already in production in Me. CM6 here
+  would mean a second hint implementation and two front ends completing
+  differently on the same keystroke. When Me moves, the console moves with it.
+  (Vite pre-bundles the core, the addon and the modes into chunks that share one
+  `require_codemirror`, so the CM5 singleton survives — worth re-checking after
+  any Vite upgrade, because a second instance fails silently as "completion just
+  stopped working".)
+- **The console's standalone Views panel is gone**, folded into Query Studio.
+  A view is a saved query, and a runner that could show you rows but never the
+  query that produced them was the odd one out. Its provenance grouping (by the
+  realm that shipped each view) survived the move.
+- **Me's vocabulary won.** Tabs are *Query Studio* and *Handler Studio*, not
+  *Virtual Cypher* and *Lenses*. One of the two names had to lose; Me's won
+  because the studios came from there.
+- **Endpoints outside the guarded prefixes stay untyped**, deliberately. Realms,
+  keys, documents, folders and chat are read through a thin `call()` in
+  `app/src/api.ts` with local interfaces marked as the console's *reading* of
+  them. A hand-written type there would be a guess wearing a type's clothes.
+
+### Still open after this
+
+- **`/kg/validate` answers `{ok, violations, message}` — there is no `valid`.**
+  `ok` IS the verdict, while the handlers surface next door splits the same idea
+  into `ok` (did the check run) and `valid` (did it pass). Two endpoints, two
+  meanings for `ok`. Worth reconciling; not reconciled here, because changing
+  either is a contract change.
+- The gateway surface (`/apps-runtime/interfaces.ts`) is TypeScript source, not
+  JSON, so it cannot travel through the kit's transport and Handler Studio
+  fetches it directly. Fine, and worth naming rather than discovering later.
+- ~~me-app's last mile~~ **done.** me-app imports the kit instead of loading it
+  from `src/vendor/embabel-*.js`; those files, `src/vendor/embabel-ui/` and the
+  `sync:ui` script are gone, and `globals.d.ts` no longer declares `EmbabelVc`,
+  `EmbabelStudioKit` or `EmbabelCodeSurface` as `any`. Removing that unchecked
+  boundary immediately found two things it had been hiding: `query-views.ts`
+  annotated the `declaredParams` callback as `{name, type, def}` when it returns
+  plain strings (the body was already right), and `wire.ts` declared
+  `SchemaLabel.properties` and `SchemaProperty.type` OPTIONAL where the guarded
+  `KgSchemaLabel` marks both required — so `wire.ts` now re-exports the kit's
+  types rather than restating them. What is still genuinely vendored is
+  third-party only: CodeMirror, marked, DOMPurify.
+
+- **Still not shared: the client itself, in Me.** `me-app/src/api.ts` remains
+  ~40 hand-written `fetch` calls in the main process, and the vendored
+  `embabel-appliance-client.js` had never been referenced by anything — it was
+  deleted unused. `ApplianceClient` is Node-safe and the credential already lives
+  there, so this is the obvious next move; it is a bigger one, because the
+  renderer reaches it through `preload.ts` and every call site names a bridge
+  method.
+
+## Earlier: the prerequisite
+
+Before any generated client, the OpenAPI had to be worth generating from. Done
+on branch `openapi-kg-surface` in the assistant repo.
 Findings that motivated it:
 
 - Every KG response was `{"type": "object"}` — all 13 handlers returned

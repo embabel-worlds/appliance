@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Embabel Me</title>
   <!-- The shared visual language, ahead of Me's own rules so they refine it. -->
-  <link rel="stylesheet" href="src/vendor/embabel-ui/index.css" />
+  <link rel="stylesheet" href="dist/kit.css" />
   <!-- The chosen appliance theme, fetched by the main process. Empty until picked. -->
   <style id="theme"></style>
   <style>
@@ -632,7 +632,6 @@
   <script src="src/vendor/marked.umd.js"></script>
   <script src="src/vendor/purify.js"></script>
   <!-- The shared backdrop animation, then this window's content and volume for it. -->
-  <script src="src/vendor/embabel-backdrop.js"></script>
   <!-- One bundle per window: esbuild output, a classic script like the
        vendored libraries above (ES modules are refused over file://). -->
   <script src="dist/renderer.js"></script>

@@ -45,12 +45,23 @@ the bridge rather than restated beside it.
 `strictNullChecks` is off, deliberately and temporarily — see the note in
 `tsconfig.json`. Turning it on is its own change.
 
-Third-party browser libraries are **vendored** into `src/vendor/` and loaded as
-plain `<script>` tags ahead of the bundles, publishing the globals that
-`src/globals.d.ts` declares. The packages themselves are devDependencies, and
-`npm run vendor` / `npm run sync:ui` re-copy the built files after an upgrade.
-This keeps the packaged app's `files` list honest and avoids shipping
-`node_modules` for something that is one file.
+**Third-party** browser libraries (CodeMirror, marked, DOMPurify) are
+**vendored** into `src/vendor/` and loaded as plain `<script>` tags ahead of the
+bundles, publishing the globals that `src/globals.d.ts` declares. The packages
+themselves are devDependencies and `npm run vendor` re-copies the built files
+after an upgrade. This keeps the packaged app's `files` list honest and avoids
+shipping `node_modules` for something that is one file.
+
+**`@embabel/appliance-kit` is not vendored — it is imported.** It is a real
+dependency (`github:johnsonr/appliance-kit#main`), and esbuild bundles it into
+each window's bundle like any other import, so the client, the virtual-Cypher
+semantics, the editor behaviour and the gateway-surface reader all arrive with
+their own `.d.ts`. It used to be vendored as IIFE globals declared `any` in
+`globals.d.ts`; converting found real bugs those `any`s were hiding — a wrong
+callback annotation in `query-views.ts`, and a `SchemaLabel` in `wire.ts` that
+had drifted from the server's guarded contract. The same package backs the
+Worlds console, which is the point. Its CSS comes in the same way: `src/kit.css`
+imports it and esbuild emits `dist/kit.css`, which every page links.
 
 ### Rendering model output
 

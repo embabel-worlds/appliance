@@ -1,7 +1,7 @@
 {
   "name": "embabel-me-app",
   "version": "0.0.1",
-  "description": "Embabel Me sensor app \u2014 reads local macOS signals and sends them to your appliance",
+  "description": "Embabel Me sensor app — reads local macOS signals and sends them to your appliance",
   "main": "dist/main.js",
   "scripts": {
     "prestart": "node -e \"require('fs').existsSync('node_modules/electron') || process.exit(1)\" || npm install",
@@ -14,8 +14,7 @@
     "prepackage": "npm run build",
     "package": "electron-builder --mac --dir",
     "predist": "npm run build",
-    "dist": "electron-builder --mac",
-    "sync:ui": "cp node_modules/@embabel/appliance-kit/css/*.css src/vendor/embabel-ui/ && cp node_modules/@embabel/appliance-kit/dist/global/*.js src/vendor/"
+    "dist": "electron-builder --mac"
   },
   "license": "Apache-2.0",
   "devDependencies": {
@@ -30,7 +29,7 @@
   "build": {
     "appId": "com.embabel.me",
     "productName": "Embabel Me",
-    "copyright": "Copyright \u00a9 Embabel",
+    "copyright": "Copyright © Embabel",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -74,6 +73,6 @@
     }
   },
   "dependencies": {
-    "@embabel/appliance-kit": "github:johnsonr/appliance-kit#v0.1.0"
+    "@embabel/appliance-kit": "github:johnsonr/appliance-kit#main"
   }
 }

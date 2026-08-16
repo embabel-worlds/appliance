@@ -6,11 +6,11 @@ import { $ } from './dom'
 import type { Settings } from './types'
 import { EMPTY_SETTINGS, type StudioDeps } from './studio-deps'
 import type { ViewSpec } from './wire'
+import { declaredParams } from '@embabel/appliance-kit/vc'
+import { setStatus } from '@embabel/appliance-kit/studio-kit'
 
 export const queryViews = (() => {
-/* global EmbabelVc, EmbabelStudioKit */
-const { setStatus } = EmbabelStudioKit
-const { declaredParams } = EmbabelVc
+
 /* Injected at init — the editor and its verbs belong to the orchestrator. */
 /* Filled by init(deps) before anything here runs — see StudioDeps. */
 let settings: Settings = EMPTY_SETTINGS
@@ -105,7 +105,11 @@ $('save-view').addEventListener('click', () => {
     note.textContent = `Parameters found in the query: ${params.join(', ')} — give each a type and a default (blank default = required at run time).`
     saveParams.append(note)
   }
-  saveParamFields = params.map((p: { name: string; type: string; def: string }) => {
+  /* `declaredParams` returns the NAMES — plain strings. This annotation used to
+   * say `{name, type, def}`, which was simply wrong: the body below already
+   * treated `p` as a string (`$${p}`) and built the type/default controls
+   * itself. Nothing caught it while the package arrived as an untyped global. */
+  saveParamFields = params.map((p: string) => {
     const row = document.createElement('div')
     row.className = 'param-row'
     const name = document.createElement('span')

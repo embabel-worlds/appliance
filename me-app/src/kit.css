@@ -1,0 +1,12 @@
+/*
+ * The shared visual language, as a build input rather than a vendored copy.
+ *
+ * esbuild resolves this import through node_modules and inlines the kit's whole
+ * cascade (palette -> tokens -> ground -> base -> components -> markdown) into
+ * `dist/kit.css`, which every window links ahead of its own rules. That is why
+ * `src/vendor/embabel-ui/` is gone: a `<link>` at a `file://` origin needs a real
+ * path on disk, and `dist/` is one — the same answer bundling gave the JS.
+ *
+ * Me's own rules stay in each page's <style> block and refine what this defines.
+ */
+@import '@embabel/appliance-kit/css';

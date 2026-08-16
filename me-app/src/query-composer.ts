@@ -5,11 +5,10 @@
 import { $ } from './dom'
 import type { Settings } from './types'
 import type { StudioDeps } from './studio-deps'
+import { TARGETS, TIPS, type AnchorId, type ComposeSpec, type Mode, type TargetId, compose as composeCypher } from '@embabel/appliance-kit/vc'
+import { setStatus } from '@embabel/appliance-kit/studio-kit'
 
 export const queryComposer = (() => {
-/* global EmbabelVc, EmbabelStudioKit */
-const { setStatus } = EmbabelStudioKit
-const { TARGETS, TIPS, compose: composeCypher } = EmbabelVc
 const els = {
   targets: $('targets'), anchorRow: $('anchor-row'), anchor: $('anchor'),
   seedLabel: $('seed-label'), seed: $('seed'), mode: $('mode'), cost: $('cost'),
@@ -36,7 +35,7 @@ const MODES: Record<string, { label: string; cost: string; dear?: boolean }> = {
   semantic: { label: 'semantic — vector over thread summaries', cost: 'one embedding pass · cheap', dear: false },
 }
 
-let target = 'documents'
+let target: TargetId = 'documents'
 
 // ---------------------------------------------------------------------------
 // Composition — controls → Cypher. The editor is the source of truth once the
@@ -50,13 +49,17 @@ let target = 'documents'
  * lines — lives in the package, so the Worlds console composes the same queries
  * from the same understanding instead of a second reading of the spec.
  */
-function composeSpec() {
+function composeSpec(): ComposeSpec {
   return {
     target,
-    mode: els.mode.value,
+    /* The controls hold strings; the vocabulary they hold is the package's. The
+     * options are BUILT from `spec.modes` and `TARGETS.threads.anchors`, so the
+     * value is always one of them — asserted at this one boundary rather than
+     * at each of the four reads below. */
+    mode: els.mode.value as Mode,
     seed: els.seed.value,
     intent: els.intent.value,
-    anchor: els.anchor.value,
+    anchor: els.anchor.value as AnchorId,
     tag: els.tag.value,
     dateField: els.dateField.value,
     dateFrom: els.dateFrom.value,
@@ -84,15 +87,20 @@ function compose() {
 
 function renderTargets() {
   els.targets.innerHTML = ''
-  for (const [key, spec] of Object.entries(TARGETS)) {
+  /* `Object.entries` widens the key to string and loses which target it names.
+   * Keying off `Object.keys` narrowed instead keeps `spec` a real TargetSpec —
+   * which is what retires the `(spec as any)` casts that stood here while the
+   * package arrived as an untyped global. */
+  for (const key of Object.keys(TARGETS) as TargetId[]) {
+    const spec = TARGETS[key]
     const button = document.createElement('button')
     button.className = 'target' + (key === target ? ' is-on' : '')
     const name = document.createElement('span')
     name.className = 't-name'
-    name.textContent = String((spec as any).name)
+    name.textContent = spec.name
     const what = document.createElement('span')
     what.className = 't-what'
-    what.textContent = String((spec as any).what)
+    what.textContent = spec.what
     button.append(name, what)
     button.addEventListener('click', () => {
       target = key
@@ -145,7 +153,7 @@ function applyMode() {
     els.cost.textContent = ''
   }
   if (TARGETS.threads.anchors && target === 'threads') {
-    els.seed.placeholder = TARGETS.threads.anchors[els.anchor.value]?.placeholder ?? ''
+    els.seed.placeholder = TARGETS.threads.anchors[els.anchor.value as AnchorId]?.placeholder ?? ''
   } else {
     els.seed.placeholder = target === 'files' ? 'trip logistics' : 'renewal terms'
   }

@@ -7,7 +7,7 @@
   <title>Embabel Me — Handler Studio</title>
   <link rel="stylesheet" href="src/vendor/codemirror.css" />
   <link rel="stylesheet" href="src/vendor/show-hint.css" />
-  <link rel="stylesheet" href="src/vendor/embabel-ui/index.css" />
+  <link rel="stylesheet" href="dist/kit.css" />
   <style id="theme"></style>
   <style>
     .dragbar {
@@ -235,9 +235,6 @@
   <!-- Shared semantics load before handlers.js, which binds at parse time:
        @embabel/code-surface reads the typed gateway, @embabel/vc the Cypher
        inside kg calls — the same packages the Worlds console composes from. -->
-  <script src="src/vendor/embabel-code-surface.js"></script>
-  <script src="src/vendor/embabel-vc.js"></script>
-  <script src="src/vendor/embabel-studio-kit.js"></script>
   <script src="src/vendor/codemirror.js"></script>
   <script src="src/vendor/javascript.js"></script>
   <script src="src/vendor/show-hint.js"></script>

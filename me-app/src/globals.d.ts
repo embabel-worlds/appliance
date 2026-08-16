@@ -45,27 +45,16 @@ declare global {
     querySchemaPanel: unknown
   }
 
-  /* ── Vendored third-party and shared builds ────────────────────────────────
-     Loaded as plain scripts from src/vendor/, which `npm run vendor` and
-     `npm run sync:ui` refresh. Declared with the surface this app actually
-     uses — not the library's full API, which we would only get wrong. */
+  /* ── Vendored third-party ──────────────────────────────────────────────────
+     Loaded as plain scripts from src/vendor/, which `npm run vendor` refreshes.
+     Declared with the surface this app actually uses — not the library's full
+     API, which we would only get wrong.
 
-  /** @embabel/appliance-ui — the living-graph backdrop, shared with the console. */
-  const EmbabelBackdrop: {
-    startBackdrop(
-      canvas: HTMLCanvasElement,
-      options: { snippets: string[]; brightness?: number; snippetCount?: { wide: number; narrow: number } },
-    ): () => void
-  }
-
-  /* @embabel/vc, @embabel/studio-kit and @embabel/code-surface ship their own
-     .d.ts in the client repo, but arrive here as prebuilt IIFE bundles with no
-     types alongside. Typing them by hand would be a second copy of a contract
-     that already exists and would drift from it; `any` says honestly that this
-     boundary is unchecked. */
-  const EmbabelVc: any
-  const EmbabelStudioKit: any
-  const EmbabelCodeSurface: any
+     `@embabel/appliance-kit` USED TO BE DECLARED HERE, as three `any`s standing
+     in for EmbabelVc, EmbabelStudioKit and EmbabelCodeSurface. It is a real
+     dependency now and is imported, so its own .d.ts applies and the unchecked
+     boundary is gone. What is left below is third-party code that genuinely
+     ships no types we can use. */
 
   /** CodeMirror 5, vendored. Its own types are not vendored with it. */
   const CodeMirror: any

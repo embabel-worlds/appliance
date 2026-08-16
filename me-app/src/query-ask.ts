@@ -4,11 +4,10 @@
 import { $ } from './dom'
 import type { Settings } from './types'
 import { EMPTY_SETTINGS, type StudioDeps } from './studio-deps'
+import { formatDuration, setStatus } from '@embabel/appliance-kit/studio-kit'
 
 export const queryAsk = (() => {
-/* global EmbabelVc, EmbabelStudioKit */
-const { setStatus } = EmbabelStudioKit
-const { formatDuration } = EmbabelStudioKit
+
 const validityEl = $('validity')
 const verdictEl = $('verdict')
 /* Filled by init(deps) before anything here runs — see StudioDeps. */

@@ -78,30 +78,23 @@ export interface AskStep {
   [key: string]: unknown
 }
 
-/** One label in the virtual-Cypher schema snapshot. */
-export interface SchemaLabel {
-  label: string
-  anchor?: boolean
-  description?: string
-  /** How many of these the world holds, where the snapshot counted. */
-  sampleCount?: number
-  /** False when the property list is a sample rather than the whole shape. */
-  exhaustive?: boolean
-  properties?: Array<{ name: string; type?: string; description?: string; sparse?: boolean }>
-}
-
-/** One relationship in that snapshot. */
-export interface SchemaRel {
-  type: string
-  from: string
-  to: string
-}
-
-/** The reachable shape of the world, as the studio reads it. */
-export interface SchemaSnapshot {
-  labels: SchemaLabel[]
-  relationships: SchemaRel[]
-}
+/*
+ * THE SCHEMA SNAPSHOT IS THE KIT'S, NOT OURS.
+ *
+ * These were hand-written here and had quietly drifted from the server: this file
+ * had `properties` optional on a label and `type` optional on a property, while
+ * `KgSchemaLabel` and `KgSchemaProperty` mark both REQUIRED in the surface
+ * `OpenApiClientContractTest` guards. Nothing caught it, because the studio
+ * reached the semantics through an untyped global.
+ *
+ * Re-exported rather than restated so there is one reading of the snapshot, and
+ * so the callers below keep the names they already use.
+ */
+export type {
+  GraphSchema as SchemaSnapshot,
+  SchemaLabel,
+  SchemaRelationship as SchemaRel,
+} from '@embabel/appliance-kit/vc'
 
 /** A saved view, with whatever parameters it declares. */
 export interface ViewSpec {

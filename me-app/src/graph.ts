@@ -1,18 +1,16 @@
 // The living-graph background, as this window's share of it.
 //
-// The animation itself is @embabel/appliance-ui — one copy, drawn the same way
-// behind the Worlds console and behind this app, vendored into
-// src/vendor/embabel-backdrop.js like every other shared build. What is left
-// here is what is genuinely Me's: what the fragments say, and how loud it is.
-//
-// Loaded straight off index.html as a plain browser script, like renderer.js —
-// no module system here, so the package arrives as the EmbabelBackdrop global.
+// The animation itself is the kit's — one copy, drawn the same way behind the
+// Worlds console and behind this app. What is left here is what is genuinely
+// Me's: what the fragments say, and how loud it is.
 
-/* global window, document, EmbabelBackdrop */
+/* global window, document */
+
+import { startBackdrop } from '@embabel/appliance-kit/backdrop'
 
 ;(() => {
   const canvas = document.getElementById('graphbg')
-  if (!canvas || typeof EmbabelBackdrop === 'undefined') return
+  if (!canvas) return
 
   // What THIS app actually does, not lorem: the background is the sensor
   // narrating itself, the way the console's is the world talking to itself.
@@ -31,7 +29,7 @@
     'screen locked → presence: away',
   ]
 
-  EmbabelBackdrop.startBackdrop(canvas as HTMLCanvasElement, {
+  startBackdrop(canvas as HTMLCanvasElement, {
     snippets: SNIPPETS,
     // Quieter than the console's reference weight. The console is a control room
     // where the backdrop is most of what an empty screen shows; this window is a

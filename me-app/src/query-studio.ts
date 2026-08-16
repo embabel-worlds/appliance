@@ -22,15 +22,15 @@
 // never disagree; and the per-user scope is applied server-side, so an edited
 // query can be wrong but not unsafe.
 
-/* global EmbabelVc */
 /*
- * The virtual-Cypher semantics come from @embabel/vc — composing a query, reading
- * the schema, finding a view's parameters. Vendored as a plain script (this
- * renderer has no module system), same as marked and CodeMirror next door.
+ * The virtual-Cypher semantics come from the kit — composing a query, reading the
+ * schema, finding a view's parameters. Imported, and bundled in by esbuild: the
+ * renderer has no module system of its own, but the SOURCES do, and the bundle is
+ * a classic script by the time the page loads it.
  *
  * Nothing about the engine's shape is decided in this file any more. That is the
- * point: the console builds the same queries from the same package rather than
- * from a second, drifting reading of VIRTUAL_CYPHER.md.
+ * point: the Worlds console builds the same queries from the same package rather
+ * than from a second, drifting reading of VIRTUAL_CYPHER.md.
  */
 import type { Settings } from './types'
 import { $ } from './dom'
@@ -42,13 +42,22 @@ import { querySchemaPanel } from './query-schema-panel'
 import './graph'
 import { EMPTY_SETTINGS, type StudioDeps } from './studio-deps'
 import type { SchemaSnapshot } from './wire'
-
-const { aliasMap, rowColumns, rowsToMarkdown, rowsToCsv } = EmbabelVc
+import * as Vc from '@embabel/appliance-kit/vc'
+import { aliasMap, rowColumns, rowsToCsv, rowsToMarkdown } from '@embabel/appliance-kit/vc'
 /* The shared EDITOR BEHAVIOR — hint orchestration, the definition tooltip,
- * durations, acknowledged copies — from @embabel/studio-kit, with EmbabelVc
- * injected so this page holds exactly one copy of the semantics. */
-/* global EmbabelStudioKit */
-const { formatDuration, copyWithNod, createDefinitionTooltip, definitionTitle, createCypherHint, setStatus } = EmbabelStudioKit
+ * durations, acknowledged copies. The semantics are passed IN rather than
+ * imported there, so the two packages compose without studio-kit depending on
+ * vc. */
+import {
+  copyWithNod,
+  createCypherHint,
+  createDefinitionTooltip,
+  definitionTitle,
+  formatDuration,
+  setStatus,
+} from '@embabel/appliance-kit/studio-kit'
+
+
 
 /** @param {string} id */
 const els = {
@@ -126,7 +135,7 @@ const KEYWORDS = [
 /* The custom hint: what fits HERE, from the schema, never a generic word
  * list — the kit's orchestration over @embabel/vc's decisions, identical on
  * every surface that mounts it. */
-CodeMirror.registerHelper('hint', 'cypher', createCypherHint(CodeMirror, EmbabelVc, {
+CodeMirror.registerHelper('hint', 'cypher', createCypherHint(CodeMirror, Vc, {
   schema: () => schema,
   keywords: KEYWORDS,
 }))

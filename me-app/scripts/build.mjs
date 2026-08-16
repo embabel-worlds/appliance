@@ -18,6 +18,11 @@
  * The vendored libraries in src/vendor are NOT bundled. They stay `<script>`
  * tags in the HTML, publishing the globals that src/globals.d.ts declares —
  * they are prebuilt IIFEs already, and bundling them would only re-wrap them.
+ * That is now only third-party code (CodeMirror, marked, DOMPurify).
+ * `@embabel/appliance-kit` used to be vendored the same way and is not any
+ * more: it is a dependency, imported by the sources and bundled in like
+ * anything else, so its types arrive with it instead of being restated as
+ * `any` in globals.d.ts.
  */
 
 import { build, context } from 'esbuild'
@@ -58,6 +63,14 @@ const node = [
   external: ['electron'],
 }))
 
+/*
+ * The kit's stylesheet, resolved through node_modules and inlined into one file
+ * every window links. A `<link>` at a `file://` origin needs a real path on
+ * disk, so the CSS gets the same treatment as the JS: built into dist/ rather
+ * than copied into src/vendor/.
+ */
+const styles = [{ ...common, entryPoints: ['src/kit.css'], outfile: 'dist/kit.css' }]
+
 /** One bundle per window, named for the page that loads it. */
 const browser = [
   { entryPoints: ['src/renderer.ts'], outfile: 'dist/renderer.js' },
@@ -66,7 +79,7 @@ const browser = [
   { entryPoints: ['src/logview.ts'], outfile: 'dist/logview.js' },
 ].map((c) => ({ ...common, ...c, platform: 'browser' }))
 
-const configs = [...node, ...browser]
+const configs = [...node, ...browser, ...styles]
 
 if (watch) {
   for (const config of configs) {

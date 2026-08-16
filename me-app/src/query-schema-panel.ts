@@ -7,12 +7,11 @@ import type { Settings } from './types'
 import { EMPTY_SETTINGS, type StudioDeps } from './studio-deps'
 import type { SchemaLabel, SchemaRel, SchemaSnapshot } from './wire'
 import type { Control } from './dom'
+import { anchorLabels } from '@embabel/appliance-kit/vc'
+import { definitionTitle, setStatus } from '@embabel/appliance-kit/studio-kit'
 export const querySchemaPanel = (() => {
-/* global EmbabelVc, EmbabelStudioKit */
 const $ = (id: string) => document.getElementById(id)
-const { setStatus } = EmbabelStudioKit
-const { anchorLabels } = EmbabelVc
-const { definitionTitle } = EmbabelStudioKit
+
 const els = { schema: $('schema'), schemaFilter: $('schema-filter') }
 /* Filled by init(deps) before anything here runs — see StudioDeps. */
 let settings: Settings = EMPTY_SETTINGS

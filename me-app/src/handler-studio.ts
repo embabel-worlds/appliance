@@ -15,7 +15,7 @@
 //  - Cypher inside kg calls completes through @embabel/vc, the same package
 //    the Query Studio next door and the Worlds console compose from.
 
-/* global EmbabelCodeSurface, EmbabelVc, CodeMirror */
+/* global CodeMirror */
 
 import type { Settings } from './types'
 import { $ } from './dom'
@@ -23,11 +23,14 @@ import { restoreTheme } from './theme'
 import './graph'
 import { EMPTY_SETTINGS, type StudioDeps } from './studio-deps'
 import type { Control } from './dom'
+import { gatewayPathAt, membersOf, parseSurface } from '@embabel/appliance-kit/code-surface'
+import * as Vc from '@embabel/appliance-kit/vc'
+import { esc } from '@embabel/appliance-kit/vc'
+/* Shared editor behavior — the same package the Query Studio next door uses, so
+ * the same keystroke completes the same way on both surfaces. */
+import { copyWithNod, cypherFragmentCompletions, formatDuration } from '@embabel/appliance-kit/studio-kit'
 
-const { parseSurface, membersOf, gatewayPathAt } = EmbabelCodeSurface
-/* Shared editor behavior — @embabel/studio-kit, semantics injected. */
-/* global EmbabelStudioKit */
-const { formatDuration, copyWithNod, cypherFragmentCompletions } = EmbabelStudioKit
+
 
 /** @param {string} id */
 const els = {
@@ -217,7 +220,7 @@ CodeMirror.registerHelper('hint', 'javascript', (editor: any) => {
 /** Cypher inside a kg call completes through the SAME kit path as the Query
  * Studio next door — the fragment doubles as its own alias source. */
 function cypherCompletions(cypher: string) {
-  return cypherFragmentCompletions(EmbabelVc, schema, cypher, cypher)
+  return cypherFragmentCompletions(Vc, schema, cypher, cypher)
 }
 
 // ---------------------------------------------------------------------------
@@ -601,7 +604,6 @@ async function loadSample() {
   sample = null
   els.sample.hidden = true
   if (!type) return
-  const { esc } = EmbabelVc
   let result
   try {
     result = await window.me.vcExecute(
