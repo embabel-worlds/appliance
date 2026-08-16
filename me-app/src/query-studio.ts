@@ -196,9 +196,62 @@ cm.getWrapperElement().addEventListener('mouseleave', () => {
 let validateTimer: ReturnType<typeof setTimeout> | null = null
 let validateSupported = true
 
+/*
+ * WHETHER THE VIOLATIONS ARE ON SCREEN, which is not the same question as whether the query is
+ * valid.
+ *
+ * The preflight runs as you type, and half-typed Cypher is invalid by construction: `e.d` on the
+ * way to `e.division` gets back a paragraph explaining that `d` is not a property of Electorate
+ * and listing the twelve that are. Correct, useful when you asked, and — arriving mid-keystroke,
+ * in red — it makes the editor look broken rather than helpful.
+ *
+ * So the PILL stays live: a quiet ✓ or "3 schema problem(s)", which is a signal and costs nothing
+ * to glance past. The PROSE waits until you ask for an answer (Run) or ask for it directly (the
+ * pill is clickable while there is something to show). Typing hides it again, because a verdict is
+ * stale the moment the text moves.
+ *
+ * The Worlds console does exactly this, in its own idiom. Same rule, so the two studios do not
+ * disagree about when a half-written query is worth shouting about.
+ */
+let lastViolations: string[] = []
+let violationsShown = false
+
+function renderVerdict() {
+  els.verdict.innerHTML = ''
+  if (!violationsShown) return
+  for (const violation of lastViolations) {
+    const line = document.createElement('div')
+    line.className = 'violation'
+    line.textContent = violation
+    els.verdict.append(line)
+  }
+}
+
+/** Say what is wrong, now — from Run, or from the user clicking the status. */
+function revealViolations() {
+  violationsShown = true
+  renderVerdict()
+  paintValidity()
+}
+
+function paintValidity() {
+  if (!lastViolations.length) return
+  setStatus(els.validity, false, violationsShown
+    ? `${lastViolations.length} schema problem(s)`
+    : `${lastViolations.length} schema problem(s) — click to show`)
+  els.validity.classList.toggle('revealable', !violationsShown)
+}
+
+els.validity.addEventListener('click', () => {
+  if (lastViolations.length && !violationsShown) revealViolations()
+})
+
 function scheduleValidation() {
   if (!validateSupported) return
   if (validateTimer) clearTimeout(validateTimer)
+  // Anything painted about the OLD text is wrong now.
+  violationsShown = false
+  renderVerdict()
   setStatus(els.validity, null, '…')
   validateTimer = setTimeout(() => void validateNow(), 700)
 }
@@ -206,6 +259,8 @@ function scheduleValidation() {
 async function validateNow() {
   const cypher = editorText().trim()
   if (!cypher) {
+    lastViolations = []
+    violationsShown = false
     els.validity.textContent = ''
     els.verdict.innerHTML = ''
     return
@@ -217,18 +272,17 @@ async function validateNow() {
     els.validity.textContent = ''
     return
   }
-  els.verdict.innerHTML = ''
   if (result.valid) {
+    lastViolations = []
+    violationsShown = false
+    renderVerdict()
+    els.validity.classList.remove('revealable')
     setStatus(els.validity, true, '✓ schema-valid')
     return
   }
-  setStatus(els.validity, false, `${result.violations.length} schema problem(s)`)
-  for (const violation of result.violations) {
-    const line = document.createElement('div')
-    line.className = 'violation'
-    line.textContent = violation
-    els.verdict.append(line)
-  }
+  lastViolations = result.violations
+  renderVerdict()
+  paintValidity()
 }
 
 els.copy.addEventListener('click', () => void copyWithNod(els.copy, 'Copy', editorText()))
@@ -330,6 +384,8 @@ function remember(cypher: string, rows: Array<Record<string, unknown>>) {
 async function run() {
   const cypher = editorText().trim()
   if (!cypher) return
+  // Asking for an answer is asking why you cannot have one.
+  revealViolations()
   els.run.disabled = true
   els.results.innerHTML = ''
   setStatus(els.runStatus, null, 'Running — relevance joins fetch live, give it a moment…')
