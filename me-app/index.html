@@ -629,11 +629,10 @@
     </div><!-- /chat -->
   </div>
 
-  <script src="src/vendor/marked.umd.js"></script>
-  <script src="src/vendor/purify.js"></script>
   <!-- The shared backdrop animation, then this window's content and volume for it. -->
-  <!-- One bundle per window: esbuild output, a classic script like the
-       vendored libraries above (ES modules are refused over file://). -->
+  <!-- One bundle per window: esbuild output, an IIFE and therefore a CLASSIC
+       script — ES modules are refused over file://, and everything it needs,
+       third-party libraries included, is inside it. -->
   <script src="dist/renderer.js"></script>
 </body>
 </html>

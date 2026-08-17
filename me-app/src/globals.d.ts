@@ -45,19 +45,13 @@ declare global {
     querySchemaPanel: unknown
   }
 
-  /* ── Vendored third-party ──────────────────────────────────────────────────
-     Loaded as plain scripts from src/vendor/, which `npm run vendor` refreshes.
-     Declared with the surface this app actually uses — not the library's full
-     API, which we would only get wrong.
-
-     `@embabel/appliance-kit` USED TO BE DECLARED HERE, as three `any`s standing
-     in for EmbabelVc, EmbabelStudioKit and EmbabelCodeSurface. It is a real
-     dependency now and is imported, so its own .d.ts applies and the unchecked
-     boundary is gone. What is left below is third-party code that genuinely
-     ships no types we can use. */
-
-  /** CodeMirror 5, vendored. Its own types are not vendored with it. */
-  const CodeMirror: any
+  /* NOTHING THIRD-PARTY IS DECLARED HERE ANY MORE, and that is the point.
+     CodeMirror, marked and DOMPurify were `<script>` tags from src/vendor/
+     publishing globals this file typed as `any` — an unchecked boundary in the
+     two files that use them most. @embabel/appliance-kit left first, and the
+     conversion found two real bugs those `any`s had been hiding. The rest
+     followed: they are dependencies now, imported and bundled, so their own
+     .d.ts files apply and there is nothing left for this file to promise. */
 }
 
 export {}

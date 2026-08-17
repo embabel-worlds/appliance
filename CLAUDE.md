@@ -45,23 +45,27 @@ the bridge rather than restated beside it.
 `strictNullChecks` is off, deliberately and temporarily — see the note in
 `tsconfig.json`. Turning it on is its own change.
 
-**Third-party** browser libraries (CodeMirror, marked, DOMPurify) are
-**vendored** into `src/vendor/` and loaded as plain `<script>` tags ahead of the
-bundles, publishing the globals that `src/globals.d.ts` declares. The packages
-themselves are devDependencies and `npm run vendor` re-copies the built files
-after an upgrade. This keeps the packaged app's `files` list honest and avoids
-shipping `node_modules` for something that is one file.
+**Nothing is vendored. Everything is imported.** There is no `src/vendor/`, no
+`npm run vendor`, and no third-party global in `src/globals.d.ts` — CodeMirror,
+marked, DOMPurify and `@embabel/appliance-kit` are all dependencies, imported by
+the sources and bundled into each window by esbuild like any other import. Do not
+reintroduce a copied library; if a new one is needed, `npm install` it and import
+it.
 
-**`@embabel/appliance-kit` is not vendored — it is imported.** It is a real
-dependency (`github:johnsonr/appliance-kit#main`), and esbuild bundles it into
-each window's bundle like any other import, so the client, the virtual-Cypher
-semantics, the editor behaviour and the gateway-surface reader all arrive with
-their own `.d.ts`. It used to be vendored as IIFE globals declared `any` in
-`globals.d.ts`; converting found real bugs those `any`s were hiding — a wrong
-callback annotation in `query-views.ts`, and a `SchemaLabel` in `wire.ts` that
-had drifted from the server's guarded contract. The same package backs the
-Worlds console, which is the point. Its CSS comes in the same way: `src/kit.css`
-imports it and esbuild emits `dist/kit.css`, which every page links.
+The kit went first and made the case. As IIFE globals it was three `any`s in
+`globals.d.ts`, and converting it found real bugs those `any`s had been hiding —
+a wrong callback annotation in `query-views.ts`, and a `SchemaLabel` in `wire.ts`
+that had drifted from the server's guarded contract. The same package backs the
+Worlds console, which is the point. The remaining three followed for the same
+three reasons: their own `.d.ts` files apply, `npm update` is the upgrade rather
+than a copy script somebody has to remember to run, and the packaged app's
+`files` list stops carrying a second copy of code npm already installed.
+
+CSS arrives the same way, because a `<link>` at a `file://` origin needs a real
+path on disk and `dist/` is one: `src/kit.css` imports the shared visual language
+and esbuild emits `dist/kit.css`, which every page links; `src/editor.css` does
+the same for CodeMirror's stylesheet, linked by the two studio pages that have an
+editor.
 
 ### Rendering model output
 

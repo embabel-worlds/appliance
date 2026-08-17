@@ -66,8 +66,9 @@
     <span id="status" class="status"></span>
   </div>
   <div id="log"></div>
-  <!-- One bundle per window: esbuild output, a classic script like the
-       vendored libraries above (ES modules are refused over file://). -->
+  <!-- One bundle per window: esbuild output, an IIFE and therefore a CLASSIC
+       script — ES modules are refused over file://, and everything it needs,
+       third-party libraries included, is inside it. -->
   <script src="dist/logview.js"></script>
 </body>
 </html>

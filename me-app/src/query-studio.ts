@@ -32,6 +32,15 @@
  * point: the Worlds console builds the same queries from the same package rather
  * than from a second, drifting reading of VIRTUAL_CYPHER.md.
  */
+/*
+ * CodeMirror 5, imported rather than loaded as a global. The MODE and the ADDON
+ * are imported for their side effect — each registers itself on the CodeMirror
+ * singleton — so they must come after the core, which esbuild preserves.
+ */
+import CodeMirror from 'codemirror'
+import 'codemirror/mode/cypher/cypher.js'
+import 'codemirror/addon/hint/show-hint.js'
+
 import type { Settings } from './types'
 import { $ } from './dom'
 import { restoreTheme } from './theme'
@@ -75,8 +84,11 @@ const els = {
 // from the schema, ⌘⏎ to run. Vendored like every other browser library here.
 // ---------------------------------------------------------------------------
 
-/* global CodeMirror, queryComposer, queryAsk, querySchemaPanel, queryViews */
-const cm = CodeMirror.fromTextArea($('editor'), {
+const cm = /* `$` answers `Control` — this app's union of the form-control properties its
+ * call sites read — and CodeMirror wants the real textarea. The narrowing is the
+ * assertion `$` already makes, stated once more where the DOM API is stricter
+ * about it than this app's own helper. */
+CodeMirror.fromTextArea($('editor') as unknown as HTMLTextAreaElement, {
   mode: 'application/x-cypher-query',
   lineNumbers: true,
   viewportMargin: Infinity,

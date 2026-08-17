@@ -10,7 +10,6 @@
     "start": "npm run build && electron .",
     "smoke": "npm run build && node dist/smoke.js",
     "typecheck": "tsc --noEmit",
-    "vendor": "cp node_modules/marked/lib/marked.umd.js src/vendor/marked.umd.js && cp node_modules/dompurify/dist/purify.js src/vendor/purify.js && cp node_modules/codemirror/lib/codemirror.js node_modules/codemirror/lib/codemirror.css node_modules/codemirror/mode/cypher/cypher.js node_modules/codemirror/mode/javascript/javascript.js node_modules/codemirror/addon/hint/show-hint.js node_modules/codemirror/addon/hint/show-hint.css src/vendor/",
     "prepackage": "npm run build",
     "package": "electron-builder --mac --dir",
     "predist": "npm run build",
@@ -18,12 +17,10 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "codemirror": "^5.65.21",
-    "dompurify": "^3.4.13",
+    "@types/codemirror": "^5.60.18",
     "electron": "^33.0.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.24.2",
-    "marked": "^18.0.9",
     "typescript": "^5.7.2"
   },
   "build": {
@@ -36,7 +33,6 @@
     },
     "files": [
       "dist/**/*",
-      "src/vendor/**/*",
       "index.html",
       "query-studio.html",
       "handler-studio.html",
@@ -73,6 +69,9 @@
     }
   },
   "dependencies": {
-    "@embabel/appliance-kit": "github:johnsonr/appliance-kit#main"
+    "@embabel/appliance-kit": "github:johnsonr/appliance-kit#main",
+    "codemirror": "^5.65.21",
+    "dompurify": "^3.4.13",
+    "marked": "^18.0.9"
   }
 }

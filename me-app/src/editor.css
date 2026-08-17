@@ -1,0 +1,16 @@
+/*
+ * CodeMirror's own stylesheet, resolved through node_modules — the studios' half
+ * of what `src/kit.css` does for the shared visual language.
+ *
+ * A `<link>` at a `file://` origin needs a real path on disk, so the CSS gets the
+ * same treatment as the JS: built into `dist/` rather than copied into a vendor
+ * folder. Linked by `query-studio.html` and `handler-studio.html` only; the other
+ * two windows have no editor and should not pay for one.
+ *
+ * The token COLOURS are not here. CM5's stock theme is written for a white page —
+ * `cm-builtin` paints #30a, `cm-keyword` a navy, both invisible on this ground —
+ * so each studio page overrides them in its own <style> block against the app's
+ * palette. This file is the structural stylesheet those overrides need underneath.
+ */
+@import 'codemirror/lib/codemirror.css';
+@import 'codemirror/addon/hint/show-hint.css';

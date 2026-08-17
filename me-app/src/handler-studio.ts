@@ -15,7 +15,14 @@
 //  - Cypher inside kg calls completes through @embabel/vc, the same package
 //    the Query Studio next door and the Worlds console compose from.
 
-/* global CodeMirror */
+/*
+ * CodeMirror 5, imported rather than loaded as a global. The MODE and the ADDON
+ * are imported for their side effect — each registers itself on the CodeMirror
+ * singleton — so they must come after the core, which esbuild preserves.
+ */
+import CodeMirror from 'codemirror'
+import 'codemirror/mode/javascript/javascript.js'
+import 'codemirror/addon/hint/show-hint.js'
 
 import type { Settings } from './types'
 import { $ } from './dom'
@@ -86,7 +93,11 @@ let sample: Record<string, any> | null = null
 // The editor.
 // ---------------------------------------------------------------------------
 
-const cm = CodeMirror.fromTextArea($('editor'), {
+const cm = /* `$` answers `Control` — this app's union of the form-control properties its
+ * call sites read — and CodeMirror wants the real textarea. The narrowing is the
+ * assertion `$` already makes, stated once more where the DOM API is stricter
+ * about it than this app's own helper. */
+CodeMirror.fromTextArea($('editor') as unknown as HTMLTextAreaElement, {
   mode: 'text/typescript',
   lineNumbers: true,
   viewportMargin: Infinity,

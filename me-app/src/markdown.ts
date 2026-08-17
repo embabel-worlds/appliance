@@ -4,45 +4,40 @@
  * we render it, so painting it as raw text is a choice to show `**bold**` and
  * `- item` to the user — this file makes the other choice.
  *
- * marked parses; DOMPurify sanitizes; this file is only the policy between
- * them. Both are vendored as plain browser scripts under src/vendor (refreshed
- * by `npm run vendor`), because the renderer has no module system and no Node:
- * index.html loads them with <script> tags like everything else here.
+ * marked parses; DOMPurify sanitizes; THE POLICY BETWEEN THEM IS THE KIT'S.
+ * `MARKDOWN_OPTIONS` and `MARKDOWN_SANITIZE` come from
+ * `@embabel/appliance-kit/studio-kit`, because the Worlds console renders the
+ * same assistant's prose and a tag one surface allows while the other strips is
+ * one answer rendering two ways. What stays here is what only Electron needs.
  *
- * The policy, in three parts:
+ * Both libraries are IMPORTED. They used to be vendored under `src/vendor` as
+ * browser globals declared `any`; they are dependencies now, bundled into each
+ * window by esbuild like everything else, so their own types apply.
+ *
+ * The policy, in three parts — the first two shared, the third Electron's own:
  *
  *   1. Nothing executable survives. DOMPurify is the boundary, not the parser:
  *      text arriving from a model — or from a document a model quoted — is
  *      untrusted, and marked will happily pass through raw HTML if you let it.
- *   2. Links open in the user's browser, never in this window. An Electron
+ *   2. Only what written prose needs, and only http(s) hrefs.
+ *   3. Links open in the user's browser, never in this window. An Electron
  *      renderer that navigates away from index.html has no way back, so every
- *      anchor is rewritten to go out through the shell.
- *   3. Callers can claim plain-text runs before they are painted. The Ask tab
- *      uses that to turn [1] into a citation chip, without this file knowing
- *      what a citation is.
+ *      anchor is rewritten to go out through the shell. The console's equivalent
+ *      is a new tab; the kit holds no opinion, which is why this step is here.
+ *
+ * Callers can also claim plain-text runs before they are painted. The Ask tab
+ * uses that to turn [1] into a citation chip, without this file knowing what a
+ * citation is.
  */
 
-/* Vendored as plain scripts before this bundle — see globals.d.ts. */
-declare const marked: any
-declare const DOMPurify: any
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+import { MARKDOWN_OPTIONS, MARKDOWN_SANITIZE } from '@embabel/appliance-kit/studio-kit'
 
-marked.setOptions({
-  gfm: true, /* tables, strikethrough, autolinks — what the assistant writes */
-  breaks: true, /* chat messages use single newlines to mean single newlines */
-})
-
-/* Allow only what a written answer needs. No forms, no media, no ids — and
-   no target/rel games, since every link is rewired below anyway. */
-const CLEAN = {
-  ALLOWED_TAGS: [
-    'p', 'br', 'hr', 'strong', 'em', 'del', 'code', 'pre', 'blockquote',
-    'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'table', 'thead', 'tbody', 'tr', 'th', 'td',
-  ],
-  ALLOWED_ATTR: ['href', 'title', 'start'],
-  ALLOWED_URI_REGEXP: /^https?:\/\//i,
-  RETURN_DOM_FRAGMENT: true,
-}
+/* A FRAGMENT, not the kit's HTML string: the two steps below walk nodes — link
+   rewiring needs the anchors, citation chips need the text nodes. The console
+   takes the string form of the same policy because React wants one. */
+const CLEAN = { ...MARKDOWN_SANITIZE, RETURN_DOM_FRAGMENT: true }
 
 /**
  * Parse [text] as markdown and return a sanitized fragment.
@@ -51,7 +46,7 @@ const CLEAN = {
  * @returns {DocumentFragment}
  */
 function render(text: string, decorate?: (text: string) => Node[]) {
-  const frag = DOMPurify.sanitize(marked.parse(String(text ?? '')), CLEAN)
+  const frag = DOMPurify.sanitize(marked.parse(String(text ?? ''), MARKDOWN_OPTIONS) as string, CLEAN) as unknown as DocumentFragment
   for (const a of frag.querySelectorAll('a')) externalize(a)
   if (decorate) decorateText(frag, decorate)
   return frag

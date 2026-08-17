@@ -5,8 +5,7 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
   <title>Embabel Me — Query Studio</title>
-  <link rel="stylesheet" href="src/vendor/codemirror.css" />
-  <link rel="stylesheet" href="src/vendor/show-hint.css" />
+  <link rel="stylesheet" href="dist/editor.css" />
   <link rel="stylesheet" href="dist/kit.css" />
   <style id="theme"></style>
   <style>
@@ -419,13 +418,9 @@
       </section>
     </div>
   </main>
-  <!-- The virtual-Cypher semantics, shared with the Worlds console. Must load
-       before studio.js, which binds to it at parse time. -->
-  <script src="src/vendor/codemirror.js"></script>
-  <script src="src/vendor/cypher.js"></script>
-  <script src="src/vendor/show-hint.js"></script>
-  <!-- One bundle per window: esbuild output, a classic script like the
-       vendored libraries above (ES modules are refused over file://). -->
+  <!-- One bundle per window: esbuild output, an IIFE and therefore a CLASSIC
+       script — ES modules are refused over file://, and everything it needs,
+       third-party libraries included, is inside it. -->
   <script src="dist/query-studio.js"></script>
 </body>
 </html>

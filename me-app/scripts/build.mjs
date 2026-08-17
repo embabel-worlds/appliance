@@ -15,14 +15,20 @@
  * second, and `npm run typecheck` is the gate that has opinions. A build that
  * also typechecked would make every edit wait for the slower of the two.
  *
- * The vendored libraries in src/vendor are NOT bundled. They stay `<script>`
- * tags in the HTML, publishing the globals that src/globals.d.ts declares —
- * they are prebuilt IIFEs already, and bundling them would only re-wrap them.
- * That is now only third-party code (CodeMirror, marked, DOMPurify).
- * `@embabel/appliance-kit` used to be vendored the same way and is not any
- * more: it is a dependency, imported by the sources and bundled in like
- * anything else, so its types arrive with it instead of being restated as
- * `any` in globals.d.ts.
+ * NOTHING IS VENDORED ANY MORE. `src/vendor/` held CodeMirror, marked and
+ * DOMPurify as prebuilt IIFEs loaded by `<script>` tags, publishing globals that
+ * `src/globals.d.ts` declared as `any`. `@embabel/appliance-kit` arrived the same
+ * way and was the first to leave; the rest followed for the same three reasons.
+ *
+ * They are real dependencies now, imported by the sources and bundled in like
+ * anything else. What that buys: their own `.d.ts` files apply, so the untyped
+ * boundary is gone (converting the kit alone found two real bugs those `any`s
+ * were hiding); `npm update` is the upgrade rather than a copy script somebody
+ * has to remember to run; and the packaged app's `files` list stops carrying a
+ * second copy of code npm already installed.
+ *
+ * Their CSS gets the same treatment — see `src/kit.css` and `src/editor.css`.
+ * A `<link>` at a `file://` origin needs a real path on disk, and `dist/` is one.
  */
 
 import { build, context } from 'esbuild'
@@ -64,12 +70,14 @@ const node = [
 }))
 
 /*
- * The kit's stylesheet, resolved through node_modules and inlined into one file
- * every window links. A `<link>` at a `file://` origin needs a real path on
- * disk, so the CSS gets the same treatment as the JS: built into dist/ rather
- * than copied into src/vendor/.
+ * Third-party stylesheets, resolved through node_modules and inlined. `kit.css`
+ * is the shared visual language and every window links it; `editor.css` is
+ * CodeMirror's, linked by the two studio pages that have an editor.
  */
-const styles = [{ ...common, entryPoints: ['src/kit.css'], outfile: 'dist/kit.css' }]
+const styles = [
+  { ...common, entryPoints: ['src/kit.css'], outfile: 'dist/kit.css' },
+  { ...common, entryPoints: ['src/editor.css'], outfile: 'dist/editor.css' },
+]
 
 /** One bundle per window, named for the page that loads it. */
 const browser = [

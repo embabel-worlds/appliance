@@ -249,10 +249,13 @@ the request never left the app.
 - **Outbound-only.** The app is a client of the appliance API and never listens
   on a port. Future effect verbs (notify, open URL…) will ride the same
   direction via long-polling an outbox — the appliance never calls the host.
-- **Nothing ships that isn't ours.** Binary plists are read via `plutil`; HTTP
-  is Node's built-in fetch; `dependencies` is empty, so the packaged app carries
-  no runtime library at all. Everything the pages need is either bundled from
-  `src/` or vendored into `src/vendor/`.
+- **Nothing ships loose.** Binary plists are read via `plutil` and HTTP is
+  Node's built-in fetch, so the app adds nothing of its own to either. What the
+  pages do need — `@embabel/appliance-kit`, CodeMirror, marked, DOMPurify — is
+  declared as a dependency and BUNDLED INTO `dist/` by esbuild, never copied into
+  the tree. The packaged app therefore carries one artifact per window and no
+  `node_modules`, which is what the old `src/vendor/` folder was for; importing
+  gets the same result and brings each library's types with it.
 - **TypeScript, bundled per window.** esbuild emits, `tsc --noEmit` checks, and
   the two are separate on purpose: the build stays in milliseconds and a type
   error never blocks a launch. The wire shapes live as real interfaces in
