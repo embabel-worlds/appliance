@@ -298,7 +298,7 @@ without the model ever seeing the token.
 | Variable | Unlocks |
 |---|---|
 | `BRAVE_API_KEY` | web search |
-| `GITHUB_TOKEN` | the GitHub realm — issues, pull requests, repositories |
+| `GITHUB_TOKEN` | the GitHub realm — issues, pull requests, repositories — and cloning **private** realms and world templates |
 | `TELEGRAM_BOT_TOKEN` | chatting with the assistant from Telegram |
 | `SLACK_APP_TOKEN` | chatting with the assistant from Slack |
 

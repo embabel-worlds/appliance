@@ -78,7 +78,14 @@ services:
       # World template for NEW worlds — same seam as the me mode; see its file.
       - ASSISTANT_BOOTSTRAP_WORLD
       - BRAVE_API_KEY
+      # ALL THREE NAMES the assistant looks for (WorldBootstrap.resolveGitHubToken), because a
+      # developer's shell rarely has the first one: `gh` writes GH_TOKEN, and forwarding only
+      # GITHUB_TOKEN meant a machine with a perfectly good token still failed to clone a private
+      # realm. Bare pass-through, so an unset name stays unset in the container rather than
+      # arriving as an empty string the app would have to special-case.
       - GITHUB_TOKEN
+      - GH_TOKEN
+      - GITHUB_PERSONAL_ACCESS_TOKEN
       - TELEGRAM_BOT_TOKEN
       - SLACK_APP_TOKEN
     volumes:

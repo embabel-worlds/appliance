@@ -71,6 +71,11 @@ PROVIDER_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
 }
 
+# The GitHub token names the assistant itself checks, in its order
+# (WorldBootstrap.resolveGitHubToken). A private realm or world template is cloned over HTTPS with
+# this as the username, so without one the clone 404s and the realm is quietly absent.
+GITHUB_TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN")
+
 
 class SetupError(Exception):
     pass
@@ -322,6 +327,56 @@ def container_base_url(container: str) -> str | None:
     return None
 
 
+def github_token() -> tuple[str, str] | None:
+    """A GitHub token for cloning PRIVATE realms and world templates, and where it came from.
+
+    Same courtesy the provider keys get in `from_environment`: a developer who already has one
+    should not be asked for it. The difference is where it lives. An OpenAI key is an env var or
+    nothing, but a GitHub token on a working machine is usually in the `gh` CLI's own store and NOT
+    exported — so the env vars are checked first (any of the three the assistant reads) and `gh` is
+    the fallback that makes it automatic for most people.
+
+    Returns None when there is nothing to find, which is the ordinary case for a user who only ever
+    installs public realms. Nothing is written to disk: see `compose_env`.
+    """
+    for var in GITHUB_TOKEN_VARS:
+        value = os.environ.get(var, "").strip()
+        if value:
+            return value, f"${var}"
+    try:
+        run = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return None  # no gh, or it misbehaved — a public-realm install is unaffected
+    token = run.stdout.strip() if run.returncode == 0 else ""
+    return (token, "the gh CLI") if token else None
+
+
+def compose_env() -> dict:
+    """The environment `docker compose` runs with.
+
+    A discovered token is passed to the compose PROCESS rather than written to `.env`, and that is
+    deliberate. `.env` is gitignored, but it is still a plaintext credential sitting in a checkout,
+    and the timezone precedent does not carry: a zone is not a secret. The cost is that a later
+    hand-run `docker compose up` gets no token unless the operator exports one — which is why the
+    line printed below names the variable rather than just saying it worked.
+    """
+    env = dict(os.environ)
+    found = github_token()
+    if found:
+        env["GITHUB_TOKEN"] = found[0]
+    return env
+
+
+def announce_github_token() -> None:
+    """Say once, before the containers start, whether private realms will resolve. Never print the
+    token itself — this runs in terminals people screen-share."""
+    found = github_token()
+    if not found:
+        return
+    print(f"  Found a GitHub token ({found[1]}) — private realms and world templates will clone.")
+    print("  It is passed to the containers for this run only, never written to .env.\n")
+
+
 def _compose(mode: str, *argv: str, capture: bool = False):
     """docker compose against the mode's file, from the appliance directory.
     capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
@@ -330,7 +385,7 @@ def _compose(mode: str, *argv: str, capture: bool = False):
         cmd += ["-f", OVERRIDE_FILE]
     cmd += argv
     try:
-        return subprocess.run(cmd, capture_output=capture, text=True)
+        return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env())
     except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
         raise SetupError(f"docker compose failed: {e}")
 
@@ -407,6 +462,7 @@ def ensure_mode(mode: str) -> bool:
     the operator sees a service in their YAML with nothing behind it. `up -d`
     is idempotent — it reconciles and leaves running containers alone."""
     ensure_timezone()
+    announce_github_token()
     modes = running_modes()
     other = next(((svc, name) for svc, name in modes.items() if svc != MODE_SERVICE[mode]), None)
     if other:

@@ -97,8 +97,14 @@ customer-specific one is a three-line repo over your catalog.
 
 ## Caveats, honestly
 
-- A **private** template repo cannot be cloned yet — same credentials gap as
-  private realms ([embabel/me#741](https://github.com/embabel/me/issues/741)).
+- A **private** template repo clones only when a GitHub token reaches the
+  appliance. `setup.py` finds one automatically — any of `GITHUB_TOKEN`,
+  `GH_TOKEN` or `GITHUB_PERSONAL_ACCESS_TOKEN` in your shell, else the `gh` CLI's
+  own token — and passes it to the containers for that run. Over **HTTPS** and
+  **GitHub** only: an `ssh://` or `git@` URL has no key to authenticate with, and
+  another host's PAT does not use GitHub's token-as-username convention. The
+  token is a whole-appliance credential, not per-template, and a world's own
+  credential store is not consulted ([embabel/me#741](https://github.com/embabel/me/issues/741)).
 - `extends` parents are pinned in a clone-once cache (`.template-cache`,
   keyed `name@ref`); refresh is explicit, so pin a tag when you need
   reproducibility and use a branch when you want drift.
