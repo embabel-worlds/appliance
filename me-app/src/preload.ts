@@ -84,6 +84,8 @@ const api = {
   realmCatalog: (settings: Settings) => ipcRenderer.invoke('realms:catalog', settings),
   installRealm: (settings: Settings, repo: string) => ipcRenderer.invoke('realms:install', settings, repo),
   updateRealm: (settings: Settings, name: string) => ipcRenderer.invoke('realms:update', settings, name),
+  /** Which installed realms have a newer version upstream — see api.realmUpdates. */
+  realmUpdates: (settings: Settings) => ipcRenderer.invoke('realms:updates', settings),
   updateAllRealms: (settings: Settings) => ipcRenderer.invoke('realms:update-all', settings),
   realmGaps: (settings: Settings) => ipcRenderer.invoke('realms:gaps', settings),
   // Icons: realms' and apps'. Bytes, not a URL — the page cannot authenticate,

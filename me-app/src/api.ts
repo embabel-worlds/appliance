@@ -793,6 +793,31 @@ async function installRealm(settings: Settings, repo: string) {
 }
 
 /**
+ * WHICH REALMS HAVE SOMETHING TO PULL, without pulling any of them.
+ *
+ * `ls-remote` server-side: refs only, no objects, so asking for every realm costs one small round
+ * trip each. An Update button on every realm is a button whose usual answer is "nothing happened",
+ * and people stop pressing it.
+ *
+ * Silent on an older appliance: no endpoint means no answer, and the caller then keeps offering
+ * Update on everything exactly as before.
+ * @param {Settings} settings
+ */
+async function realmUpdates(settings: Settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/realms/updates`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(120_000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, results: [] }
+    const body = await readJson(res)
+    return { ok: true, message: '', results: body?.results ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e), results: [] }
+  }
+}
+
+/**
  * Pull a realm's checkout and rebuild the world around it. Two things the UI
  * has to be honest about, both of which come back in the server's summary:
  * a realm referenced by local path has no checkout to pull and is already
@@ -913,7 +938,7 @@ export {
   chatModel,
   listModels,
   getRoles,
-  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute,
+  setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute, realmUpdates,
   kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,

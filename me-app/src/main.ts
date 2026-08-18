@@ -559,6 +559,8 @@ handle('realms:update', async (settings: Settings, name: string) => {
   log(`[me-app] realm update: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
   return result
 })
+handle('realms:updates', (settings: Settings) => api.realmUpdates(settings))
+
 handle('realms:update-all', async (settings: Settings) => {
   log('[me-app] realm update-all requested')
   const result = await api.updateAllRealms(settings)

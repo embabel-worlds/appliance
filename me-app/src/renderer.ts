@@ -1142,11 +1142,21 @@ function realmRow(entry: RealmSummary & { meta?: string }, action?: HTMLElement)
 async function loadRealms() {
   setStatus(realmStatus, null, 'loading…')
   const settings = currentSettings()
-  const [installed, catalog, gaps] = await Promise.all([
+  const [installed, catalog, gaps, updates] = await Promise.all([
     window.me.listRealms(settings),
     window.me.realmCatalog(settings),
     window.me.realmGaps(settings),
+    // Cheap server-side (ls-remote: refs, no objects) and asked once for every realm, so the
+    // button appears only where pressing it does something.
+    window.me.realmUpdates(settings),
   ])
+
+  /* behind: true has something to pull, false is current, undefined means the appliance could not
+   * say — no network, a private repo, an appliance older than the endpoint. Unknown KEEPS its
+   * button: hiding the only way to fix something you cannot diagnose is the wrong side to err on. */
+  const behind = new Map<string, boolean | null>(
+    (updates.results ?? []).map((r: { name?: string; behind?: boolean | null }) => [r.name ?? '', r.behind ?? null]),
+  )
 
   realmInstalledEl.innerHTML = ''
   if (!installed.ok) {
@@ -1160,8 +1170,13 @@ async function loadRealms() {
        * checkout reports what moved, a local `path:` reference reports that it
        * was already live. Show it verbatim rather than flattening both to
        * "updated" — the difference is the thing the user needs to know. */
+      const state = behind.get(realm.name)
       const update = document.createElement('button')
       update.textContent = 'Update'
+      // The realm is current and the appliance is sure of it: no button at all. Anything else —
+      // behind, or undeterminable — keeps one.
+      update.hidden = state === false
+      if (state == null) update.title = 'Could not check for a newer version — pull anyway'
       update.addEventListener('click', async () => {
         update.disabled = true
         update.textContent = 'Updating…'

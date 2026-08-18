@@ -86,6 +86,11 @@ services:
       - GITHUB_TOKEN
       - GH_TOKEN
       - GITHUB_PERSONAL_ACCESS_TOKEN
+      # Diffbot's company knowledge graph — realm-diffbot's identity bridge, which resolves a
+      # DOMAIN to a company (industry, headcount, ownership, tickers). Bare pass-through like the
+      # keys above: the realm declares `token-env: DIFFBOT_TOKEN`, and until now the estate only
+      # had DIFFBOT_API_KEY, under a name nothing reads.
+      - DIFFBOT_TOKEN
       - TELEGRAM_BOT_TOKEN
       - SLACK_APP_TOKEN
     volumes:
