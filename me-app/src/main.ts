@@ -875,7 +875,7 @@ ipcMain.handle('mounts:set-index', async (_e, host: string, index: boolean) => {
 })
 ipcMain.handle('mounts:apply', () => mounts.apply())
 
-// Opt-in indexing of ticked folders (indexer.js, embabel/appliance#10). start
+// Opt-in indexing of ticked folders (indexer.js, embabel-worlds/appliance#10). start
 // kicks or resumes the background trickle and returns immediately; the
 // renderer polls index:state for progress, exactly like the ambient stream's
 // heartbeat. The trickle keeps sweeping for new and CHANGED files on its own.

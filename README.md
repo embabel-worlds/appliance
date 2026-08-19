@@ -8,21 +8,22 @@ Your data and your code stay on your machine. The assistant talks to the model p
 
 ## Quick start
 
-One line, once the repo is public — it checks Docker, downloads the appliance
-into `~/embabel-me`, and hands straight off to setup:
+One line — it checks Docker, downloads the appliance into `~/embabel-me`, and hands
+straight off to setup:
 
 ```bash
-curl -fsSL https://get.embabel.com/me | sh
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
 ```
 
-It installs nothing globally and needs no root. Read it first if you like —
-[install.sh](install.sh) is deliberately short. While the repo is private, pass a
-token: `EMBABEL_TOKEN=$(gh auth token) sh install.sh`.
+No account, no token, no GitHub login: this repo is public and the installer fetches
+it anonymously. It installs nothing globally and needs no root. Read it first if you
+like — [install.sh](install.sh) is deliberately short, and piping a remote script into
+a shell is a thing you should be suspicious of.
 
 Or clone it yourself:
 
 ```bash
-git clone https://github.com/embabel/appliance.git && cd appliance
+git clone https://github.com/embabel-worlds/appliance.git && cd appliance
 
 ./me.py         # Embabel Me — the personal assistant   → http://localhost:4242
 ./worlds.py     # Embabel Worlds — the world runtime     → http://localhost:4343
@@ -40,7 +41,7 @@ only when a world is first created — an existing world is yours and is never
 reshaped. This is what a shareable install instruction looks like:
 
 ```bash
-git clone https://github.com/embabel/appliance.git && cd appliance && ./me.py --world arts-world
+git clone https://github.com/embabel-worlds/appliance.git && cd appliance && ./me.py --world arts-world
 ```
 
 Templates are the blessed way to preconfigure: named, versioned artifacts you

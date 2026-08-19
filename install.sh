@@ -1,7 +1,7 @@
 #!/bin/sh
 # Embabel Me — one-command install.
 #
-#   curl -fsSL https://get.embabel.com/me | sh
+#   curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
 #
 # This script is short and boring ON PURPOSE. You are being asked to pipe a
 # remote script into a shell, which is a thing you should be suspicious of, so
@@ -21,7 +21,7 @@
 
 set -eu
 
-REPO="${EMBABEL_REPO:-embabel/appliance}"
+REPO="${EMBABEL_REPO:-embabel-worlds/appliance}"
 # TODO: default to the latest RELEASE TAG once the appliance cuts them; a branch
 # means you get whatever landed this morning, which is not what an installer
 # should hand a new user.
@@ -73,12 +73,15 @@ mkdir -p "$HOME_DIR"
 TARBALL="$(mktemp)"
 trap 'rm -f "$TARBALL"' EXIT INT TERM
 
+# The repo is PUBLIC, so no credential is needed and none is asked for. EMBABEL_TOKEN
+# stays for the one case that still needs it: pointing EMBABEL_REPO at a private fork
+# or an internal mirror. An empty token is not sent, so the ordinary path is anonymous.
 AUTH=""
 [ -n "${EMBABEL_TOKEN:-}" ] && AUTH="Authorization: Bearer ${EMBABEL_TOKEN}"
 
 if [ -n "$AUTH" ]; then
   curl -fsSL -H "$AUTH" -o "$TARBALL" "https://api.github.com/repos/$REPO/tarball/$REF" \
-    || die "Download failed. Check EMBABEL_TOKEN, your connection, and that '$REF' exists."
+    || die "Download failed. Check EMBABEL_TOKEN, your connection, and that '$REF' exists in $REPO."
 else
   curl -fsSL -o "$TARBALL" "https://api.github.com/repos/$REPO/tarball/$REF" \
     || die "Download failed. Check your connection, and that '$REF' exists in $REPO."
@@ -103,7 +106,7 @@ echo
 cd "$HOME_DIR"
 # Arguments ride through to the mode script untouched, which is what makes a
 # preconfigured install a one-liner:
-#   curl -fsSL https://get.embabel.com/me | sh -s -- --world legal-world
+#   curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh -s -- --world legal-world
 if [ "$MODE" = "worlds" ]; then
   exec python3 ./worlds.py "$@"
 else

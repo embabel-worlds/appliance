@@ -12,7 +12,7 @@ template is one you can review, pin, and improve after the fact.
 ## Using one
 
 ```bash
-git clone https://github.com/embabel/appliance.git && cd appliance && ./me.py --world arts-world
+git clone https://github.com/embabel-worlds/appliance.git && cd appliance && ./me.py --world arts-world
 ```
 
 A bare name resolves ONLY inside the embabel org (a short name in a mailed
@@ -69,7 +69,7 @@ cat > config/realms.yml <<'YAML'
   version: "main"
 YAML
 echo "The world's starting content." > data/README.md
-echo "# Legal World — see embabel/appliance WORLD_TEMPLATES.md" > README.md
+echo "# Legal World — see embabel-worlds/appliance WORLD_TEMPLATES.md" > README.md
 git init -q && git add -A && git commit -q -m "Legal world template"
 gh repo create embabel/legal-world --public --source . --push
 ```
@@ -77,7 +77,7 @@ gh repo create embabel/legal-world --public --source . --push
 The shareable instruction is then one line:
 
 ```bash
-git clone https://github.com/embabel/appliance.git && cd appliance && ./me.py --world legal-world
+git clone https://github.com/embabel-worlds/appliance.git && cd appliance && ./me.py --world legal-world
 ```
 
 Compose profiles instead of enumerating them: a `media-world` that is

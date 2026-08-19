@@ -15,10 +15,10 @@ that is settled; the whole thing is one file.
 
 ## Before it goes live
 
-- **The repo must be public.** `curl -fsSL https://get.embabel.com/me | sh` cannot
-  work against a private repo — the download 404s without a token. That is a
-  product decision, not a code change, and it gates the page's main call to action.
-- **`get.embabel.com/me` must serve `install.sh`** (a redirect to the raw file is
-  enough).
+- The install command points at **raw.githubusercontent.com**, which works today for
+  anyone: the repo is public and the installer fetches it anonymously. A prettier
+  `get.embabel.com/me` redirecting to the same file is a nice-to-have, not a
+  blocker — and the page must not advertise a host that does not resolve, which is
+  what it did while that domain was aspirational.
 - The image path is repo-relative (`../images/`). Flatten it when deploying, or
   copy the image in.
