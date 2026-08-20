@@ -1322,7 +1322,19 @@ def main() -> int:
                 )
             reset_credentials(container, base)
         if container:
-            print(f"  Setting up {container} at {base}\n")
+            # NO URL HERE. A link this early in a wizard is an invitation: people
+            # follow it, land on a surface that is not set up yet — and, on the
+            # worlds mode, on the old Vaadin UI rather than the console — and come
+            # back having answered nothing. Where to go is the LAST thing this
+            # prints, once there is somewhere worth going.
+            #
+            # Unless the operator named a URL themselves, in which case echoing it
+            # is not an invitation but a confirmation of which appliance is about
+            # to be configured, which is exactly what they asked to control.
+            if args.url:
+                print(f"  Setting up {container} at {args.url}\n")
+            else:
+                print(f"  Setting up {container}…\n")
 
         if started and container:
             # First boot is a designed surface: show the operator console the app
