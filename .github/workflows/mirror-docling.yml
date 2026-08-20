@@ -5,16 +5,27 @@
 # MIT-licensed, so we copy it byte for byte (a multi-arch index copy, not a
 # rebuild) and pin the version in infra.yml.
 #
-# Run this when adopting a new upstream version, then bump DOCLING_VERSION.
+# Run this when adopting a new upstream version or variant, then bump the default
+# in infra.yml. The CPU variant is what the appliance ships: the stock image adds a
+# CUDA PyTorch that no compose file here can reach, so it costs ~3GB and buys
+# nothing. Mirror `docling-serve` as well only when a GPU path exists to use it.
 name: mirror-docling
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Upstream docling-serve tag to mirror (e.g. v1.29.0)"
+        description: "Upstream tag to mirror (e.g. v1.29.0)"
         required: true
         default: "v1.29.0"
+      variant:
+        description: "Which build — the CPU one is what infra.yml defaults to"
+        required: true
+        type: choice
+        default: "docling-serve-cpu"
+        options:
+          - docling-serve-cpu
+          - docling-serve
 
 permissions:
   packages: write
@@ -32,7 +43,7 @@ jobs:
       - name: Copy the multi-arch index
         run: |
           docker buildx imagetools create \
-            --tag ghcr.io/embabel/docling-serve:${{ inputs.version }} \
-            quay.io/docling-project/docling-serve:${{ inputs.version }}
+            --tag ghcr.io/embabel/${{ inputs.variant }}:${{ inputs.version }} \
+            quay.io/docling-project/${{ inputs.variant }}:${{ inputs.version }}
       - name: Verify
-        run: docker buildx imagetools inspect ghcr.io/embabel/docling-serve:${{ inputs.version }}
+        run: docker buildx imagetools inspect ghcr.io/embabel/${{ inputs.variant }}:${{ inputs.version }}

@@ -57,11 +57,24 @@ services:
   # people actually failed on ("TLS handshake timeout" mid-pull of a multi-GB
   # image). Every image the appliance needs now comes from one registry we control.
   # Upstream is MIT; the mirror is a byte-for-byte multi-arch copy refreshed by
-  # .github/workflows/mirror-docling.yml. To adopt a new version: run that workflow,
-  # confirm `docker manifest inspect ghcr.io/embabel/docling-serve:<tag>` succeeds,
-  # THEN bump the default here. Never the other way round.
+  # .github/workflows/mirror-docling.yml. To adopt a new version OR a new variant:
+  # run that workflow, confirm `docker manifest inspect ghcr.io/embabel/<image>:<tag>`
+  # succeeds, THEN bump the default here. Never the other way round.
+  #
+  # THE CPU BUILD, DELIBERATELY. The stock docling-serve image carries a CUDA
+  # PyTorch — torch 2.13+cu130, 2.9GB of nvidia/ libraries, 652MB of triton — that
+  # nothing in this repo can reach: no compose file here reserves a GPU device, and
+  # Docker gives a container no GPU unless one is asked for. So every host,
+  # INCLUDING one with a real card, downloaded 5.00GB of CUDA and then ran on the
+  # CPU anyway. The cpu tag is the same version and the same behaviour at 2.06GB
+  # (arm64) — nearly 3GB off a first run, in exchange for nothing.
+  #
+  # A GPU host is a real case, and this does not serve it. Serving it needs the
+  # CUDA image AND a device reservation, together — one without the other is what
+  # we already had. Until that exists, DOCLING_IMAGE=docling-serve restores the fat
+  # image, which will still run on the CPU.
   docling:
-    image: ghcr.io/embabel/docling-serve:${DOCLING_VERSION:-v1.29.0}
+    image: ghcr.io/embabel/${DOCLING_IMAGE:-docling-serve-cpu}:${DOCLING_VERSION:-v1.29.0}
     container_name: embabel-appliance-docling
     restart: unless-stopped
     # Conversion memory is bounded by the LARGEST single document, not corpus size:
