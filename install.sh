@@ -93,7 +93,40 @@ tar xzf "$TARBALL" -C "$HOME_DIR" --strip-components=1 || die "Could not unpack 
 # one that fails: prove the install is actually here before promising setup.
 [ -f "$HOME_DIR/setup.py" ] || die "The download did not contain an Embabel appliance. Nothing was installed."
 
-chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" 2>/dev/null || true
+chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" "$HOME_DIR/embabel" 2>/dev/null || true
+
+# --- 2b. Put `embabel` on PATH --------------------------------------------
+# So that everything after this is a verb rather than a directory. Without it the
+# instructions are `cd ~/embabel-me && ./worlds.py`, and the user has to remember
+# where the product lives and which compose file today's mode uses.
+#
+# A two-line forwarder, not a copy: it execs the checkout's own CLI, so an update
+# to this directory updates the command, and there is no second version to drift.
+BIN_DIR="${EMBABEL_BIN_DIR:-$HOME/.local/bin}"
+if mkdir -p "$BIN_DIR" 2>/dev/null; then
+  cat > "$BIN_DIR/embabel" <<SHIM
+#!/bin/sh
+# Forwards to the Embabel appliance in $HOME_DIR. Written by install.sh.
+exec python3 "$HOME_DIR/embabel" "\$@"
+SHIM
+  chmod +x "$BIN_DIR/embabel"
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) say "Installed the 'embabel' command to $BIN_DIR." ;;
+    *)
+      say "Installed the 'embabel' command to $BIN_DIR, which is NOT on your PATH."
+      # Name the file THEY use. macOS defaults to zsh and most Linux shells to
+      # bash, and telling a bash user to edit ~/.zshrc is telling them nothing.
+      case "${SHELL##*/}" in
+        zsh)  PROFILE="~/.zshrc" ;;
+        bash) PROFILE="~/.bashrc" ;;
+        fish) PROFILE="~/.config/fish/config.fish" ;;
+        *)    PROFILE="your shell profile" ;;
+      esac
+      say "Add it to $PROFILE:  export PATH=\"$BIN_DIR:\$PATH\""
+      ;;
+  esac
+  echo
+fi
 
 # --- 3. Hand off ----------------------------------------------------------
 # setup.py owns the real flow — starting the mode, streaming the first boot,
@@ -101,7 +134,7 @@ chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" 2>/dev/nul
 # is deliberately no second implementation of any of that here.
 command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with macOS; on Linux: apt install python3)."
 
-say "Done. Starting setup…"
+say "Done. Starting setup — after this, use the 'embabel' command."
 echo
 cd "$HOME_DIR"
 # Arguments ride through to the mode script untouched, which is what makes a

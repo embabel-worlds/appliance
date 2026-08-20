@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""The Embabel appliance, as a command rather than a directory.
+
+    embabel up · status · doctor · logs · realms · open · upgrade · down · uninstall
+
+WHY THIS EXISTS. Everything below was already possible — as `cd ~/embabel-me &&
+./worlds.py`, `./setup.py --uninstall`, `docker compose -f docker-compose-worlds.yml
+ps`. That is a checkout's interface, and it asks a developer to remember which
+directory the product lives in and which compose file today's mode uses. A product
+gives you a verb.
+
+IT DELEGATES, IT DOES NOT REIMPLEMENT. setup.py owns the hard parts — the docker
+checks, the staged start, the wizard, the realms validation, the uninstall — and
+this imports them. Two copies of "is Docker running" is how they come to disagree.
+
+Python 3 standard library only, like everything else here, so it runs wherever the
+appliance does with nothing installed.
+"""
+import argparse
+import importlib.util
+import os
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_setup():
+    """setup.py as a module. It guards main() behind __name__, so importing it is
+    just its constants and functions — no side effects."""
+    spec = importlib.util.spec_from_file_location("embabel_setup", os.path.join(HERE, "setup.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+s = load_setup()
+
+
+def run_setup(*argv: str) -> int:
+    """Hand off to setup.py as a child process rather than calling main().
+
+    A child gets its own argv and its own exit code, and the wizard's prompts keep
+    the terminal they expect. Calling main() in-process would mean rewriting argv
+    underneath it and catching its SystemExit, for nothing.
+    """
+    return subprocess.call([sys.executable, os.path.join(HERE, "setup.py"), *argv])
+
+
+def current_mode() -> str | None:
+    """Whichever mode is up, by its compose service label — not by guessing."""
+    for service in s.running_modes():
+        return "me" if service == "assistant" else "worlds"
+    return None
+
+
+def resolved_mode(requested: str | None) -> str:
+    """What the user asked for, else what is already running, else worlds.
+
+    Worlds is the default because this command is what worlds.embabel.com hands a
+    developer; the Me door is a flag rather than a coin toss.
+    """
+    return requested or current_mode() or "worlds"
+
+
+# ── verbs ───────────────────────────────────────────────────────────────────
+
+def cmd_up(args) -> int:
+    """Start the appliance and finish setting it up. Safe to run any time: setup.py
+    reconciles a running mode rather than starting a second one."""
+    return run_setup(resolved_mode(args.mode), *(["--fresh"] if args.fresh else []))
+
+
+def cmd_down(args) -> int:
+    mode = resolved_mode(args.mode)
+    if args.wipe:
+        print("  --wipe DELETES the world, the graph, documents and your account.")
+        if input("  Type 'yes' to wipe: ").strip().lower() != "yes":
+            print("  Nothing was touched.")
+            return 1
+        s.take_everything_down()
+        print("  Wiped.")
+        return 0
+    s._compose(mode, "stop")
+    print(f"  Stopped the {mode} mode. Your data is untouched — `embabel up` brings it back.")
+    return 0
+
+
+def cmd_status(args) -> int:
+    """What is running, what is still arriving, and where to go.
+
+    The staged start means "not everything is up" is a NORMAL state for the first
+    quarter of an hour, so this reports the two groups separately. A flat container
+    list cannot tell "still downloading" from "broken", which is the only question
+    being asked.
+    """
+    mode = current_mode()
+    if not mode:
+        print("  Nothing is running.  `embabel up` starts it.")
+        return 0
+
+    container = s.find_mode_container(mode)
+    base = s.container_base_url(container) if container else None
+    print(f"  Mode: {mode}" + (f"   API: {base}" if base else ""))
+
+    running = set()
+    run = s._docker("ps", "--format", "{{.Names}}")
+    if run and run.returncode == 0:
+        running = {line.strip() for line in run.stdout.splitlines() if line.strip()}
+
+    core = [c for c in running if c.startswith(("embabel-worlds", "embabel-assistant", "embabel-appliance-neo4j"))]
+    print(f"\n  Core            {len(core)} container(s) up")
+
+    # Named individually because the interesting answer is WHICH one is missing.
+    pending = []
+    for name, why in (("embabel-appliance-docling", "structured PDF and Office conversion"),
+                      ("embabel-appliance-grafana", "dashboards"),
+                      ("embabel-appliance-prometheus", "metrics")):
+        if name not in running:
+            pending.append(why)
+    if pending:
+        print(f"  Still arriving  {', '.join(pending)}")
+        print("                  (downloading in the background; the appliance works without them,")
+        print("                   but a PDF added now ingests as flat text)")
+    else:
+        print("  Extras          all up")
+
+    if mode == "worlds" and base:
+        print()
+        s.print_worlds_surfaces(base)
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    """Everything that has actually gone wrong for somebody, checked in one place.
+
+    Each line here is a real failure with a real diagnosis attached, because the
+    ones that cost time are the ones that fail SILENTLY — a mount outside Docker's
+    file sharing that resolves empty, a private image, a Model Runner that is off.
+    """
+    problems = 0
+    print(f"  Appliance directory: {HERE}\n")
+
+    def check(label: str, ok: bool, fix: str = "") -> None:
+        nonlocal problems
+        print(f"  {'✓' if ok else '✗'}  {label}")
+        if not ok:
+            problems += 1
+            if fix:
+                print(f"     {fix}")
+
+    check("docker installed", shutil.which("docker") is not None,
+          "Install Docker Desktop: https://docs.docker.com/get-started/get-docker/")
+    daemon = s._docker("info")
+    check("docker running", bool(daemon and daemon.returncode == 0),
+          "Start Docker Desktop, then run this again.")
+    compose = s._docker("compose", "version")
+    check("docker compose v2", bool(compose and compose.returncode == 0),
+          "Update Docker Desktop, or install the compose plugin.")
+    runner = s._docker("model", "status")
+    check("Docker Model Runner (embeddings run locally)", bool(runner and runner.returncode == 0),
+          "Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner")
+
+    # NOT a check: a fresh checkout has no .env and is not broken. Flagging it with
+    # a cross and then explaining that the cross does not mean anything is how a
+    # doctor teaches people to ignore its crosses.
+    env_path = os.path.join(HERE, s.ENV_FILE)
+    if os.path.exists(env_path):
+        print(f"  ✓  {s.ENV_FILE} present")
+    else:
+        print(f"  ·  no {s.ENV_FILE} yet — this appliance has not been set up here (`embabel up`)")
+
+    realms = os.environ.get("EMBABEL_REALMS_DIR")
+    if not realms and os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                if line.startswith("EMBABEL_REALMS_DIR="):
+                    realms = line.split("=", 1)[1].strip()
+    if realms:
+        path, found, notes = s.inspect_realms_dir(realms)
+        check(f"realm checkouts at {realms}", path is not None, " ".join(notes))
+        if path:
+            print(f"     {len(found)} realm(s) visible")
+    else:
+        print("  ·  no realm checkouts linked   (embabel realms link <dir>)")
+
+    strays = s.stray_sandbox_containers()
+    if strays:
+        print(f"  ·  {len(strays)} stray code-sandbox container(s) — `embabel uninstall` offers to remove them")
+
+    print()
+    if not problems:
+        print("  All good.")
+    else:
+        print(f"  {problems} problem{'s' if problems > 1 else ''} above — each line says what to do.")
+    return 1 if problems else 0
+
+
+def cmd_logs(args) -> int:
+    mode = resolved_mode(args.mode)
+    service = args.service or s.MODE_SERVICE[mode]
+    return s._compose(mode, "logs", *(["-f"] if args.follow else []), "--tail", str(args.tail), service).returncode
+
+
+def cmd_open(args) -> int:
+    urls = {"console": "http://localhost:4343", "graph": "http://localhost:4243",
+            "dashboards": "http://localhost:4246", "me": "http://localhost:4242"}
+    url = urls[args.what]
+    print(f"  {url}")
+    # The URL is printed FIRST and unconditionally: on a headless box, or over ssh,
+    # there is no browser to open and the address is the whole answer.
+    opener = next((cmd for cmd in ("open", "xdg-open", "wslview") if shutil.which(cmd)), None)
+    if opener:
+        subprocess.call([opener, url])
+    return 0
+
+
+def cmd_realms(args) -> int:
+    if args.realms_command == "link":
+        return run_setup("worlds", "--realms", args.directory)
+    # list: what the appliance can actually see, which is the question worth asking.
+    realms = os.environ.get("EMBABEL_REALMS_DIR")
+    env_path = os.path.join(HERE, s.ENV_FILE)
+    if not realms and os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                if line.startswith("EMBABEL_REALMS_DIR="):
+                    realms = line.split("=", 1)[1].strip()
+    if not realms:
+        print("  No realm checkouts linked.  embabel realms link <directory>")
+        return 0
+    path, found, notes = s.inspect_realms_dir(realms)
+    if not path:
+        for note in notes:
+            print(f"  {note}")
+        return 1
+    s.announce_realms(path, found, notes)
+    return 0
+
+
+def cmd_upgrade(args) -> int:
+    """Newer images, same data. Deliberately not `up --fresh`, which is the opposite."""
+    mode = resolved_mode(args.mode)
+    print(f"  Pulling newer images for the {mode} mode — your data is untouched.\n")
+    s._compose(mode, "pull")
+    s._compose(mode, "up", "-d")
+    print("\n  Upgraded. `embabel status` shows what is running.")
+    return 0
+
+
+def cmd_uninstall(args) -> int:
+    return run_setup("--uninstall")
+
+
+def cmd_where(args) -> int:
+    print(f"  {HERE}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="embabel",
+        description="The Embabel appliance: a knowledge graph, an agent runtime, and the realms you install into it.",
+        epilog="Full reference: https://worlds.embabel.com/cli/",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def mode_flags(p):
+        p.add_argument("--worlds", dest="mode", action="store_const", const="worlds",
+                       help="the world runtime and its console (default)")
+        p.add_argument("--me", dest="mode", action="store_const", const="me",
+                       help="the personal-assistant door")
+
+    p = sub.add_parser("up", help="start the appliance and finish setup (safe to re-run)")
+    mode_flags(p)
+    p.add_argument("--fresh", action="store_true", help="DELETE all data first, then start over")
+    p.set_defaults(func=cmd_up)
+
+    p = sub.add_parser("status", help="what is running, what is still downloading, where to go")
+    p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("doctor", help="check everything that has ever gone wrong for somebody")
+    p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("logs", help="follow the appliance's log")
+    mode_flags(p)
+    p.add_argument("service", nargs="?", help="a compose service; defaults to the appliance itself")
+    p.add_argument("-f", "--follow", action="store_true")
+    p.add_argument("--tail", type=int, default=200)
+    p.set_defaults(func=cmd_logs)
+
+    p = sub.add_parser("open", help="open a surface in your browser")
+    p.add_argument("what", nargs="?", default="console", choices=["console", "graph", "dashboards", "me"])
+    p.set_defaults(func=cmd_open)
+
+    p = sub.add_parser("realms", help="realm checkouts on this machine")
+    rsub = p.add_subparsers(dest="realms_command", required=True)
+    rl = rsub.add_parser("link", help="point the appliance at the directory your checkouts live IN")
+    rl.add_argument("directory")
+    rsub.add_parser("list", help="which realms the appliance can see")
+    p.set_defaults(func=cmd_realms)
+
+    p = sub.add_parser("upgrade", help="pull newer images, keep your data")
+    mode_flags(p)
+    p.set_defaults(func=cmd_upgrade)
+
+    p = sub.add_parser("down", help="stop the appliance")
+    mode_flags(p)
+    p.add_argument("--wipe", action="store_true", help="also DELETE all data (asks)")
+    p.set_defaults(func=cmd_down)
+
+    p = sub.add_parser("uninstall", help="remove the appliance and this machine's configuration")
+    p.set_defaults(func=cmd_uninstall)
+
+    p = sub.add_parser("where", help="print the appliance directory")
+    p.set_defaults(func=cmd_where)
+
+    args = parser.parse_args()
+    os.chdir(HERE)  # compose files live here; every verb below assumes it
+    try:
+        return args.func(args)
+    except s.SetupError as e:
+        print(f"\n  {e}\n", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\n  Interrupted.\n", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
