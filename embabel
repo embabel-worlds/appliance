@@ -264,7 +264,10 @@ def main() -> int:
         description="The Embabel appliance: a knowledge graph, an agent runtime, and the realms you install into it.",
         epilog="Full reference: https://worlds.embabel.com/cli/",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    # NOT required: `embabel` on its own is what someone types when they want to
+    # know where things stand, and answering that with an argparse usage error is
+    # a wasted first impression. It shows status and what to do next.
+    sub = parser.add_subparsers(dest="command")
 
     def mode_flags(p):
         p.add_argument("--worlds", dest="mode", action="store_const", const="worlds",
@@ -318,6 +321,15 @@ def main() -> int:
 
     args = parser.parse_args()
     os.chdir(HERE)  # compose files live here; every verb below assumes it
+
+    if not args.command:
+        rc = cmd_status(args)
+        print("  ── Next " + "─" * 52)
+        print("    embabel up        start it, or finish setting it up")
+        print("    embabel doctor    why it is not working")
+        print("    embabel open      the console, in your browser")
+        print("    embabel --help    everything else\n")
+        return rc
     try:
         return args.func(args)
     except s.SetupError as e:
