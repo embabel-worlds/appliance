@@ -75,13 +75,13 @@ services:
   # image, which will still run on the CPU.
   docling:
     #
-    # The cpu tag was published by hand, not by mirror-docling: that workflow lives
-    # in embabel-worlds and pushes to the embabel org, where its GITHUB_TOKEN has no
-    # rights (the packages are linked to no repository, so no repository inherits
-    # any). Adopting a new version still needs a token with write:packages on the
-    # org, and a NEW package lands PRIVATE — every first run then fails on auth, so
-    # check an anonymous pull before trusting it.
-    image: ghcr.io/embabel/${DOCLING_IMAGE:-docling-serve-cpu}:${DOCLING_VERSION:-v1.29.0}
+    # embabel-worlds, NOT embabel: a package belongs in the org of the repo that
+    # publishes it. mirror-docling runs here, so pushing to embabel was cross-org
+    # and its GITHUB_TOKEN had no rights there. Mirrored into this org the workflow
+    # owns the package outright, and its Verify step now checks the pull a STRANGER
+    # makes — a new GHCR package is created private, and an authenticated check
+    # passes happily against an image nobody else can fetch.
+    image: ghcr.io/embabel-worlds/${DOCLING_IMAGE:-docling-serve-cpu}:${DOCLING_VERSION:-v1.29.0}
     container_name: embabel-appliance-docling
     restart: unless-stopped
     # Conversion memory is bounded by the LARGEST single document, not corpus size:
