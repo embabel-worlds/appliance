@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import sys
 import time
 import urllib.error
@@ -420,6 +421,43 @@ def _compose(mode: str, *argv: str, capture: bool = False):
         raise SetupError(f"docker compose failed: {e}")
 
 
+def follow_boot_log(container: str) -> subprocess.Popen | None:
+    """Stream the app's OPERATOR CONSOLE during first boot, and nothing else.
+
+    The app prints a designed block — bordered with box rule — carrying the setup
+    token and what to do next. Around it a JVM narrates itself: the Spring banner,
+    the ASCII art, sixty-odd INFO lines, and a listing of every model the machine
+    can see. Piping all of that to a first-time terminal buried the one part
+    written for a person, and read as something having gone wrong.
+
+    So: print the bordered block, and any WARN or ERROR, and drop the rest. A boot
+    that fails still says so; a boot that works says only what it meant to.
+    """
+    try:
+        proc = subprocess.Popen(
+            ["docker", "logs", "-f", "--tail", "0", container],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None  # the log is a nicety; setup does not depend on it
+
+    def pump() -> None:
+        inside = False
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            border = line.strip().startswith("═") and len(line.strip()) > 8
+            if border:
+                inside = not inside
+                print(line)
+                continue
+            if inside or " WARN " in line or " ERROR " in line:
+                print(line)
+
+    thread = threading.Thread(target=pump, daemon=True)
+    thread.start()
+    return proc
+
+
 def start_deferred(mode: str) -> subprocess.Popen | None:
     """Pull and start everything that is not needed to answer, behind the user.
 
@@ -747,6 +785,30 @@ def probe(base: str) -> str:
         return "unreachable"
     except SetupError:
         return "pending"  # 401: up, and wants the real token
+
+
+def call_when_ready(base: str, token: str) -> dict:
+    """The first real call, retried while the appliance finishes starting.
+
+    The setup token is printed to the log EARLY — measured at ~10s before
+    "Started ... in 24.977 seconds" — so finding it does not mean the HTTP surface
+    is up. Calling straight through raised Unreachable, and because Unreachable is
+    a SetupError that ended the whole run with "Could not reach the appliance
+    (RemoteDisconnected)" moments after cheerfully announcing it had found the
+    token. A first install failed on a race, and the message blamed the network.
+    """
+    deadline = time.monotonic() + BOOT_WAIT_SECONDS
+    announced = False
+    while True:
+        try:
+            return call(base, "", token)
+        except Unreachable:
+            if time.monotonic() >= deadline:
+                raise
+            if not announced:
+                print("  Waiting for the appliance to finish starting…")
+                announced = True
+            time.sleep(2)
 
 
 def discover_token(base: str, container: str | None, explicit: str | None) -> str:
@@ -1155,6 +1217,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Line-buffered even when stdout is a pipe. Subprocesses (compose, docker logs)
+    # write to the same descriptor unbuffered, so Python's default block buffering
+    # made a captured run read out of order — narration arriving after the output
+    # it was meant to introduce.
+    sys.stdout.reconfigure(line_buffering=True)
+
     print("\n  Embabel appliance — " + ("uninstall" if args.uninstall else "first-run setup"))
     print("  " + "─" * 60)
 
@@ -1193,16 +1261,16 @@ def main() -> int:
             print(f"  Setting up {container} at {base}\n")
 
         if started and container:
-            # First boot is a designed surface: stream the operator console while
-            # we wait for the setup token, then hand the terminal back to the wizard.
-            follower = subprocess.Popen(["docker", "logs", "-f", "--tail", "0", container])
+            # First boot is a designed surface: show the operator console the app
+            # prints, and only that, while we wait for the setup token.
+            follower = follow_boot_log(container)
 
         token = discover_token(base, container, args.token)
         if follower:
             follower.terminate()
             follower = None
             print()
-        status = call(base, "", token)
+        status = call_when_ready(base, token)
 
         pending = [step for step in status["steps"] if not step["satisfied"]]
         if not pending:
