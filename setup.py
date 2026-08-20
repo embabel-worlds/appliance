@@ -52,6 +52,17 @@ MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
 # mode only, because it overrides the `assistant` service, which the worlds file
 # does not define (merging it there would fabricate an image-less service).
 OVERRIDE_FILE = "docker-compose.override.yml"
+# Machine-local configuration: keys, timezone, world template, realms directory.
+# Gitignored, and removed by --uninstall — which is the difference between that
+# and --fresh, since a .env that survives means the next run asks nothing.
+ENV_FILE = ".env"
+# The name setup registers with MCP clients, and therefore the name --uninstall
+# has to remove. One constant so the two cannot disagree.
+MCP_SERVER_NAME = "embabel"
+# Every code-sandbox container carries this label (JvmInstance.JVM_LABEL_KEY on the
+# server). They are created by the app THROUGH the docker socket as siblings of the
+# appliance, not as compose services — so `docker compose down` does not see them.
+SANDBOX_LABEL = "embabel-jvm"
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
 # build step). Me onboarding ends by offering to start it.
 ME_APP_DIR = "me-app"
@@ -431,20 +442,131 @@ def ensure_timezone() -> None:
     print(f"  Wrote TZ={zone} to .env — the appliance will keep your local time.")
 
 
+def take_everything_down() -> None:
+    """Every service and volume in the project, whichever mode was last up. Both
+    mode files merged so nothing is missed — shared by --fresh and --uninstall,
+    which differ in what they take with them, not in how they stop."""
+    cmd = ["docker", "compose", "-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
+           "down", "--volumes", "--remove-orphans"]
+    subprocess.run(cmd)
+
+
 def fresh_wipe() -> None:
-    """--fresh: delete the whole appliance state after saying exactly what dies.
-    Both mode files merged, so every service and volume in the project goes,
-    whichever mode was last up."""
+    """--fresh: delete the whole appliance state after saying exactly what dies."""
     print("  --fresh DELETES the appliance's entire state:")
     print("    account and password, world, knowledge graph, documents, dashboards.")
     print("  Images and the local embedding model survive; nothing else does.")
     answer = input("  Type 'yes' to wipe: ").strip().lower()
     if answer != "yes":
         raise SetupError("Not wiped — nothing was touched.")
-    cmd = ["docker", "compose", "-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
-           "down", "--volumes", "--remove-orphans"]
-    subprocess.run(cmd)
+    take_everything_down()
     print()
+
+
+def stray_sandbox_containers() -> list[str]:
+    """Sandbox containers still on the host, by name.
+
+    The server sweeps these itself, but only two of the three cases: on shutdown it
+    removes containers matching ITS OWN jvm id, and on startup it reaps EXITED ones
+    from any jvm. A RUNNING sandbox whose jvm died without its shutdown hook — a
+    kill -9, a crashed Docker VM, a `down` that timed out into SIGKILL — is caught
+    by neither, and holds its memory until somebody notices.
+    """
+    run = _docker("ps", "-a", "--filter", f"label={SANDBOX_LABEL}", "--format", "{{.Names}}")
+    if not run or run.returncode != 0:
+        return []
+    return [line.strip() for line in run.stdout.splitlines() if line.strip()]
+
+
+def remove_stray_sandboxes() -> None:
+    """Offer to remove them, rather than just doing it.
+
+    A developer running an assistant from an IDE has sandbox containers carrying the
+    same label and a different jvm id, and killing those mid-session is precisely
+    the bug the per-jvm scoping exists to prevent ("container is not running", from
+    a test jvm nuking a dev session). This script cannot tell the two apart, so it
+    asks instead of guessing.
+    """
+    strays = stray_sandbox_containers()
+    if not strays:
+        return
+    print(f"\n  {len(strays)} code-sandbox container(s) are still on the host:")
+    for name in strays[:8]:
+        print(f"    {name}")
+    if len(strays) > 8:
+        print(f"    … and {len(strays) - 8} more")
+    print("  They are siblings of the appliance, not part of it, so `down` left them.")
+    print("  If you are running an assistant from an IDE, ITS sandboxes are in this list.")
+    answer = input("  Remove them? [Y/n]: ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        print("  Left alone.")
+        return
+    run = _docker("rm", "-f", *strays, timeout=60)
+    if run and run.returncode == 0:
+        print(f"  Removed {len(strays)} sandbox container(s).")
+
+
+def unwire_coding_agents() -> None:
+    """Drop the MCP registration setup minted, best effort.
+
+    The token is issued once and never returned again, so a registration that
+    outlives its volume is not stale config — it is a client pointed at an
+    appliance that cannot authenticate it, failing on every session start with
+    nothing to say why. Removing the account without removing this is how you end
+    up with `embabel: Failed to connect` in `claude mcp list` and no idea when it
+    broke.
+    """
+    claude = shutil.which("claude")
+    if not claude:
+        return
+    try:
+        run = subprocess.run([claude, "mcp", "remove", MCP_SERVER_NAME],
+                             capture_output=True, text=True, timeout=30)
+    except (subprocess.SubprocessError, OSError):
+        return
+    if run.returncode == 0:
+        print(f"  Removed the '{MCP_SERVER_NAME}' MCP server from Claude Code.")
+
+
+def uninstall() -> None:
+    """--uninstall: back to the state a fresh clone is in.
+
+    Everything --fresh removes, plus the machine-local configuration it leaves
+    behind — which is the whole point. Re-running setup after --fresh never asks
+    for a provider key, a timezone or a realms directory, because .env still has
+    them, so it exercises none of the path a new user walks. That makes --fresh
+    the wrong tool for testing the thing developers most need to test.
+
+    Images and the local embedding model are KEPT, deliberately and always: the
+    embedding artifact alone is over a gigabyte and re-downloading one that has
+    not changed is pure waste. Nothing here offers to remove them.
+
+    Realm checkouts are not touched either. They are their own repositories and
+    somebody's work in progress; this script has no business deleting them.
+    """
+    print("  --uninstall returns this checkout to the state a fresh clone is in.")
+    print("\n  DELETED:")
+    print("    the appliance's entire state — account, world, graph, documents, dashboards")
+    print(f"    {ENV_FILE} — your provider key, timezone, and realms directory")
+    print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
+    print(f"    the '{MCP_SERVER_NAME}' MCP registration, whose token dies with the volume")
+    print("    any stray code-sandbox container (asked separately — a dev JVM may own one)")
+    print("\n  KEPT:")
+    print("    images and the local embedding model — over a gigabyte, and unchanged")
+    print("    realms/ and any realm checkout — your repositories, not ours")
+    print("    this checkout itself: `./worlds.py` sets up again from here\n")
+    answer = input("  Type 'yes' to uninstall: ").strip().lower()
+    if answer != "yes":
+        raise SetupError("Not uninstalled — nothing was touched.")
+
+    take_everything_down()
+    remove_stray_sandboxes()
+    for name in (ENV_FILE, OVERRIDE_FILE):
+        if os.path.exists(name):
+            os.remove(name)
+            print(f"  Removed {name}.")
+    unwire_coding_agents()
+    print("\n  Done. `./worlds.py` or `./me.py` starts over from a clean slate.\n")
 
 
 def ensure_mode(mode: str) -> bool:
@@ -741,11 +863,11 @@ def wire_coding_agents(result: dict) -> None:
             try:
                 run = subprocess.run(
                     [claude, "mcp", "add", "--transport", "http", "--scope", "user",
-                     "embabel", url, "--header", f"Authorization: Bearer {token}"],
+                     MCP_SERVER_NAME, url, "--header", f"Authorization: Bearer {token}"],
                     capture_output=True, text=True, timeout=60,
                 )
                 if run.returncode == 0:
-                    print("  Claude Code wired as 'embabel' — new sessions will see the appliance.")
+                    print(f"  Claude Code wired as '{MCP_SERVER_NAME}' — new sessions will see the appliance.")
                     return
                 print(f"  claude mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
             except (subprocess.SubprocessError, OSError) as e:
@@ -758,7 +880,7 @@ def wire_coding_agents(result: dict) -> None:
     print("  Wire any MCP client manually:")
     print(f"    URL:    {url}")
     print(f"    Header: Authorization: Bearer {token}")
-    print("  (Claude Code: claude mcp add --transport http --scope user embabel "
+    print(f"  (Claude Code: claude mcp add --transport http --scope user {MCP_SERVER_NAME} "
           f"{url} --header \"Authorization: Bearer <token>\")")
 
 
@@ -950,6 +1072,13 @@ def main() -> int:
              "ASSISTANT_BOOTSTRAP_WORLD; existing worlds are never reshaped",
     )
     parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="remove the appliance's state AND this machine's configuration (.env, shared "
+             "folders, the MCP registration), returning the checkout to a fresh-clone state. "
+             "Images, the local embedding model and your realm checkouts are kept",
+    )
+    parser.add_argument(
         "--realms",
         help="directory your realm checkouts live IN, mounted read-only at /realms so a "
              "world can load one with `path:` instead of cloning it. Written to .env as "
@@ -962,7 +1091,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    print("\n  Embabel appliance — first-run setup")
+    print("\n  Embabel appliance — " + ("uninstall" if args.uninstall else "first-run setup"))
     print("  " + "─" * 60)
 
     follower = None
@@ -972,6 +1101,12 @@ def main() -> int:
 
         # BEFORE the mode starts: the container reads .env at creation, and the
         # template only matters when a world is first built.
+        # Before everything: it ends the run rather than setting anything up, and
+        # it must not be preceded by writes to the .env it is about to delete.
+        if args.uninstall:
+            uninstall()
+            return 0
+
         if args.world:
             set_bootstrap_world(args.world)
         ensure_realms_dir(args.mode or "me", args.realms)

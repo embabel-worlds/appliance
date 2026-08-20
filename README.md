@@ -444,6 +444,30 @@ host already owns the appliance.
 
 Setup runs once per data volume. `docker compose down -v` erases everything — worlds,
 documents, graph — and gives you a fresh appliance asking to be set up again.
+`./me.py --fresh` (or `./worlds.py --fresh`) does the same across both modes and then
+sets up, which is the usual way back to an empty appliance.
+
+**`./setup.py --uninstall` goes one step further**, and the difference matters if you
+are testing the experience rather than the software. `--fresh` leaves `.env` behind, so
+the next run never asks for a provider key, a timezone or a realms directory — it
+exercises none of the path a new user walks. `--uninstall` removes the state *and* this
+machine's configuration: `.env`, `docker-compose.override.yml`, and the MCP registration
+whose token died with the volume. What is left is what a fresh clone looks like, and
+`./worlds.py` starts over from it.
+
+It also offers to remove stray **code-sandbox containers**. Those are created by the app
+through the Docker socket as siblings of the appliance rather than as compose services,
+so `down` never sees them — and one whose JVM died without its shutdown hook is swept by
+neither of the server's two cleanup passes. It asks rather than assumes, because an
+assistant you are running from an IDE owns sandboxes carrying the same label.
+
+Two things it deliberately keeps:
+
+- **Images and the local embedding model.** The embedding artifact alone is over a
+  gigabyte, and re-downloading one that has not changed is pure waste. There is no flag
+  to remove them.
+- **`realms/` and any realm checkout.** Those are your repositories and your work in
+  progress; nothing here deletes them.
 
 ## What the assistant can reach
 
