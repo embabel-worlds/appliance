@@ -46,6 +46,17 @@ services:
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
       - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
       - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:4342}
+      # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
+      # (see application-appliance.yml) — the browser holds the encrypted blob and
+      # nothing decryptable rests here — but WITHOUT this the server generates a key
+      # per start, so the blob it handed the browser yesterday decrypts to nothing
+      # today and the wallet reports itself EMPTY rather than erroring. Every OAuth
+      # app and API key silently needed re-entering after each restart.
+      #
+      # BARE FORM, like OPENAI_API_KEY below and for the same reason: `${VAR:-}`
+      # would hand the container an empty key, which is worse than none. setup.py
+      # generates one into .env on first run and never regenerates it.
+      - EMBABEL_KEY_SECRET
       # BARE FORM, NOT ${VAR:-} — load-bearing. `${VAR:-}` sets the variable to the
       # EMPTY STRING when it is unset, and an empty env var SHADOWS the key that
       # first-run setup wrote into the data volume (env beats config files in

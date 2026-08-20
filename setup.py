@@ -22,11 +22,13 @@ yourself, everything here is plain HTTP; see /swagger-ui on your instance.
 from __future__ import annotations
 
 import argparse
+import base64
 import getpass
 import http.client
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import threading
@@ -575,6 +577,44 @@ def ensure_timezone() -> None:
     print(f"  Wrote TZ={zone} to .env — the appliance will keep your local time.")
 
 
+def ensure_wallet_key() -> None:
+    """Give this appliance a master key for its wallet, once, and keep it.
+
+    The wallet holds what you connect WITH: an OAuth app's client id and secret,
+    a realm's API key, the tokens that come back from authorizing. It is always
+    encrypted, and the key is `EMBABEL_KEY_SECRET`. Without one the server
+    generates a key per start — so everything you typed decrypts to nothing after
+    a restart and the appliance reports an EMPTY wallet rather than an error. You
+    would re-enter your GitHub credentials every time you restarted, and never be
+    told why.
+
+    Written to .env rather than held in the image, because it must outlive both:
+    `--fresh` wipes the volumes and this survives, which is what makes a wallet
+    written before the wipe still readable after it.
+
+    NEVER REGENERATED. A new key does not unlock what the old one wrote — it makes
+    every stored credential undecryptable — so an existing value of any kind wins,
+    exactly like TZ above."""
+    if os.environ.get("EMBABEL_KEY_SECRET"):
+        return  # exported in the shell — compose sees it directly
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            if any(line.strip().startswith("EMBABEL_KEY_SECRET=") for line in f):
+                return
+    # 32 bytes, base64 — AES-256, the length WalletEncryptionConfiguration validates.
+    key = base64.b64encode(secrets.token_bytes(32)).decode()
+    with open(ENV_FILE, "a") as f:
+        f.write(
+            "\n# The key your wallet is encrypted with, generated once by setup.py.\n"
+            "# KEEP IT. Changing or losing it does not lock you out of the appliance —\n"
+            "# it makes every credential already stored undecryptable, and you re-enter\n"
+            "# them. Back it up with anything else you would not want to retype.\n"
+            f"EMBABEL_KEY_SECRET={key}\n"
+        )
+    os.chmod(ENV_FILE, 0o600)
+    print("  Generated EMBABEL_KEY_SECRET in .env — your saved credentials now survive a restart.")
+
+
 def take_everything_down() -> None:
     """Every service and volume in the project, whichever mode was last up. Both
     mode files merged so nothing is missed — shared by --fresh and --uninstall,
@@ -829,6 +869,7 @@ def ensure_mode(mode: str) -> bool:
     the operator sees a service in their YAML with nothing behind it. `up -d`
     is idempotent — it reconciles and leaves running containers alone."""
     ensure_timezone()
+    ensure_wallet_key()
     announce_github_token()
     modes = running_modes()
     other = next(((svc, name) for svc, name in modes.items() if svc != MODE_SERVICE[mode]), None)
