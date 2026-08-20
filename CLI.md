@@ -185,7 +185,30 @@ appliance to write to your files, which is why the mount is read-only.
 |---|---|
 | **macOS** | Supported. Docker Desktop with Model Runner enabled (Settings → AI). `embabel` lands in `~/.local/bin`, which is not on `PATH` by default — the installer says so and names your shell's profile. |
 | **Linux** | Supported. Model Runner needs the `docker-model-plugin` package rather than a Desktop toggle. `~/.local/bin` is usually already on `PATH`. `embabel open` uses `xdg-open`; on a headless box it prints the URL and opens nothing, which is the useful behaviour over ssh. |
-| **Windows** | **WSL2 only.** The installer is a POSIX shell script and the CLI assumes a POSIX filesystem, so run both inside a WSL2 distribution with Docker Desktop's WSL integration turned on. There is no PowerShell-native install, and native Windows is not on the near path. |
+| **Windows** | **WSL2 only** — see below. |
+
+### Windows, specifically
+
+Run the installer and `embabel` inside a **WSL2** distribution — Microsoft's Linux
+environment for Windows — with Docker Desktop's WSL integration enabled for it.
+Docker Desktop already uses WSL2 as its engine by default, so anyone running
+Docker on Windows almost certainly has it.
+
+This is not Windows support so much as Linux support that Windows users can
+reach: the installer is a POSIX shell script and the CLI assumes POSIX paths, so
+neither runs in PowerShell. A native port would mean a PowerShell installer and a
+CLI that understands Windows paths — a piece of work, not a flag.
+
+Two things that will bite otherwise:
+
+- **Keep the appliance inside the Linux filesystem** — `~/embabel-me`, not
+  `/mnt/c/...`. Crossing the Windows/Linux filesystem boundary is dramatically
+  slower, and it costs most where it hurts most: realm checkouts, which a coding
+  agent reads and rewrites in a tight loop. Clone your realms under your WSL home
+  directory too, and point `embabel realms link` at that.
+- **`localhost` forwards through to Windows**, so `http://localhost:4343` opens
+  the console in an ordinary Windows browser. `embabel open` tries `wslview` for
+  exactly this.
 
 Two things that are macOS-specific by nature rather than by neglect:
 
