@@ -800,6 +800,136 @@ def set_bootstrap_world(spec: str) -> None:
     print("  (applies when a world is FIRST created — existing worlds keep their shape)\n")
 
 
+# Docker Desktop shares these host prefixes with containers out of the box. A
+# bind mount from ANYWHERE else resolves to an EMPTY directory rather than an
+# error, which is the worst failure mode this feature has: everything starts,
+# nothing is visible, and there is nothing in any log to explain it. So warn at
+# the moment the path is chosen, while the operator still knows what they typed.
+DOCKER_SHARED_PREFIXES = ("/Users", "/Volumes", "/private", "/tmp", "/var/folders")
+
+
+def inspect_realms_dir(raw: str) -> tuple[str | None, list[str], list[str]]:
+    """Look at a candidate realms directory and say what is there.
+
+    Returns (resolved absolute path or None, realm names visible, notes to print).
+    None means the path cannot be used and the first note says why — nothing is
+    raised, because the interactive path wants to ask again rather than exit.
+    """
+    path = os.path.realpath(os.path.expanduser(raw.strip()))
+    notes: list[str] = []
+
+    if not os.path.exists(path):
+        return None, [], [f"{path} does not exist."]
+    if not os.path.isdir(path):
+        return None, [], [f"{path} is not a directory."]
+    if not os.access(path, os.R_OK | os.X_OK):
+        return None, [], [f"{path} is not readable."]
+
+    # The likeliest mistake by a distance: pointing at the realm instead of at
+    # the directory the realms live in. Catch it by name, because the mount would
+    # otherwise succeed and simply show nothing.
+    if os.path.exists(os.path.join(path, "realm.yml")):
+        return None, [], [
+            f"{path} is itself a realm — this wants the directory your realms live IN,",
+            f"so that adding one is a clone rather than an edit here. Try: {os.path.dirname(path)}",
+        ]
+
+    realms = sorted(
+        entry for entry in os.listdir(path)
+        if os.path.exists(os.path.join(path, entry, "realm.yml"))
+    )
+
+    if sys.platform == "darwin" and not path.startswith(DOCKER_SHARED_PREFIXES):
+        notes.append(
+            "Docker Desktop does not share this path by default — the mount would be EMPTY."
+        )
+        notes.append(
+            "Add it under Settings -> Resources -> File sharing, or choose a path under /Users."
+        )
+    return path, realms, notes
+
+
+def set_realms_dir(path: str) -> None:
+    """Write EMBABEL_REALMS_DIR into .env, preserving everything else there.
+    Same reasoning as the world template: the compose files stay pull-only, and
+    where this machine keeps its checkouts is exactly what .env is for."""
+    lines = []
+    if os.path.exists(".env"):
+        with open(".env") as f:
+            lines = f.read().splitlines()
+    replaced = False
+    for index, line in enumerate(lines):
+        if line.startswith("EMBABEL_REALMS_DIR="):
+            lines[index] = f"EMBABEL_REALMS_DIR={path}"
+            replaced = True
+    if not replaced:
+        lines += ["", "# Realm checkouts on this machine, mounted read-only at /realms.",
+                  "# See realms/README.md; ./worlds.py asked for this on first run.",
+                  f"EMBABEL_REALMS_DIR={path}"]
+    with open(".env", "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def announce_realms(path: str, realms: list[str], notes: list[str]) -> None:
+    print(f"  Realm checkouts: {path}")
+    if realms:
+        shown = ", ".join(realms[:6]) + (f" and {len(realms) - 6} more" if len(realms) > 6 else "")
+        print(f"  {len(realms)} realm{'s' if len(realms) != 1 else ''} visible: {shown}")
+    else:
+        print("  No realms there yet — clone one in and it is visible on the next start.")
+    for note in notes:
+        print(f"  ! {note}")
+    print("  Load one with a path entry in a world's config/realms.yml:  path: /realms/<dir>\n")
+
+
+def ensure_realms_dir(mode: str, explicit: str | None) -> None:
+    """Point the containers at realm checkouts on this machine.
+
+    Must run BEFORE the mode starts: compose reads .env when it creates the
+    container, so a value written afterwards applies to the next start, not this
+    one — the same reason the world template is set up here.
+
+    Asked only in the worlds mode, and only once. Worlds is the door a realm
+    author comes through, and a question every run is a question people learn to
+    hit Enter through without reading.
+    """
+    if explicit:
+        path, realms, notes = inspect_realms_dir(explicit)
+        if not path:
+            raise SetupError("--realms: " + " ".join(notes))
+        set_realms_dir(path)
+        announce_realms(path, realms, notes)
+        return
+
+    if os.environ.get("EMBABEL_REALMS_DIR"):
+        return  # exported in the shell — compose sees it directly
+    if os.path.exists(".env"):
+        with open(".env") as f:
+            if any(line.strip().startswith("EMBABEL_REALMS_DIR=") for line in f):
+                return  # already answered, either way
+    if mode != "worlds" or not sys.stdin.isatty():
+        return
+
+    print("\n── Working on realms " + "─" * 41)
+    print("  A realm is a git repository of declarative capability. If you are writing")
+    print("  one, the appliance can read it straight off this machine — no commit, no")
+    print("  push, no waiting for a clone. Give the directory your checkouts live IN,")
+    print("  so that adding another is a clone rather than a change here.\n")
+
+    default = os.path.realpath("realms")
+    for _ in range(3):
+        answer = input(f"  Realm checkouts directory [{default}]: ").strip()
+        path, realms, notes = inspect_realms_dir(answer or default)
+        if path:
+            set_realms_dir(path)
+            announce_realms(path, realms, notes)
+            return
+        for note in notes:
+            print(f"  {note}")
+        print()
+    print("  Skipping — set EMBABEL_REALMS_DIR in .env when you want it.\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
     parser.add_argument("mode", nargs="?", choices=tuple(MODE_COMPOSE),
@@ -820,6 +950,12 @@ def main() -> int:
              "ASSISTANT_BOOTSTRAP_WORLD; existing worlds are never reshaped",
     )
     parser.add_argument(
+        "--realms",
+        help="directory your realm checkouts live IN, mounted read-only at /realms so a "
+             "world can load one with `path:` instead of cloning it. Written to .env as "
+             "EMBABEL_REALMS_DIR; checked before it is written",
+    )
+    parser.add_argument(
         "--ignore-env",
         action="store_true",
         help=f"always ask, even if {' or '.join(PROVIDER_ENV.values())} is set",
@@ -838,6 +974,7 @@ def main() -> int:
         # template only matters when a world is first built.
         if args.world:
             set_bootstrap_world(args.world)
+        ensure_realms_dir(args.mode or "me", args.realms)
 
         if args.fresh:
             fresh_wipe()

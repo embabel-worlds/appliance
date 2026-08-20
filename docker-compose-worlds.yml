@@ -100,6 +100,23 @@ services:
       # THE SAME worlds-on-disk volume as the Me mode. A world is the unit the
       # whole product family agrees on; the modes are surfaces over it.
       - embabel_assistant_data:/data
+      # Realm checkouts on the host, so a realm can be worked on without pushing
+      # it: the engine loads a `path:` reference in place, with no clone and no
+      # cache entry (`- name: esg` / `path: /realms/realm-esg` in a world's
+      # config/realms.yml).
+      #
+      # Mount the PARENT of your checkouts, not one realm — then adding a realm
+      # is a `git clone`, not a compose edit and a restart. EMBABEL_REALMS_DIR in
+      # .env points it anywhere; the default is ./realms in this checkout, which
+      # exists and is empty so the mount is always valid and inert until used.
+      #
+      # READ-ONLY, and that is the design rather than a limitation: you edit on
+      # the host, where your editor, your coding agent and your git remote
+      # already are, and the appliance only ever reads. One consequence to know
+      # rather than discover — a realm's declared npm/wasm build runs inside
+      # cloneRepo, so it never fires for a local reference. A declarative realm
+      # is fine; a realm with a build step must be built on the host first.
+      - ${EMBABEL_REALMS_DIR:-./realms}:/realms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     models:

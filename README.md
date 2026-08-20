@@ -105,6 +105,48 @@ Because the modes share one graph and one data volume, two rules hold:
 2. **`EMBABEL_VERSION` and the embedding model move both modes together** — they
    are set once, in `.env` and `infra.yml`, deliberately.
 
+## Working on a realm
+
+A realm is a git repository of declarative capability, and the usual loop is
+commit, push, and wait for the appliance to clone it — through a cache keyed by
+`name@ref`, so a branch that has not moved is a cache hit and an unpushed change
+is invisible even after a restart.
+
+Point the appliance at your checkouts instead and it reads them in place:
+
+```bash
+./worlds.py            # asks, once, where your realm checkouts live
+```
+
+Answer with the directory they live **in** — the parent, so adding another realm
+is a `git clone` rather than a change to any config. It is checked before it is
+written: a path that does not exist, is not readable, is a realm rather than a
+directory of realms, or is somewhere Docker Desktop does not share, is refused
+with the reason. What it found is printed:
+
+```
+  Realm checkouts: /Users/you/dev
+  4 realms visible: realm-esg, realm-github, realm-legal, realm-stripe
+```
+
+That writes `EMBABEL_REALMS_DIR` to `.env` and bind-mounts the directory at
+`/realms`. A world then loads one by path instead of by repo:
+
+```yaml
+# config/realms.yml, in the world
+- name: esg
+  path: /realms/realm-esg
+```
+
+Non-interactively, or to change it later: `./setup.py worlds --realms ~/dev`.
+
+**The mount is read-only, by design.** You edit on the host — where your editor,
+your coding agent and your git remote already are — and push to your own GitHub
+from there. The appliance only reads. One consequence to know rather than
+discover: a realm's declared npm/wasm build runs as part of cloning, so it never
+fires for a local realm. A declarative realm needs nothing; a realm with a build
+step must be built on the host first.
+
 ## The Me app — a sensor for your Mac
 
 ![Embabel Me](images/me_electron.png)

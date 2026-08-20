@@ -9,6 +9,12 @@
 # "Local files" panel). Absolute host paths — this machine's business, like .env.
 docker-compose.override.yml
 
+# Realm checkouts you are working on (see realms/README.md). They are their own
+# repositories, cloned into the default mount — this repo has no business
+# tracking them, and `git add -A` should not swallow somebody's realm.
+realms/*
+!realms/README.md
+
 # Editor and OS noise. An operator clones this repo and runs it; anything their
 # tooling drops here is theirs, not ours.
 .idea/
