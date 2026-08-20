@@ -76,6 +76,21 @@ services:
       # vectors into the same graph. See the models element in infra.yml.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
       - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
+      # WORLDS IS THE DEVELOPER DOOR, SO IT SAYS SO.
+      #
+      # The MCP mode decides whether a connected coding agent can install and author
+      # realms, and it defaults to ASSISTANT — the right default for Me, where someone
+      # asking where their invoices went should never read about realms. It is the wrong
+      # one here: this mode exists to be built ON, and it was handing every arriving
+      # agent a surface where realm authoring refuses.
+      #
+      # The server cannot work this out for itself. Me and Worlds are the same image, the
+      # same profile and the same volume — see the header of this file — so the only thing
+      # that knows which product this is, is this file. Hence: it declares it.
+      #
+      # A user who picks a mode in the console still wins; this only decides where someone
+      # who has never touched the switch starts.
+      - ASSISTANT_INFRASTRUCTURE_MCP_DEFAULT_MODE=${WORLDS_MCP_MODE:-DEVELOPER}
       - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
       - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
