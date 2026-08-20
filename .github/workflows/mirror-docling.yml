@@ -5,6 +5,13 @@
 # MIT-licensed, so we copy it byte for byte (a multi-arch index copy, not a
 # rebuild) and pin the version in infra.yml.
 #
+# INTO embabel-worlds, THE ORG THIS REPO LIVES IN. It used to push to embabel,
+# where GITHUB_TOKEN has no rights: those packages are linked to no repository, so
+# no repository inherits any, and mirroring a NEW name failed with
+# "permission_denied: The requested installation does not exist". A package created
+# by this workflow is linked to this repo automatically, so the token keeps working
+# without anyone holding a PAT.
+#
 # Run this when adopting a new upstream version or variant, then bump the default
 # in infra.yml. The CPU variant is what the appliance ships: the stock image adds a
 # CUDA PyTorch that no compose file here can reach, so it costs ~3GB and buys
@@ -43,7 +50,27 @@ jobs:
       - name: Copy the multi-arch index
         run: |
           docker buildx imagetools create \
-            --tag ghcr.io/embabel/${{ inputs.variant }}:${{ inputs.version }} \
+            --tag ghcr.io/embabel-worlds/${{ inputs.variant }}:${{ inputs.version }} \
             quay.io/docling-project/${{ inputs.variant }}:${{ inputs.version }}
-      - name: Verify
-        run: docker buildx imagetools inspect ghcr.io/embabel/${{ inputs.variant }}:${{ inputs.version }}
+
+      # ANONYMOUSLY. A new GHCR package is created PRIVATE, and an authenticated
+      # inspect passes happily against one no user can pull — so the check that
+      # matters is the one a stranger's `docker pull` makes. Fails loudly here
+      # rather than in somebody's first run.
+      - name: Verify an anonymous pull works
+        run: |
+          set -euo pipefail
+          IMAGE="${{ inputs.variant }}:${{ inputs.version }}"
+          TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:embabel-worlds/${{ inputs.variant }}:pull" | jq -r .token)
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json' \
+            "https://ghcr.io/v2/embabel-worlds/${{ inputs.variant }}/manifests/${{ inputs.version }}")
+          if [ "$CODE" != "200" ]; then
+            echo "::error::$IMAGE is not anonymously pullable (HTTP $CODE)."
+            echo "::error::A new package is PRIVATE until someone changes it:"
+            echo "::error::https://github.com/orgs/embabel-worlds/packages/container/package/${{ inputs.variant }}"
+            exit 1
+          fi
+          echo "$IMAGE is public and pullable."
+
