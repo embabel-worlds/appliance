@@ -88,6 +88,10 @@ MCP_SERVER_NAME = "embabel"
 # server). They are created by the app THROUGH the docker socket as siblings of the
 # appliance, not as compose services — so `docker compose down` does not see them.
 SANDBOX_LABEL = "embabel-jvm"
+# The compose project both mode files declare. Anything belonging to the appliance
+# carries it as a label — which is the only reliable way to tell the appliance's
+# containers from a developer's own stack, whose names start the same way.
+COMPOSE_PROJECT = "embabel-appliance"
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
 # build step). Me onboarding ends by offering to start it.
 ME_APP_DIR = "me-app"
@@ -574,10 +578,42 @@ def ensure_timezone() -> None:
 def take_everything_down() -> None:
     """Every service and volume in the project, whichever mode was last up. Both
     mode files merged so nothing is missed — shared by --fresh and --uninstall,
-    which differ in what they take with them, not in how they stop."""
+    which differ in what they take with them, not in how they stop.
+
+    Compose's own output is CAPTURED rather than shown. It ends on lines like
+    "! Network embabel-appliance_default  Resource is still in use", which is not
+    a failure — it is compose declining to break a network that a container of
+    yours, from some other project, is attached to. Shown raw as the last thing
+    before "Done", it reads as the uninstall having failed. So: run it quietly,
+    then report what is actually gone by looking.
+    """
     cmd = ["docker", "compose", "-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
            "down", "--volumes", "--remove-orphans"]
-    subprocess.run(cmd)
+    run = subprocess.run(cmd, capture_output=True, text=True)
+
+    # BY PROJECT LABEL, not by name. Matching "embabel-" caught embabel-assistant-neo4j
+    # and embabel-assistant-docling — a developer's own stack from the assistant repo,
+    # a different compose project entirely — and reported somebody else's healthy
+    # containers as an uninstall that had failed.
+    left = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={COMPOSE_PROJECT}",
+                   "--format", "{{.Names}}")
+    remaining = [n.strip() for n in (left.stdout.splitlines() if left and left.returncode == 0 else [])
+                 if n.strip()]
+    if remaining:
+        print(f"  ! {len(remaining)} container(s) would not stop: {', '.join(remaining)}")
+        print(f"    {(run.stderr or run.stdout).strip().splitlines()[-1] if (run.stderr or run.stdout).strip() else ''}")
+    else:
+        print("  Containers and volumes removed.")
+
+    # The network is the one thing a foreign container can hold open. Name the
+    # holder: "resource is still in use" is a fact about somebody's OTHER project,
+    # and without the name it reads as this uninstall having left a mess.
+    net = _docker("network", "inspect", "embabel-appliance_default",
+                  "--format", "{{range .Containers}}{{.Name}} {{end}}")
+    if net and net.returncode == 0 and net.stdout.strip():
+        holders = net.stdout.split()
+        print(f"  Kept the network: {', '.join(holders)} is attached to it.")
+        print("    Not ours to disconnect — it belongs to another compose project.")
 
 
 def fresh_wipe() -> None:
@@ -769,9 +805,13 @@ def uninstall() -> None:
         if os.path.exists(name):
             os.remove(name)
             print(f"  Removed {name}.")
+        else:
+            # Silence here made a re-run look like nothing happened at all.
+            print(f"  No {name} to remove.")
     unwire_coding_agents()
     remove_cli_shim()
-    print("\n  Done. `./worlds.py` or `./me.py` starts over from a clean slate.\n")
+    print("\n  Done — this checkout is back to the state a fresh clone is in.")
+    print("  `embabel up` sets it up again from here.\n")
 
 
 def ensure_mode(mode: str) -> bool:
