@@ -71,8 +71,12 @@ services:
   #
   # A GPU host is a real case, and this does not serve it. Serving it needs the
   # CUDA image AND a device reservation, together — one without the other is what
-  # we already had. Until that exists, DOCLING_IMAGE=docling-serve restores the fat
-  # image, which will still run on the CPU.
+  # we already had.
+  #
+  # DOCLING_IMAGE=docling-serve names the fat build, but nothing is mirrored under
+  # that name in this org yet, so run mirror-docling for it first. It is not a
+  # fallback you can reach for mid-incident; it is a thing to publish deliberately
+  # if a reason to prefer it ever appears.
   docling:
     #
     # embabel-worlds, NOT embabel: a package belongs in the org of the repo that
