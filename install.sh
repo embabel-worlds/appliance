@@ -8,14 +8,14 @@
 # everything it does should fit on one screen and read plainly:
 #
 #   1. check Docker is installed and running
-#   2. download this repo into ~/embabel-me
+#   2. download this repo into ~/embabel-worlds
 #   3. hand off to ./me.py, which owns the actual setup
 #
 # It installs nothing globally, needs no root, and writes only inside that one
 # directory. To undo it: `docker compose down -v` in there, then delete it.
 #
 # Environment:
-#   EMBABEL_HOME   where to install         (default: ~/embabel-me)
+#   EMBABEL_HOME   where to install         (default: ~/embabel-worlds)
 #   EMBABEL_REF    branch or tag to fetch   (default: main)
 #   EMBABEL_MODE   me | worlds              (default: me)
 
@@ -27,12 +27,28 @@ REPO="${EMBABEL_REPO:-embabel-worlds/appliance}"
 # should hand a new user.
 REF="${EMBABEL_REF:-main}"
 MODE="${EMBABEL_MODE:-${EMBABEL_DOOR:-me}}"   # EMBABEL_DOOR: the old name, still honoured
-HOME_DIR="${EMBABEL_HOME:-$HOME/embabel-me}"
+# ~/embabel-worlds, not ~/embabel-me: one appliance runs both doors, and naming
+# the directory after the door you happened to install through was wrong for
+# everyone who then opened the other one. An EXISTING ~/embabel-me is still used
+# where it is found — a rename is not worth stranding somebody's data over.
+DEFAULT_HOME="$HOME/embabel-worlds"
+if [ -z "${EMBABEL_HOME:-}" ] && [ -f "$HOME/embabel-me/setup.py" ]; then
+  DEFAULT_HOME="$HOME/embabel-me"
+fi
+HOME_DIR="${EMBABEL_HOME:-$DEFAULT_HOME}"
 
 say() { printf '  %s\n' "$*"; }
 die() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
 
-printf '\n  Embabel Me — your own assistant, on your own machine\n\n'
+# The door you are actually installing. The banner said "Embabel Me" whichever
+# mode you asked for, so the Worlds install opened by naming the other product.
+if [ "$MODE" = "worlds" ]; then
+  printf '\n  Embabel Worlds — the world your AI acts in\n'
+  printf '  A governed, living knowledge graph of your business, built from the\n'
+  printf '  systems you already run. It belongs to you, and it runs here.\n\n'
+else
+  printf '\n  Embabel Me — your own assistant, on your own machine\n\n'
+fi
 
 # --- 1. Docker ------------------------------------------------------------
 # The one prerequisite we cannot install for you, and the one worth failing
@@ -97,7 +113,7 @@ chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" "$HOME_DIR
 
 # --- 2b. Put `embabel` on PATH --------------------------------------------
 # So that everything after this is a verb rather than a directory. Without it the
-# instructions are `cd ~/embabel-me && ./worlds.py`, and the user has to remember
+# instructions are `cd ~/embabel-worlds && ./worlds.py`, and the user has to remember
 # where the product lives and which compose file today's mode uses.
 #
 # A two-line forwarder, not a copy: it execs the checkout's own CLI, so an update

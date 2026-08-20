@@ -8,7 +8,7 @@ Your data and your code stay on your machine. The assistant talks to the model p
 
 ## Quick start
 
-One line — it checks Docker, downloads the appliance into `~/embabel-me`, and hands
+One line — it checks Docker, downloads the appliance into `~/embabel-worlds`, and hands
 straight off to setup:
 
 ```bash
@@ -107,10 +107,11 @@ Because the modes share one graph and one data volume, two rules hold:
 
 ## Working on a realm
 
-A realm is a git repository of declarative capability, and the usual loop is
-commit, push, and wait for the appliance to clone it — through a cache keyed by
-`name@ref`, so a branch that has not moved is a cache hit and an unpushed change
-is invisible even after a restart.
+A realm is a set of capabilities that extends a world — actions, types, APIs,
+producers, skills, handlers, apps. Authoring one normally means publishing it
+somewhere the appliance can fetch from, and waiting: the fetch is cached by
+`name@ref`, so a version that has not moved is a cache hit and an unpublished
+change stays invisible even after a restart.
 
 Point the appliance at your checkouts instead and it reads them in place:
 

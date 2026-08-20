@@ -144,7 +144,7 @@ def prompt(text: str) -> str:
     except EOFError:
         raise SetupError(
             "No terminal to ask on — setup needs to ask you a few questions.\n"
-            "Run it directly:  cd ~/embabel-me && ./worlds.py   (or ./me.py)"
+            "Run it directly:  cd ~/embabel-worlds && ./worlds.py   (or ./me.py)"
         )
 
 
@@ -1181,10 +1181,10 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
         return
 
     print("\n── Working on realms " + "─" * 41)
-    print("  A realm is a git repository of declarative capability. If you are writing")
-    print("  one, the appliance can read it straight off this machine — no commit, no")
-    print("  push, no waiting for a clone. Give the directory your checkouts live IN,")
-    print("  so that adding another is a clone rather than a change here.\n")
+    print("  A realm is a set of capabilities that extends a world. If you are writing")
+    print("  one, the appliance can read it straight off this machine, with nothing")
+    print("  published anywhere first. Give the directory your realms live IN, so that")
+    print("  adding another is a copy rather than a change here.\n")
 
     default = os.path.realpath("realms")
     for _ in range(3):
