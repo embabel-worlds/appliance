@@ -657,6 +657,72 @@ def unwire_coding_agents() -> None:
         print(f"  Removed the '{MCP_SERVER_NAME}' MCP server from Claude Code.")
 
 
+def cli_shim_paths() -> list[str]:
+    """Every place install.sh could have written the `embabel` launcher.
+
+    `$EMBABEL_BIN_DIR` first because an installer run with it set put the shim there, then the
+    default. Both are checked rather than one, so an uninstall undoes an install that used either.
+    """
+    seen: list[str] = []
+    for directory in (os.environ.get("EMBABEL_BIN_DIR"), os.path.join(os.path.expanduser("~"), ".local", "bin")):
+        if directory and directory not in seen:
+            seen.append(directory)
+    return [os.path.join(d, "embabel") for d in seen]
+
+
+def is_our_shim(path: str) -> bool:
+    """Whether [path] is the forwarder install.sh wrote for THIS installation.
+
+    NEVER delete an `embabel` on PATH just because it is called `embabel`. The TUI ships one too —
+    pip puts it in whichever python is around — and install.sh warns about exactly that collision
+    when it finds one. An uninstall that removed somebody's other tool because the names matched
+    would be a far worse bug than the one this fixes.
+
+    So: it must be a small file, it must carry the line install.sh writes, and it must name the
+    directory this script is running from. Anything else is left alone.
+    """
+    try:
+        if os.path.getsize(path) > 4096:
+            return False
+        with open(path) as f:
+            body = f.read()
+    except OSError:
+        return False
+    here = os.path.dirname(os.path.abspath(__file__))
+    return "Written by install.sh" in body and here in body
+
+
+def remove_cli_shim() -> None:
+    """Take the `embabel` command off PATH — the one install.sh put there.
+
+    Without this, uninstall left a live command pointing at a directory it had just emptied, so
+    `embabel status` failed in a way that read as a broken product rather than a completed
+    uninstall.
+    """
+    removed = []
+    for path in cli_shim_paths():
+        if not os.path.exists(path):
+            continue
+        if not is_our_shim(path):
+            print(f"  Left {path} alone — it is not the launcher this installation wrote.")
+            continue
+        try:
+            os.remove(path)
+            removed.append(path)
+            print(f"  Removed {path}.")
+        except OSError as e:
+            print(f"  Could not remove {path}: {e}")
+
+    # A DIFFERENT `embabel` may still answer, and saying so is the point: otherwise the next
+    # `which embabel` shows a hit and the uninstall looks like it failed again, which is exactly
+    # the confusion this function exists to end.
+    if removed:
+        survivor = shutil.which("embabel")
+        if survivor:
+            print(f"  NOTE: another 'embabel' is still on your PATH: {survivor}")
+            print("        That is not ours — probably the TUI — and it has been left alone.")
+
+
 def uninstall() -> None:
     """--uninstall: back to the state a fresh clone is in.
 
@@ -672,6 +738,11 @@ def uninstall() -> None:
 
     Realm checkouts are not touched either. They are their own repositories and
     somebody's work in progress; this script has no business deleting them.
+
+    The `embabel` COMMAND does go, though — see [remove_cli_shim]. install.sh puts a
+    launcher on PATH, so an uninstall that left it there left a live command pointing at a
+    directory it had just emptied. The installation DIRECTORY stays: this script is running
+    from it, and `./worlds.py` sets up again from there.
     """
     print("  --uninstall returns this checkout to the state a fresh clone is in.")
     print("\n  DELETED:")
@@ -679,11 +750,15 @@ def uninstall() -> None:
     print(f"    {ENV_FILE} — your provider key, timezone, and realms directory")
     print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
     print(f"    the '{MCP_SERVER_NAME}' MCP registration, whose token dies with the volume")
+    for path in cli_shim_paths():
+        if os.path.exists(path) and is_our_shim(path):
+            print(f"    {path} — the 'embabel' command install.sh put on your PATH")
+            break
     print("    any stray code-sandbox container (asked separately — a dev JVM may own one)")
     print("\n  KEPT:")
     print("    images and the local embedding model — over a gigabyte, and unchanged")
     print("    realms/ and any realm checkout — your repositories, not ours")
-    print("    this checkout itself: `./worlds.py` sets up again from here\n")
+    print("    this directory itself: `./worlds.py` sets up again from here\n")
     answer = prompt("  Type 'yes' to uninstall: ").strip().lower()
     if answer != "yes":
         raise SetupError("Not uninstalled — nothing was touched.")
@@ -695,6 +770,7 @@ def uninstall() -> None:
             os.remove(name)
             print(f"  Removed {name}.")
     unwire_coding_agents()
+    remove_cli_shim()
     print("\n  Done. `./worlds.py` or `./me.py` starts over from a clean slate.\n")
 
 

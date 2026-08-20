@@ -134,9 +134,16 @@ Stop the appliance, keeping everything. `embabel up` brings it back.
 
 ### `embabel uninstall`
 
-Return the checkout to the state a fresh clone is in: the appliance's state, plus
-this machine's configuration — `.env`, the shared-folder override, and the MCP
-registration whose token died with the volume.
+Undo the installation: the appliance's state, this machine's configuration —
+`.env`, the shared-folder override, the MCP registration whose token died with the
+volume — and **the `embabel` command itself**, taken back off your PATH.
+
+That last one only removes the launcher THIS installation wrote. The TUI ships an
+`embabel` too (pip puts it wherever your python is), and install.sh warns when one
+already comes first on your PATH; uninstall reads the file before deleting it and
+leaves anything it did not write alone. If another `embabel` still answers
+afterwards, it says so — otherwise the next `which embabel` finds a hit and the
+uninstall looks like it failed.
 
 It also offers to remove stray code-sandbox containers. They are created by the
 app through the Docker socket as siblings of the appliance rather than as compose
@@ -149,6 +156,9 @@ Two things it deliberately keeps:
   gigabyte, and re-downloading one that has not changed is waste. There is no flag
   to remove them.
 - **Your realm checkouts.** They are your repositories.
+- **The installation directory.** `~/embabel/worlds` (or wherever you put it) stays,
+  so `./worlds.py` sets up again from it. Delete the directory yourself when you
+  want it gone — this script does not remove the ground it is standing on.
 
 ### `embabel tui`
 
