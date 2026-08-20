@@ -75,18 +75,13 @@ services:
   # image, which will still run on the CPU.
   docling:
     #
-    # DEFAULTED BACK TO THE FAT IMAGE, TEMPORARILY, because the CPU one does not
-    # exist yet and a default pointing at a missing image breaks every first run.
-    # mirror-docling cannot create it: this repo lives in embabel-worlds and pushes
-    # to ghcr.io/embabel, so its GITHUB_TOKEN has no rights to a package name that
-    # does not already exist there ("permission_denied: The requested installation
-    # does not exist"). docling-serve predates that split and so still works.
-    #
-    # To finish the switch, one of: create ghcr.io/embabel/docling-serve-cpu with a
-    # token that can, and flip this default; or mirror into ghcr.io/embabel-worlds,
-    # where the token already has rights, and point this there. Until then
-    # DOCLING_IMAGE=docling-serve-cpu is opt-in for anyone who mirrors it themselves.
-    image: ghcr.io/embabel/${DOCLING_IMAGE:-docling-serve}:${DOCLING_VERSION:-v1.29.0}
+    # The cpu tag was published by hand, not by mirror-docling: that workflow lives
+    # in embabel-worlds and pushes to the embabel org, where its GITHUB_TOKEN has no
+    # rights (the packages are linked to no repository, so no repository inherits
+    # any). Adopting a new version still needs a token with write:packages on the
+    # org, and a NEW package lands PRIVATE — every first run then fails on auth, so
+    # check an anonymous pull before trusting it.
+    image: ghcr.io/embabel/${DOCLING_IMAGE:-docling-serve-cpu}:${DOCLING_VERSION:-v1.29.0}
     container_name: embabel-appliance-docling
     restart: unless-stopped
     # Conversion memory is bounded by the LARGEST single document, not corpus size:
