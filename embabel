@@ -253,6 +253,30 @@ def cmd_uninstall(args) -> int:
     return run_setup("--uninstall")
 
 
+def cmd_tui(args) -> int:
+    """The terminal client, as a subcommand of the one command.
+
+    The TUI also ships a console script called `embabel` — pip drops it into
+    whichever python is around — so on a machine with both, which one you get is
+    decided by PATH order. Two commands with one name, from the same people, is a
+    coin toss the user has to lose once before they know. This is the resolution:
+    one `embabel`, and the TUI is a verb under it.
+
+    It runs the CONTAINER rather than any locally installed copy, for the reason
+    the whole appliance is containers: it is the version that matches this
+    appliance, and it needs nothing installed. `run` starts a profile-gated
+    service explicitly, so no --profile is needed.
+    """
+    mode = resolved_mode(args.mode)
+    if not current_mode():
+        print("  Nothing is running for the TUI to talk to.  `embabel up` first.")
+        return 1
+    if not sys.stdin.isatty():
+        print("  The TUI needs a terminal — run it from one directly.")
+        return 1
+    return s._compose(mode, "run", "--rm", "tui").returncode
+
+
 def cmd_where(args) -> int:
     print(f"  {HERE}")
     return 0
@@ -315,6 +339,10 @@ def main() -> int:
 
     p = sub.add_parser("uninstall", help="remove the appliance and this machine's configuration")
     p.set_defaults(func=cmd_uninstall)
+
+    p = sub.add_parser("tui", help="the terminal client, against this appliance")
+    mode_flags(p)
+    p.set_defaults(func=cmd_tui)
 
     p = sub.add_parser("where", help="print the appliance directory")
     p.set_defaults(func=cmd_where)

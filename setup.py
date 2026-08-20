@@ -246,7 +246,7 @@ def print_worlds_surfaces(base: str) -> None:
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print("  TUI            docker compose -f docker-compose-worlds.yml run --rm tui")
+    print("  TUI            embabel tui")
     print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
     print("  Dashboards     http://localhost:4246   \u00b7   Metrics  http://localhost:4247")
     print()

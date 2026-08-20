@@ -18,6 +18,8 @@ line to add.
 
 ---
 
+Typing `embabel` on its own prints status and the verbs worth knowing next.
+
 ## The short version
 
 ```bash
@@ -25,6 +27,7 @@ embabel up            # start it, and finish setup if it has not been set up
 embabel status        # what is running, what is still downloading, where to go
 embabel doctor        # why it is not working
 embabel open          # the console, in your browser
+embabel tui           # the terminal client
 ```
 
 ---
@@ -146,6 +149,19 @@ Two things it deliberately keeps:
   gigabyte, and re-downloading one that has not changed is waste. There is no flag
   to remove them.
 - **Your realm checkouts.** They are your repositories.
+
+### `embabel tui`
+
+The terminal client, pointed at this appliance. Runs the **container**, so it is
+the version that matches your appliance and needs nothing installed.
+
+The TUI also ships a `pip` console script called `embabel`, which pip drops into
+whichever Python is around. On a machine with both, which one you get is decided
+by `PATH` order — two commands with one name, from the same people. This
+subcommand is the resolution: **one `embabel`**, with the TUI as a verb under it.
+
+If another `embabel` comes first on your `PATH`, the installer says so and names
+the binary that wins. It does not reorder your `PATH` for you.
 
 ### `embabel where`
 
