@@ -8,7 +8,7 @@ Your data and your code stay on your machine. The assistant talks to the model p
 
 ## Quick start
 
-One line — it checks Docker, downloads the appliance into `~/embabel-worlds`, and hands
+One line — it checks Docker, downloads the appliance into `~/embabel/worlds`, and hands
 straight off to setup:
 
 ```bash

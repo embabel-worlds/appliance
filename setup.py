@@ -144,7 +144,7 @@ def prompt(text: str) -> str:
     except EOFError:
         raise SetupError(
             "No terminal to ask on — setup needs to ask you a few questions.\n"
-            "Run it directly:  cd ~/embabel-worlds && ./worlds.py   (or ./me.py)"
+            "Run it directly:  cd ~/embabel/worlds && ./worlds.py   (or ./me.py)"
         )
 
 

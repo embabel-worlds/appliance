@@ -1,7 +1,7 @@
 # The `embabel` command
 
 The appliance as a verb rather than a directory. Everything here was already
-possible — as `cd ~/embabel-worlds && ./worlds.py`, `./setup.py --uninstall`,
+possible — as `cd ~/embabel/worlds && ./worlds.py`, `./setup.py --uninstall`,
 `docker compose -f docker-compose-worlds.yml ps` — which asks you to remember
 where the product lives and which compose file today's mode uses.
 
@@ -201,7 +201,7 @@ CLI that understands Windows paths — a piece of work, not a flag.
 
 Two things that will bite otherwise:
 
-- **Keep the appliance inside the Linux filesystem** — `~/embabel-worlds`, not
+- **Keep the appliance inside the Linux filesystem** — `~/embabel/worlds`, not
   `/mnt/c/...`. Crossing the Windows/Linux filesystem boundary is dramatically
   slower, and it costs most where it hurts most: realm checkouts, which a coding
   agent reads and rewrites in a tight loop. Clone your realms under your WSL home
@@ -229,7 +229,7 @@ The CLI reads the same `.env` as everything else. The variables it cares about:
 |---|---|
 | `EMBABEL_REALMS_DIR` | the parent of your realm checkouts, mounted read-only at `/realms` |
 | `EMBABEL_MODE` | `me` or `worlds`, for the installer |
-| `EMBABEL_HOME` | where the installer puts the appliance, default `~/embabel-worlds` |
+| `EMBABEL_HOME` | where the installer puts the appliance, default `~/embabel/worlds` |
 | `EMBABEL_BIN_DIR` | where the installer puts `embabel`, default `~/.local/bin` |
 
 Everything else is in [`.env.example`](.env.example), which is the reference for

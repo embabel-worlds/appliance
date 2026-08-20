@@ -8,14 +8,14 @@
 # everything it does should fit on one screen and read plainly:
 #
 #   1. check Docker is installed and running
-#   2. download this repo into ~/embabel-worlds
+#   2. download this repo into ~/embabel/worlds
 #   3. hand off to ./me.py, which owns the actual setup
 #
 # It installs nothing globally, needs no root, and writes only inside that one
 # directory. To undo it: `docker compose down -v` in there, then delete it.
 #
 # Environment:
-#   EMBABEL_HOME   where to install         (default: ~/embabel-worlds)
+#   EMBABEL_HOME   where to install         (default: ~/embabel/worlds)
 #   EMBABEL_REF    branch or tag to fetch   (default: main)
 #   EMBABEL_MODE   me | worlds              (default: me)
 
@@ -27,13 +27,26 @@ REPO="${EMBABEL_REPO:-embabel-worlds/appliance}"
 # should hand a new user.
 REF="${EMBABEL_REF:-main}"
 MODE="${EMBABEL_MODE:-${EMBABEL_DOOR:-me}}"   # EMBABEL_DOOR: the old name, still honoured
-# ~/embabel-worlds, not ~/embabel-me: one appliance runs both doors, and naming
-# the directory after the door you happened to install through was wrong for
-# everyone who then opened the other one. An EXISTING ~/embabel-me is still used
-# where it is found — a rename is not worth stranding somebody's data over.
-DEFAULT_HOME="$HOME/embabel-worlds"
-if [ -z "${EMBABEL_HOME:-}" ] && [ -f "$HOME/embabel-me/setup.py" ]; then
-  DEFAULT_HOME="$HOME/embabel-me"
+# ~/embabel/worlds — vendor, then product, then whatever the product keeps
+# (realms/ lands at ~/embabel/worlds/realms). ~/embabel-me was wrong twice over:
+# it named a vendor and a door with one hyphen, and it named the door you happened
+# to arrive through rather than the thing installed.
+#
+# ONE DIRECTORY FOR BOTH DOORS, not a sibling ~/embabel/me. The compose project
+# name is fixed at embabel-appliance and the two modes share one graph and one
+# volume, so a second checkout would be a second .env quietly steering the same
+# containers. Me opens this install; it does not get its own.
+#
+# An existing install is used where it is found, whichever name it has: a rename
+# is not worth stranding somebody's data over.
+DEFAULT_HOME="$HOME/embabel/worlds"
+if [ -z "${EMBABEL_HOME:-}" ]; then
+  for candidate in "$HOME/embabel-worlds" "$HOME/embabel-me"; do
+    if [ -f "$candidate/setup.py" ]; then
+      DEFAULT_HOME="$candidate"
+      break
+    fi
+  done
 fi
 HOME_DIR="${EMBABEL_HOME:-$DEFAULT_HOME}"
 
@@ -113,7 +126,7 @@ chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" "$HOME_DIR
 
 # --- 2b. Put `embabel` on PATH --------------------------------------------
 # So that everything after this is a verb rather than a directory. Without it the
-# instructions are `cd ~/embabel-worlds && ./worlds.py`, and the user has to remember
+# instructions are `cd ~/embabel/worlds && ./worlds.py`, and the user has to remember
 # where the product lives and which compose file today's mode uses.
 #
 # A two-line forwarder, not a copy: it execs the checkout's own CLI, so an update
