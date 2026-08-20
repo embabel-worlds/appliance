@@ -46,6 +46,11 @@ MODE_SERVICES = ("assistant", "worlds")
 # `./setup.py worlds` ride these to make first run a single command.
 MODE_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
 MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
+# WHERE A PERSON GOES, per mode — which is not the same as where the API is. The
+# worlds server on 4342 also serves the old Vaadin UI, and sending a new operator
+# there instead of to the console means their first impression is a surface that
+# is on its way out.
+CONSOLE_PORT = 4343
 # What has to exist before the appliance can answer at all: the graph and the mode
 # itself (plus the console, which IS the worlds surface). Together about 0.8GB.
 MODE_CORE = {
@@ -166,7 +171,8 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
             detail = body
         if e.code == 410:
             raise AlreadySetUp(
-                "This appliance is already set up. Sign in at " + base +
+                "This appliance is already set up.\n"
+                f"Worlds: the console at http://localhost:{CONSOLE_PORT}   ·   Me: {base}"
                 "\n(Forgot the password? --reset-password recreates the account and keeps all data.)"
             )
         if e.code == 401:
@@ -236,7 +242,7 @@ def print_worlds_surfaces(base: str) -> None:
     print("                 The Worlds console: realms, documents, keys, views, chat.")
     print("                 Opens with the commissioning sequence.")
     print()
-    print(f"  API / UI       {base}   (the server itself)")
+    print(f"  API            {base}   (the server the console talks to)")
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
@@ -946,6 +952,31 @@ def from_environment(step: dict) -> dict:
     return {"provider": provider, "apiKey": available[provider]}
 
 
+def confirm_answers(step: dict, answers: dict) -> bool:
+    """Echo what is about to be submitted; True to go ahead, False to redo the step.
+
+    Secrets are shown as their length, not their value: this runs in terminals
+    people screen-share, and "48 characters" is enough to catch the paste that
+    picked up half a line.
+    """
+    shown = []
+    for field in step["fields"]:
+        value = answers.get(field["name"])
+        if value in (None, ""):
+            continue
+        label = field.get("label") or field["name"]
+        if field.get("secret") or "password" in field["name"].lower() or "key" in field["name"].lower():
+            shown.append(f"    {label}: ({len(value)} characters)")
+        else:
+            shown.append(f"    {label}: {value}")
+    if not shown:
+        return True
+    print()
+    for line in shown:
+        print(line)
+    return prompt("  Correct? [Y/n]: ").strip().lower() in ("", "y", "yes")
+
+
 def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> dict:
     print(f"\n── {step['title']} " + "─" * max(0, 60 - len(step["title"])))
     if step.get("description"):
@@ -962,6 +993,17 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
             field["name"]: prefilled.get(field["name"]) or ask(field)
             for field in step["fields"]
         }
+
+        # A LAST LOOK BEFORE IT IS PERMANENT. The server accepts a step once and
+        # refuses to reopen setup afterwards (410, by design), so a username typed
+        # with a typo was permanent the instant Enter was pressed — and the only way
+        # back was --reset-password, which is not a thing anybody guesses while
+        # staring at their own misspelt name. Only asked where re-entry actually
+        # helps: a value the SERVER rejects already loops in place below, and a
+        # value only the user can judge is the one nothing else can catch.
+        if not prefilled and confirm_answers(step, answers) is False:
+            continue
+
         print("\n  Working…", end=" ", flush=True)
         try:
             result = call(base, f"/{step['id']}", token, answers)
@@ -1306,10 +1348,12 @@ def main() -> int:
         print(done.get("detail", "complete"))
 
         username = done.get("signInAs")
-        print(f"\n  Done. Sign in at {base}" + (f" as {username}" if username else ""))
+        service = mode_service(container) if container else None
+        # Worlds people go to the console; `base` is the server behind it.
+        where = f"http://localhost:{CONSOLE_PORT}" if service == "worlds" else base
+        print(f"\n  Done. Sign in at {where}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
         warn_if_conversion_pending()
-        service = mode_service(container) if container else None
         if service == "worlds":
             print_worlds_surfaces(base)
         elif service == "assistant":
