@@ -45,6 +45,25 @@ MODE_SERVICES = ("assistant", "worlds")
 # `./setup.py worlds` ride these to make first run a single command.
 MODE_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
 MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
+# What has to exist before the appliance can answer at all: the graph and the mode
+# itself (plus the console, which IS the worlds surface). Together about 0.8GB.
+MODE_CORE = {
+    "me": ("neo4j", "assistant"),
+    "worlds": ("neo4j", "worlds", "worlds-console"),
+}
+# Everything else, started AFTER the mode is up and reachable. None of it is a
+# boot dependency — the mode services depend only on neo4j — and between them
+# they are most of a first run's download, docling especially. Pulling them
+# before handing over the terminal meant staring at a progress bar for several
+# gigabytes to reach a login page that needed one.
+DEFERRED_SERVICES = ("sandbox-image", "prometheus", "grafana", "docling")
+# What each is for, in the one line the operator sees while it arrives.
+DEFERRED_WHY = {
+    "docling": "structured PDF and Office conversion",
+    "sandbox-image": "the code sandbox",
+    "grafana": "dashboards",
+    "prometheus": "metrics",
+}
 # Operator mounts, written by the Me app's "Local files" panel: host folders the
 # assistant may index, bind-mounted read-only under /local. Plain `docker compose
 # up` merges this file by compose convention, but the explicit -f list used below
@@ -401,6 +420,50 @@ def _compose(mode: str, *argv: str, capture: bool = False):
         raise SetupError(f"docker compose failed: {e}")
 
 
+def start_deferred(mode: str) -> subprocess.Popen | None:
+    """Pull and start everything that is not needed to answer, behind the user.
+
+    Started detached and NOT waited on: the wizard is the next thing to happen and
+    it takes minutes, which is exactly the window this needs. Its output goes
+    nowhere on purpose — two progress bars fighting over one terminal is worse
+    than no progress bar, and `docker compose ps` tells the truth at any time.
+
+    Nothing here is a boot dependency, so a failure is not fatal: the services are
+    reconciled by the `up -d` that every later run performs, and the closing
+    message says what was still on its way.
+    """
+    coming = ", ".join(DEFERRED_WHY[name] for name in DEFERRED_SERVICES if name in DEFERRED_WHY)
+    print(f"  Downloading in the background: {coming}.")
+    print("  You can start using the appliance now — check on them any time with")
+    print(f"    docker compose -f {MODE_COMPOSE[mode]} ps\n")
+    cmd = ["docker", "compose", "-f", MODE_COMPOSE[mode]]
+    if mode == "me" and os.path.exists(OVERRIDE_FILE):
+        cmd += ["-f", OVERRIDE_FILE]
+    cmd += ["up", "-d", *DEFERRED_SERVICES]
+    try:
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                env=compose_env())
+    except (subprocess.SubprocessError, OSError):
+        return None  # not fatal: the next run reconciles
+
+
+def warn_if_conversion_pending() -> None:
+    """Say so if docling has not arrived yet, because the difference is visible.
+
+    Without it a PDF still ingests — the pipeline falls back to flat Tika text —
+    but tables come out mangled, figures are lost, and a SCANNED document yields
+    almost nothing, since the OCR lives in docling. That degradation is otherwise
+    an ERROR in a log nobody has open, and the user's conclusion is that the
+    product is bad at PDFs rather than that it is still downloading.
+    """
+    run = _docker("ps", "--filter", "name=embabel-appliance-docling", "--format", "{{.Names}}")
+    if run and run.returncode == 0 and run.stdout.strip():
+        return
+    print("  Structured document conversion is still downloading (about 2GB).")
+    print("  Documents added before it finishes ingest as plain text — tables flattened,")
+    print("  and a scanned PDF may yield nothing. Re-add anything important afterwards.\n")
+
+
 def host_timezone() -> str | None:
     """The host's IANA zone name (e.g. Australia/Sydney), or None if unknowable.
     /etc/localtime is a symlink into a zoneinfo tree on macOS and most Linuxes;
@@ -608,11 +671,12 @@ def ensure_mode(mode: str) -> bool:
         _compose(mode, "up", "-d")
         print()
         return False
-    print(f"  Starting the {mode} mode — first run pulls images, give it a few minutes.\n")
-    run = _compose(mode, "up", "-d")
+    print(f"  Starting the {mode} mode — pulling what it needs to answer.\n")
+    run = _compose(mode, "up", "-d", *MODE_CORE[mode])
     if run.returncode != 0:
         raise SetupError(f"docker compose up failed for the {mode} mode.")
     print()
+    start_deferred(mode)
     return True
 
 
@@ -1154,6 +1218,7 @@ def main() -> int:
         username = done.get("signInAs")
         print(f"\n  Done. Sign in at {base}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
+        warn_if_conversion_pending()
         service = mode_service(container) if container else None
         if service == "worlds":
             print_worlds_surfaces(base)
