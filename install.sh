@@ -137,9 +137,30 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with ma
 say "Done. Starting setup — after this, use the 'embabel' command."
 echo
 cd "$HOME_DIR"
+
 # Arguments ride through to the mode script untouched, which is what makes a
 # preconfigured install a one-liner:
 #   curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh -s -- --world legal-world
+# THE WIZARD NEEDS A TERMINAL, and `curl … | sh` has already spent stdin: the
+# shell read THIS SCRIPT from that pipe, so by the time setup asks for a username
+# stdin is at EOF. It died in a Python traceback on the very first question, so
+# every piped install failed in the same place.
+#
+# Redirect on the hand-off itself rather than `exec < /dev/tty` earlier: this
+# script is still being read from that pipe, and a shell that loses its own stdin
+# mid-file loses the rest of its script. Only the command that needs the terminal
+# gets it.
+#
+# No terminal (CI, a container, nohup) means no redirect, and setup.py says which
+# command to run by hand instead of crashing.
+if [ -r /dev/tty ]; then
+  if [ "$MODE" = "worlds" ]; then
+    exec python3 ./worlds.py "$@" < /dev/tty
+  else
+    exec python3 ./me.py "$@" < /dev/tty
+  fi
+fi
+
 if [ "$MODE" = "worlds" ]; then
   exec python3 ./worlds.py "$@"
 else

@@ -126,6 +126,28 @@ class TokenRejected(SetupError):
 
 # ── plumbing ────────────────────────────────────────────────────────────────
 
+def prompt(text: str) -> str:
+    """prompt(), with the one failure it has in this program handled.
+
+    Setup is interactive by design, and the way it is invoked most often —
+    `curl … | sh` — hands it a stdin that is already at EOF, because the shell
+    read the installer from that same pipe. The result was EOFError surfacing as
+    a traceback under the first question it asked, which reads as the software
+    being broken rather than as a terminal being absent.
+
+    install.sh now reattaches /dev/tty before handing over, so this is the second
+    line of defence — for a genuinely non-interactive run, where the right answer
+    is to say which command to run by hand.
+    """
+    try:
+        return input(text)
+    except EOFError:
+        raise SetupError(
+            "No terminal to ask on — setup needs to ask you a few questions.\n"
+            "Run it directly:  cd ~/embabel-me && ./worlds.py   (or ./me.py)"
+        )
+
+
 def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
     url = f"{base}/api/v1/setup{path}"
     data = json.dumps(payload).encode() if payload is not None else None
@@ -312,7 +334,7 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     # and no build step. `npm start` stays the developer path.
     packaged = packaged_me_app()
     if packaged:
-        answer = input("  Start it now? [Y/n]: ").strip().lower()
+        answer = prompt("  Start it now? [Y/n]: ").strip().lower()
         if answer not in ("", "y", "yes"):
             print(f'  Whenever you like:  open -a "{packaged}"')
             return
@@ -327,7 +349,7 @@ def launch_me_app(base: str, username: str | None = None) -> None:
         print("  It needs Node.js (https://nodejs.org). Once that is installed:")
         print("      cd me-app && npm start")
         return
-    answer = input("  Start it now? [Y/n]: ").strip().lower()
+    answer = prompt("  Start it now? [Y/n]: ").strip().lower()
     if answer not in ("", "y", "yes"):
         print("  Whenever you like:  cd me-app && npm start")
         return
@@ -557,7 +579,7 @@ def fresh_wipe() -> None:
     print("  --fresh DELETES the appliance's entire state:")
     print("    account and password, world, knowledge graph, documents, dashboards.")
     print("  Images and the local embedding model survive; nothing else does.")
-    answer = input("  Type 'yes' to wipe: ").strip().lower()
+    answer = prompt("  Type 'yes' to wipe: ").strip().lower()
     if answer != "yes":
         raise SetupError("Not wiped — nothing was touched.")
     take_everything_down()
@@ -598,7 +620,7 @@ def remove_stray_sandboxes() -> None:
         print(f"    … and {len(strays) - 8} more")
     print("  They are siblings of the appliance, not part of it, so `down` left them.")
     print("  If you are running an assistant from an IDE, ITS sandboxes are in this list.")
-    answer = input("  Remove them? [Y/n]: ").strip().lower()
+    answer = prompt("  Remove them? [Y/n]: ").strip().lower()
     if answer not in ("", "y", "yes"):
         print("  Left alone.")
         return
@@ -656,7 +678,7 @@ def uninstall() -> None:
     print("    images and the local embedding model — over a gigabyte, and unchanged")
     print("    realms/ and any realm checkout — your repositories, not ours")
     print("    this checkout itself: `./worlds.py` sets up again from here\n")
-    answer = input("  Type 'yes' to uninstall: ").strip().lower()
+    answer = prompt("  Type 'yes' to uninstall: ").strip().lower()
     if answer != "yes":
         raise SetupError("Not uninstalled — nothing was touched.")
 
@@ -695,7 +717,7 @@ def ensure_mode(mode: str) -> bool:
         other_mode = "me" if other[0] == "assistant" else "worlds"
         print(f"  The {other_mode} mode is running ({other[1]}), and only one mode may run at a time")
         print("  — they share one graph, so two would duplicate every scheduled job.\n")
-        answer = input(f"  Stop the {other_mode} mode and continue? [Y/n]: ").strip().lower()
+        answer = prompt(f"  Stop the {other_mode} mode and continue? [Y/n]: ").strip().lower()
         if answer not in ("", "y", "yes"):
             raise SetupError(
                 f"Left the {other_mode} mode running. Stop it when you are ready:\n"
@@ -732,7 +754,7 @@ def reset_credentials(container: str, base: str) -> None:
     print("  and walks first-run setup again. Everything the appliance knows —")
     print("  graph, documents, memories — is kept. Have your model-provider key")
     print("  handy (or exported); the wizard verifies it again.")
-    answer = input("  Reset the account and re-run setup? [y/N]: ").strip().lower()
+    answer = prompt("  Reset the account and re-run setup? [y/N]: ").strip().lower()
     if answer not in ("y", "yes"):
         raise SetupError("Not reset — nothing was touched.")
     run = _docker("exec", container, "rm", "-f",
@@ -847,7 +869,7 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
     print("  Could not find the setup token automatically.")
     if container:
         print(f"  It is printed in the container log:  docker logs {container} 2>&1 | grep 'Setup token'")
-    token = input("  Setup token: ").strip()
+    token = prompt("  Setup token: ").strip()
     if not token:
         raise SetupError("A setup token is required.")
     return token
@@ -867,7 +889,7 @@ def ask(field: dict) -> str:
             marker = "  (default)" if option == default else ""
             print(f"    {index}) {option}{marker}")
         while True:
-            raw = input(f"  Choose 1-{len(options)}" + (f" [{default}]: " if default else ": ")).strip()
+            raw = prompt(f"  Choose 1-{len(options)}" + (f" [{default}]: " if default else ": ")).strip()
             if not raw and default:
                 return default
             if raw.isdigit() and 1 <= int(raw) <= len(options):
@@ -882,7 +904,7 @@ def ask(field: dict) -> str:
             value = getpass.getpass(f"  {label}: ")
         else:
             suffix = f" [{default}]: " if default else ": "
-            value = input(f"  {label}{suffix}").strip() or (default or "")
+            value = prompt(f"  {label}{suffix}").strip() or (default or "")
         if value or not required:
             return value
         print("  Required.")
@@ -984,7 +1006,7 @@ def wire_coding_agents(result: dict) -> None:
     print("\n── Wire up Claude Code " + "─" * 39)
     claude = shutil.which("claude")
     if claude:
-        answer = input("  Point Claude Code at this appliance now (user scope)? [Y/n]: ").strip().lower()
+        answer = prompt("  Point Claude Code at this appliance now (user scope)? [Y/n]: ").strip().lower()
         if answer in ("", "y", "yes"):
             try:
                 run = subprocess.run(
@@ -1166,7 +1188,7 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
 
     default = os.path.realpath("realms")
     for _ in range(3):
-        answer = input(f"  Realm checkouts directory [{default}]: ").strip()
+        answer = prompt(f"  Realm checkouts directory [{default}]: ").strip()
         path, realms, notes = inspect_realms_dir(answer or default)
         if path:
             set_realms_dir(path)
