@@ -23,8 +23,10 @@ MATCH (p)-[:HAS_HUBSPOT_OWNER]->(o)-[:OWNS_CONTACT]->(c:HubSpotContact)
 WHERE c.notes_last_contacted < '2026-05-01' RETURN c.email
 ```
 
-`Person` is the user's own contacts. `HubSpotContact` is a CRM nobody had joined to them. The
-mechanism is a **virtual join** in a type file — `anchorLabel`, `relationship`, `keyField`,
+That example is a ME appliance's shape — `Person` is the user's own contacts, `HubSpotContact` a
+CRM nobody had joined to them. On a Worlds appliance the same move uses whatever anchors ITS
+realms declare; step 2 discovers them before any of this applies. The mechanism either way is a
+**virtual join** in a type file — `anchorLabel`, `relationship`, `keyField`,
 `recordKeyField`, `producer` — and it is the single highest-value thing you are hunting for.
 
 This is not a theory. Across the realms that already exist, `Person` and `Organization` are the
@@ -32,7 +34,8 @@ most-used anchor labels after each realm's own internals: github, hubspot, googl
 diffbot all hang their data off the people the world already knows.
 
 **So rank candidates by their bridge, not by their size.** A 400-table ERP that shares no
-identifier with anything is worth less than a 3-column CSV keyed on email address.
+identifier with anything is worth less than a 3-column CSV keyed on something the world already
+holds.
 
 ## 1. Consent, before you read anything
 
@@ -57,49 +60,39 @@ them widen if they want.
 If they have no focus, say what you would focus on given the spine counts and let them correct it.
 Guessing and being corrected is cheaper for them than composing a brief from nothing.
 
-## 2. Count the anchor side FIRST
+## 2. Ask the world what it can anchor on — never assume
 
-Before valuing any candidate, find out what the world can already anchor on. A bridge to `Person`
-is only a bridge if there are people there.
+Anchors are a property of THIS world, not of the platform. Discover them: `query_guide` for the
+live schema, `realm_status`/`available_capabilities` for installed realms and the anchor labels
+their types declare. Count what you find. Do not import an anchor model from another product.
 
-The world has exactly **two built-in canonical spines**, and they are the bridge surface:
+**A Me appliance** (the personal assistant) has two canonical spines — `Person` keyed on email
+address, `Organization` keyed on domain, each resolved through indexed key-nodes (`EmailAddress`,
+`Domain`). If the schema shows those labels populated, the bridge table below applies in full.
 
-| Spine | Keyed on | Normalised by | Key-node |
-|---|---|---|---|
-| `Person` | email address | lowercase, trim; must contain `@` | `EmailAddress`, `(p)-[:HAS_EMAIL]->(e)`, id `email-address:<addr>` |
-| `Organization` | domain | extract domain, lowercase, strip trailing dot; must have a dot | `Domain`, `(d)-[:USED_BY_ORG]->(o)`, id `dom:<domain>` |
+**A Worlds appliance** (the developer platform) knows nothing about email and should not be made
+to. Its anchors are whatever its installed realms declare — a `GitHubRepository`, a `SitePoint`,
+a domain type from a learned schema. If no email-shaped anchor exists in the schema, do not
+mention email at all: not as a bridge, not as a column to add, not in the demo sentence. Rank
+against the anchors that exist, and when few do, say the value lives in capability instead
+(see the tiers below).
 
-Count both spines and their key-nodes — the key-nodes are the honest measure, since resolution goes
-through them by deterministic id in one indexed hop:
+Whatever the world, never hardcode an identity property. Where a Person spine does exist, its
+identity spans `primaryEmail`, `email` and `emails` (different write paths populate different
+ones) — match the way the existing realms do rather than inventing a property check.
 
-```
-MATCH (p:Person) RETURN count(p)
-MATCH (e:EmailAddress) RETURN count(e)
-MATCH (o:Organization) RETURN count(o)
-MATCH (d:Domain) RETURN count(d)
-```
-
-**Never hardcode the identity property.** A Person's identity lives across `primaryEmail`, `email`
-and `emails`; an Organization's across `domain` and `domains`. Different write paths populate
-different ones — the sender pre-pass writes `primaryEmail`, the identity path writes `email` — so a
-join keyed on your favourite spelling silently returns nothing. The identity hub exists precisely
-so realms never hardcode `email` vs `primaryEmail`; match the way the existing realms do rather
-than inventing a property check.
-
-Then `query_guide` for the live schema, and `realm_status` for what is installed, so you never
-propose what is already there.
-
-A world with thousands of `EmailAddress` nodes will light up almost anything keyed on email. A
-world with none is the opposite: say so plainly, and rank a realm that **populates** a spine above
-any realm that joins to it. On an empty world the most impressive-sounding integration returns
-zero rows.
+An empty anchor side is a finding, not an embarrassment: report it, and rank a realm that
+populates an anchor above any realm that would join to one.
 
 ## 3. Survey — hunt bridges, dispatch, do not interrogate
 
 Send subagents over the approved paths in parallel. For every system found, the question is not
 "what entities does it have" but **"what does it carry that the world already knows?"**
 
-These are the bridge identifiers worth grepping schemas, specs and fixtures for:
+These are the bridge identifiers worth grepping schemas, specs and fixtures for — each row
+applies ONLY when the world actually has the anchor it names (step 2). A bridge onto an
+anchor this world does not hold is not a bridge, and proposing it reads as reciting a
+different product's data model:
 
 | Bridge | Anchors onto | Where it hides |
 |---|---|---|
@@ -163,8 +156,12 @@ spellings. A checkout with no origin is its own candidate rather than a match fo
 - **Tier 2 — a spine.** Public or reference data pinned by a literal the caller knows: a company
   register, a postcode, planning controls at a point. Not wow alone; wow the moment a Tier 1 realm
   supplies the key. Say what it would need to light up.
-- **Tier 3 — an island.** Entities that share no identifier with anything the world holds. It
-  answers what SQL already answered. Rank it last and say why, rather than dressing it up.
+- **Tier 3 — an island, as data.** Entities sharing no identifier with anything the world holds
+  answer what SQL already answered. Say so plainly. But an island can still be worth building when
+  the value is **capability rather than connection**: a saved view that encodes a question people
+  actually ask, a scheduled handler that sweeps for a condition, NL query over the graph, an app
+  on top. On a developer world this is usually the honest pitch — name the concrete verbs and
+  views the realm would add, and rank it on those, never on a join it does not have.
 
 **The wow test, for choosing between Tier 1 candidates.** Disproportionate impact comes from
 small, cheap data that crosses a boundary the user believes is uncrossable — not from volume:
@@ -177,8 +174,9 @@ small, cheap data that crosses a boundary the user believes is uncrossable — n
 - It survives the obvious follow-up. A demo that answers one question and dead-ends is a trick;
   one where "and which of those…" keeps working is a realm.
 
-Be honest when the estate is all Tier 3. "Nothing here relates to your world yet, and the highest
--value move is to get your contacts in first" is a better answer than five islands.
+Be honest when the estate is all Tier 3. "Nothing here relates to your world yet — here is what a
+realm could DO for each, and here is what would have to exist before anything could join" is a
+better answer than five islands dressed as bridges.
 
 ## 5. Grill — rounds, with your recommendation on every question
 
@@ -254,6 +252,18 @@ If the MCP tools are unavailable, stop at the plan and give the exact calls. A p
 execute is a good outcome; a half-installed realm is not.
 
 ## What not to do
+
+- **Never manufacture the bridge you were sent to find.** Do not propose adding an identifier
+  column to the source system, or seeding its data with values chosen to match the world, so that
+  a join demos well. A seeded join reveals exactly what you typed into it. If a missing field is
+  genuine product work for a system the user owns, name it as that — a schema change on its own
+  merits — never as demo preparation, and never as this skill's recommendation.
+- **Verify how the system actually runs before proposing to learn it.** A dev app often defaults
+  to an in-memory database (petclinic's default profile is H2); the compose services beside it are
+  opt-in. `learn_connect` needs a reachable JDBC endpoint — establish which profile or service
+  provides one and whether it is running, as a fact you report, not a decision you delegate.
+- **One decision per question.** A round question bundling two choices gets half an answer to
+  each. Split them.
 
 - Do not rank by size, table count, or how impressive the system sounds. Rank by the bridge.
 - Do not scan a path they did not approve, or widen a scan because the first one was thin.
