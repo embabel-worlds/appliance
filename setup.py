@@ -803,7 +803,7 @@ def codex_agents_block() -> str:
         f"## Embabel appliance\n"
         f"The MCP server named '{MCP_SERVER_NAME}' is an Embabel appliance — the user's world\n"
         f"runtime (data, realms, saved views, apps). Before working with it, read\n"
-        f"`{checkout}/AGENTS.md` — the first-calls list there saves failed guesses, and it\n"
+        f"`{checkout}/AGENT_GUIDE.md` — the first-calls list there saves failed guesses, and it\n"
         f"routes to full runbooks under `{checkout}/skills/` for realm prospecting,\n"
         f"realm diagnosis, calling the server from apps, building world-served apps, and\n"
         f"interrogating a world.\n"
