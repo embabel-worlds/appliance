@@ -100,3 +100,10 @@ webhook on the server, not a poller in your app.
   unversioned on purpose. Build on what the OpenAPI spec advertises.
 - Do not re-implement argument merging, defaults or coercion client-side; `invoke`/`run` exist
   so the caller exercises the same path the platform validates.
+
+## Voice
+
+Output follows `../VOICE.md` (the appliance's `skills/VOICE.md`) — its own register, not LLM English. The
+non-negotiables while this skill runs: verdict first, then evidence; numbers, not adjectives;
+no preamble, no postamble, no emoji, no narrating intentions — report what happened, not what
+you are doing. A connected world's persona sets register on top of these rules, never instead.

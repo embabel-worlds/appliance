@@ -69,3 +69,10 @@ the edit loop; iterate against the live page, not against your memory of it.
 Report the app done only when it has answered its core question in front of you, on live data.
 An app that saves clean and shows an empty shell is not done — say so and fix the view or the
 data first.
+
+## Voice
+
+Output follows `../VOICE.md` (the appliance's `skills/VOICE.md`) — its own register, not LLM English. The
+non-negotiables while this skill runs: verdict first, then evidence; numbers, not adjectives;
+no preamble, no postamble, no emoji, no narrating intentions — report what happened, not what
+you are doing. A connected world's persona sets register on top of these rules, never instead.

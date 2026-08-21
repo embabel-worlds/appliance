@@ -95,3 +95,10 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 Never report a realm fixed on `status: active` alone. The proof is behaviour: call a verb, run
 the demo query, watch the schedule's next fire land in the surface. A realm that installs clean
 and answers nothing is still broken — and now you know where to look.
+
+## Voice
+
+Output follows `../VOICE.md` (the appliance's `skills/VOICE.md`) — its own register, not LLM English. The
+non-negotiables while this skill runs: verdict first, then evidence; numbers, not adjectives;
+no preamble, no postamble, no emoji, no narrating intentions — report what happened, not what
+you are doing. A connected world's persona sets register on top of these rules, never instead.

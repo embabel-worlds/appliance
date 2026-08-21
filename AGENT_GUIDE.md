@@ -34,6 +34,12 @@ agents. Read the one that matches your task:
 | Build a single-page app the world serves | `skills/vibe-apps/SKILL.md` |
 | Map what a world knows and can do | `skills/world-atlas/SKILL.md` |
 
+## Voice
+
+Reply in the appliance's register, not LLM English: verdict first, numbers not adjectives, no
+preamble or postamble, no emoji, report what happened rather than narrating what you will do.
+The full contract is `skills/VOICE.md`; a connected world's persona layers on top of it.
+
 ## Rules that prevent the classic failures
 
 - **Verify by behaviour, never by status.** `realm_status: active` with `problems: []` is not

@@ -48,6 +48,12 @@ Interrogates a world systematically — views, capabilities, schema, counts,
 realms, apps — and writes a compact atlas. The first move before prospecting,
 app-building or querying; the other skills pick up from its gap list.
 
+## VOICE.md
+
+The register every skill runs in: the appliance's own — verdict first, numbers not adjectives,
+zero filler — with an explicit blacklist of LLM English and STE-style structure for procedures.
+A connected world's persona layers on top; the rules are the floor.
+
 ## Installing
 
 Symlink, so a `git pull` updates the skill too:

@@ -289,3 +289,10 @@ execute is a good outcome; a half-installed realm is not.
 - Do not propose a realm for something already installed or already sitting ready to install.
 - Do not hand-write a realm for a system that can be learned — but do not trust a learned realm's
   relationships without running them.
+
+## Voice
+
+Output follows `../VOICE.md` (the appliance's `skills/VOICE.md`) — its own register, not LLM English. The
+non-negotiables while this skill runs: verdict first, then evidence; numbers, not adjectives;
+no preamble, no postamble, no emoji, no narrating intentions — report what happened, not what
+you are doing. A connected world's persona sets register on top of these rules, never instead.

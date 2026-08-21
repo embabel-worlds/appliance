@@ -53,3 +53,10 @@ from here.
 
 Keep it honest about emptiness: "0 people, 0 organizations, 6 toy realms" is a useful atlas —
 it says build the data before building anything on it.
+
+## Voice
+
+Output follows `../VOICE.md` (the appliance's `skills/VOICE.md`) — its own register, not LLM English. The
+non-negotiables while this skill runs: verdict first, then evidence; numbers, not adjectives;
+no preamble, no postamble, no emoji, no narrating intentions — report what happened, not what
+you are doing. A connected world's persona sets register on top of these rules, never instead.
