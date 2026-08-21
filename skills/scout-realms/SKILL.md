@@ -60,6 +60,10 @@ read file names, config and specs, and will not read source beyond what identifi
 A user who says "everywhere" still gets a bounded answer: propose two or three specific roots and
 have them confirm. Scanning a home directory uninvited is how a helpful survey becomes a search.
 
+When the scope is already obvious — they asked about THE REPO YOU ARE IN — take it and go. Do
+not announce that consent was granted or that you are about to survey; the rule is for you, and
+reading it aloud is noise.
+
 ## 1b. Let them point you at what they care about
 
 Consent bounds *where* you look; focus bounds *what counts as interesting*. Ask both, in the same
@@ -166,7 +170,12 @@ produce one candidate, not nine. Group by git origin — `git -C <dir> remote ge
 normalising before you compare, since `…/me` and `…/me.git` are one repo, as are its ssh and https
 spellings. A checkout with no origin is its own candidate rather than a match for anything.
 
-## 4. Rank in tiers, and say which tier each is in
+## 4. Rank in tiers — a reasoning tool, never words you say
+
+The tiers order your thinking and this file's rules. They are not customer language: the reply
+says "nothing here connects to what your world holds" or "this would join straight onto your
+contacts", never "Tier 3" or "lane 2". If the verdict needs this taxonomy to be understood, it
+is not yet written.
 
 - **Tier 1 — it relates.** Carries a populated bridge onto an anchor the world already has. One
   question spans both. This is what you are looking for and it goes at the top even if the source
@@ -198,24 +207,24 @@ Be honest when the estate is all Tier 3. "Nothing here relates to your world yet
 realm could DO for each, and here is what would have to exist before anything could join" is a
 better answer than five islands dressed as bridges.
 
-## 5. Grill — rounds, with your recommendation on every question
+## 5. Ask what actually needs asking — and size the asking to the decision
 
-Map the decisions as a tree. The **frontier** is every decision whose prerequisites are settled.
-Ask the whole frontier in one round, numbered, each with your recommended answer, then wait.
+**One candidate, one plan** — the common case: "can I make a realm from this?" — is a
+conversation, not an interview. Give the verdict and the plan in prose, fold your
+recommendations in as decisions you have provisionally made, and end with the one or two
+questions that would genuinely change the plan, asked in plain sentences. "I'd learn it
+read-only at schema depth and wire any write through the app — say the word, or tell me the
+question you want it to answer if mine is wrong" covers what four numbered questions were
+doing.
 
-```
-❓ **Q1** - **<question title>**: <question body, options if there are options>
+**A whole estate with real forks** is where the interview earns its structure. Map the
+decisions as a tree; the frontier is every decision whose prerequisites are settled; ask the
+whole frontier in one round and wait. Format each as a short bold question followed by your
+recommendation and why — plain text, no emoji, no arrow glyphs; the recommendation is a
+sentence, not a labelled field.
 
-➡️ <your recommended answer, and why>
-
----
-
-❓ **Q2** - **<question title>**: <question body>
-
-➡️ <your recommended answer, and why>
-```
-
-The questions that matter here, in roughly this order:
+The decisions that matter, in roughly this order (fold the settled ones into the plan; ask
+only the live ones):
 
 0. **Focus, if they have not already given one** — which systems or entity types they actually
    care about. Ask it alongside the tiers rather than before them, so they are choosing against
