@@ -140,16 +140,15 @@ exec python3 "$HOME_DIR/embabel" "\$@"
 SHIM
   chmod +x "$BIN_DIR/embabel"
 
-  # ANOTHER `embabel` MAY ALREADY WIN. The TUI ships one (pip installs it into
-  # whichever python is around, anaconda included), and if that directory comes
-  # first on PATH then typing `embabel` opens the TUI and nothing here is
-  # reachable — which reads as this install having silently failed. Say so;
-  # guessing at somebody's PATH order is not ours to do.
+  # ANOTHER `embabel` MAY ALREADY WIN. It is not a rare name, and if the directory
+  # holding the other one comes first on PATH then typing `embabel` runs that
+  # instead and nothing here is reachable — which reads as this install having
+  # silently failed. Say so; guessing at somebody's PATH order is not ours to do.
   EXISTING="$(command -v embabel 2>/dev/null || true)"
   if [ -n "$EXISTING" ] && [ "$EXISTING" != "$BIN_DIR/embabel" ]; then
     say "NOTE: another 'embabel' already comes first on your PATH:"
     say "        $EXISTING"
-    say "      That is probably the TUI. To use this one, put $BIN_DIR ahead of it,"
+    say "      To use this one, put $BIN_DIR ahead of it,"
     say "      or run it by path: $BIN_DIR/embabel"
     echo
   fi

@@ -230,22 +230,5 @@ services:
     volumes:
       - embabel_appliance_open_webui_data:/app/backend/data
 
-  # ── TUI — terminal client, run on demand ────────────────────────────────────
-  #   docker compose run --rm tui
-  # Interactive, so never started by `up` (profile-gated; `run` targets the
-  # service explicitly and starts it regardless — verified). Reaches this server
-  # over the compose network by service name, passed as the FIRST server so the
-  # login dropdown defaults to it. Image published from the embabel/tui repo,
-  # versioned with the rest of the appliance.
-  tui:
-    profiles: ["tui"]
-    image: ghcr.io/embabel/tui:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
-    # TUI is currently published for amd64 only; emulate it on arm64 until
-    # a multi-arch image is available.
-    platform: linux/amd64
-    stdin_open: true
-    tty: true
-    command: ["--server", "Me=http://assistant:${ASSISTANT_PORT:-4242}"]
-
 volumes:
   embabel_appliance_open_webui_data:

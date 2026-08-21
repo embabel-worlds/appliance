@@ -173,19 +173,3 @@ services:
       # them (chat, memory, document ingest). Empty by default: the console asks.
       - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
       - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
-
-  # ── TUI — the Worlds mode's primary human interface ─────────────────────────
-  #   docker compose -f docker-compose-worlds.yml run --rm tui
-  # Same client as Me, in worlds mode: no Chat tab, no memories panel —
-  # Automate / Extend / Data / Monitor / Settings ARE the worlds surface. The
-  # mode is a client flag for now; when the server can announce its own mode,
-  # that should drive the surface and the flag become an override.
-  tui:
-    profiles: ["tui"]
-    image: ghcr.io/embabel/tui:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
-    # TUI is currently published for amd64 only; emulate it on arm64 until
-    # a multi-arch image is available.
-    platform: linux/amd64
-    stdin_open: true
-    tty: true
-    command: ["--server", "Worlds=http://worlds:${WORLDS_PORT:-4342}", "--mode", "worlds"]

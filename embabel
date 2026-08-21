@@ -56,12 +56,17 @@ def current_mode() -> str | None:
 
 
 def resolved_mode(requested: str | None) -> str:
-    """What the user asked for, else what is already running, else worlds.
+    """What the user asked for, else what is running, else what was set up here,
+    else worlds.
 
-    Worlds is the default because this command is what worlds.embabel.com hands a
-    developer; the Me door is a flag rather than a coin toss.
+    The .env step matters more than it looks. The installer's default door is Me
+    and this command's is Worlds, so before it, `embabel down` followed by
+    `embabel up` started the OTHER product on the same graph — somebody who
+    installed an assistant got a world runtime back, with nothing saying why.
+    Worlds remains the last resort, because this command is what
+    worlds.embabel.com hands a developer who has installed nothing yet.
     """
-    return requested or current_mode() or "worlds"
+    return requested or current_mode() or s.configured_mode() or "worlds"
 
 
 # ── verbs ───────────────────────────────────────────────────────────────────
@@ -126,9 +131,9 @@ def cmd_status(args) -> int:
     else:
         print("  Extras          all up")
 
-    if mode == "worlds" and base:
+    if base:
         print()
-        s.print_worlds_surfaces(base)
+        (s.print_worlds_surfaces if mode == "worlds" else s.print_me_surfaces)(base)
     return 0
 
 
@@ -204,9 +209,13 @@ def cmd_logs(args) -> int:
 
 
 def cmd_open(args) -> int:
+    """A surface, in a browser. With nothing named, the surface is THIS appliance's
+    front door — the console for worlds, the assistant for me. Defaulting to the
+    console regardless sent every Me user to a port with nothing behind it."""
     urls = {"console": "http://localhost:4343", "graph": "http://localhost:4243",
             "dashboards": "http://localhost:4246", "me": "http://localhost:4242"}
-    url = urls[args.what]
+    what = args.what or ("me" if resolved_mode(None) == "me" else "console")
+    url = urls[what]
     print(f"  {url}")
     # The URL is printed FIRST and unconditionally: on a headless box, or over ssh,
     # there is no browser to open and the address is the whole answer.
@@ -253,30 +262,6 @@ def cmd_uninstall(args) -> int:
     return run_setup("--uninstall")
 
 
-def cmd_tui(args) -> int:
-    """The terminal client, as a subcommand of the one command.
-
-    The TUI also ships a console script called `embabel` — pip drops it into
-    whichever python is around — so on a machine with both, which one you get is
-    decided by PATH order. Two commands with one name, from the same people, is a
-    coin toss the user has to lose once before they know. This is the resolution:
-    one `embabel`, and the TUI is a verb under it.
-
-    It runs the CONTAINER rather than any locally installed copy, for the reason
-    the whole appliance is containers: it is the version that matches this
-    appliance, and it needs nothing installed. `run` starts a profile-gated
-    service explicitly, so no --profile is needed.
-    """
-    mode = resolved_mode(args.mode)
-    if not current_mode():
-        print("  Nothing is running for the TUI to talk to.  `embabel up` first.")
-        return 1
-    if not sys.stdin.isatty():
-        print("  The TUI needs a terminal — run it from one directly.")
-        return 1
-    return s._compose(mode, "run", "--rm", "tui").returncode
-
-
 def cmd_where(args) -> int:
     print(f"  {HERE}")
     return 0
@@ -294,8 +279,10 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command")
 
     def mode_flags(p):
+        # NEITHER is "the default" any more: the default is whatever this machine
+        # is already running or was last set up as. These name the OTHER door.
         p.add_argument("--worlds", dest="mode", action="store_const", const="worlds",
-                       help="the world runtime and its console (default)")
+                       help="the world runtime and its console")
         p.add_argument("--me", dest="mode", action="store_const", const="me",
                        help="the personal-assistant door")
 
@@ -318,7 +305,8 @@ def main() -> int:
     p.set_defaults(func=cmd_logs)
 
     p = sub.add_parser("open", help="open a surface in your browser")
-    p.add_argument("what", nargs="?", default="console", choices=["console", "graph", "dashboards", "me"])
+    p.add_argument("what", nargs="?", choices=["console", "graph", "dashboards", "me"],
+                   help="default: this appliance's front door — the console (worlds) or the assistant (me)")
     p.set_defaults(func=cmd_open)
 
     p = sub.add_parser("realms", help="realm checkouts on this machine")
@@ -340,10 +328,6 @@ def main() -> int:
     p = sub.add_parser("uninstall", help="remove the appliance and this machine's configuration")
     p.set_defaults(func=cmd_uninstall)
 
-    p = sub.add_parser("tui", help="the terminal client, against this appliance")
-    mode_flags(p)
-    p.set_defaults(func=cmd_tui)
-
     p = sub.add_parser("where", help="print the appliance directory")
     p.set_defaults(func=cmd_where)
 
@@ -355,7 +339,7 @@ def main() -> int:
         print("  ── Next " + "─" * 52)
         print("    embabel up        start it, or finish setting it up")
         print("    embabel doctor    why it is not working")
-        print("    embabel open      the console, in your browser")
+        print("    embabel open      this appliance's front door, in your browser")
         print("    embabel --help    everything else\n")
         return rc
     try:

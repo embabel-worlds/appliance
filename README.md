@@ -92,11 +92,6 @@ First-run setup is the same `./setup.py` for either mode, with no flags: it find
 the running container by its compose service label and takes the port and setup
 token from there.
 
-Prefer a terminal? Each mode carries the TUI as a run-on-demand service —
-`docker compose run --rm tui` (add `-f docker-compose-worlds.yml` for Worlds,
-where it opens in worlds mode: no Chat tab, since the world runtime has no
-personal-assistant surface).
-
 Because the modes share one graph and one data volume, two rules hold:
 
 1. **Run one mode at a time.** Both up at once means two identical JVMs running

@@ -27,7 +27,6 @@ embabel up            # start it, and finish setup if it has not been set up
 embabel status        # what is running, what is still downloading, where to go
 embabel doctor        # why it is not working
 embabel open          # the console, in your browser
-embabel tui           # the terminal client
 ```
 
 ---
@@ -42,9 +41,16 @@ a completed setup says so instead of asking again.
 
 | Flag | |
 |---|---|
-| `--worlds` | the world runtime and its console. The default |
+| `--worlds` | the world runtime and its console |
 | `--me` | the personal-assistant door |
 | `--fresh` | **delete all data first** (asks), then start over |
+
+With neither flag it starts **the mode this machine is already running, or was last
+set up as** — recorded as `EMBABEL_MODE` in `.env` the first time. That matters
+because the installer's default door is Me and this command's own fallback is
+Worlds: without it, `embabel down` then `embabel up` handed an assistant user a
+world runtime on the same graph, and said nothing about it. Worlds is still the
+fallback for a machine that has set up neither.
 
 The first run pulls roughly 0.8 GB before handing the terminal back, then
 continues downloading the rest — the code sandbox, metrics, and structured
@@ -56,8 +62,9 @@ Splits what is running from what is still on its way, because during the first
 quarter of an hour "not everything is up" is the normal state and a flat
 container list cannot tell that apart from broken.
 
-For the Worlds mode it ends with every surface: the console, the API, the MCP
-endpoint, the graph browser, dashboards.
+It ends with every surface of whichever mode is up: for Worlds the console, the
+API, the MCP endpoint, the graph browser and dashboards; for Me the assistant
+itself, its MCP endpoint and the graph.
 
 ### `embabel doctor`
 
@@ -84,7 +91,9 @@ The appliance's own log by default; name a compose service for any other.
 
 ### `embabel open [what]`
 
-Open a surface in your browser: `console` (default), `graph`, `dashboards`, `me`.
+Open a surface in your browser: `console`, `graph`, `dashboards`, `me`. With
+nothing named it opens this appliance's front door — the console on Worlds, the
+assistant on Me.
 
 ### `embabel realms link <directory>`
 
@@ -138,12 +147,11 @@ Undo the installation: the appliance's state, this machine's configuration —
 `.env`, the shared-folder override, the MCP registration whose token died with the
 volume — and **the `embabel` command itself**, taken back off your PATH.
 
-That last one only removes the launcher THIS installation wrote. The TUI ships an
-`embabel` too (pip puts it wherever your python is), and install.sh warns when one
-already comes first on your PATH; uninstall reads the file before deleting it and
-leaves anything it did not write alone. If another `embabel` still answers
-afterwards, it says so — otherwise the next `which embabel` finds a hit and the
-uninstall looks like it failed.
+That last one only removes the launcher THIS installation wrote. `embabel` is not a
+rare name, and install.sh warns when another one already comes first on your PATH;
+uninstall reads the file before deleting it and leaves anything it did not write
+alone. If another `embabel` still answers afterwards, it says so — otherwise the next
+`which embabel` finds a hit and the uninstall looks like it failed.
 
 It also offers to remove stray code-sandbox containers. They are created by the
 app through the Docker socket as siblings of the appliance rather than as compose
@@ -159,19 +167,6 @@ Two things it deliberately keeps:
 - **The installation directory.** `~/embabel/worlds` (or wherever you put it) stays,
   so `./worlds.py` sets up again from it. Delete the directory yourself when you
   want it gone — this script does not remove the ground it is standing on.
-
-### `embabel tui`
-
-The terminal client, pointed at this appliance. Runs the **container**, so it is
-the version that matches your appliance and needs nothing installed.
-
-The TUI also ships a `pip` console script called `embabel`, which pip drops into
-whichever Python is around. On a machine with both, which one you get is decided
-by `PATH` order — two commands with one name, from the same people. This
-subcommand is the resolution: **one `embabel`**, with the TUI as a verb under it.
-
-If another `embabel` comes first on your `PATH`, the installer says so and names
-the binary that wins. It does not reorder your `PATH` for you.
 
 ### `embabel where`
 
@@ -254,7 +249,7 @@ The CLI reads the same `.env` as everything else. The variables it cares about:
 | Variable | |
 |---|---|
 | `EMBABEL_REALMS_DIR` | the parent of your realm checkouts, mounted read-only at `/realms` |
-| `EMBABEL_MODE` | `me` or `worlds`, for the installer |
+| `EMBABEL_MODE` | `me` or `worlds` — the installer reads it, and `embabel up` returns to it |
 | `EMBABEL_HOME` | where the installer puts the appliance, default `~/embabel/worlds` |
 | `EMBABEL_BIN_DIR` | where the installer puts `embabel`, default `~/.local/bin` |
 

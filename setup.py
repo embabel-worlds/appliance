@@ -252,9 +252,26 @@ def print_worlds_surfaces(base: str) -> None:
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print("  TUI            embabel tui")
     print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
     print("  Dashboards     http://localhost:4246   \u00b7   Metrics  http://localhost:4247")
+    print()
+
+
+def print_me_surfaces(base: str) -> None:
+    """Where a Me operator goes next.
+
+    The worlds mode has always ended on a block like this; Me ended on the app
+    offer alone, which left the assistant's own web UI, its MCP endpoint and the
+    graph undiscoverable from the terminal that had just configured all three.
+    """
+    print("  \u2500\u2500 Your Me surfaces " + "\u2500" * 41)
+    print(f"  Assistant      {base}   \u2190 START HERE")
+    print("                 Chat, documents and memories, in the browser.")
+    print()
+    print(f"  MCP endpoint   {base}/mcp")
+    print("                 Authorization: Bearer \u2014 the token this setup just minted,")
+    print("                 stored at /data/embabel/assistant/admin/providers.env")
+    print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
     print()
 
 
@@ -615,6 +632,59 @@ def ensure_wallet_key() -> None:
     print("  Generated EMBABEL_KEY_SECRET in .env — your saved credentials now survive a restart.")
 
 
+def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
+    """Write `key=value` into .env, preserving everything else there.
+
+    .env rather than a compose edit, always: the compose files stay pull-only, and
+    a machine-local answer — a template, a checkout directory, which door you came
+    through — is exactly what .env is for. An existing line is replaced where it
+    sits, so the file keeps whatever shape its owner gave it; [why] is the comment
+    written above a line that is new.
+    """
+    lines: list[str] = []
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            lines = f.read().splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith(f"{key}="):
+            lines[index] = f"{key}={value}"
+            break
+    else:
+        lines += ["", *why, f"{key}={value}"]
+    with open(ENV_FILE, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def configured_mode() -> str | None:
+    """Which door this appliance was last set up as, from .env.
+
+    The installer's default is Me and the CLI's is Worlds, so without this a
+    `embabel down` followed by `embabel up` quietly started the OTHER product on
+    the same graph — a person who installed an assistant got a world runtime back,
+    with nothing anywhere saying why.
+    """
+    value = os.environ.get("EMBABEL_MODE", "").strip()
+    if value in MODE_COMPOSE:
+        return value
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                if line.strip().startswith("EMBABEL_MODE="):
+                    value = line.split("=", 1)[1].strip()
+                    return value if value in MODE_COMPOSE else None
+    return None
+
+
+def remember_mode(mode: str) -> None:
+    """Record the door, so the CLI can come back to it rather than to its default."""
+    if configured_mode() == mode:
+        return
+    set_env_var("EMBABEL_MODE", mode, (
+        "# The door this appliance was last started as. `embabel up` returns to it",
+        "# instead of its own default; starting the other mode rewrites this line.",
+    ))
+
+
 def take_everything_down() -> None:
     """Every service and volume in the project, whichever mode was last up. Both
     mode files merged so nothing is missed — shared by --fresh and --uninstall,
@@ -749,10 +819,10 @@ def cli_shim_paths() -> list[str]:
 def is_our_shim(path: str) -> bool:
     """Whether [path] is the forwarder install.sh wrote for THIS installation.
 
-    NEVER delete an `embabel` on PATH just because it is called `embabel`. The TUI ships one too —
-    pip puts it in whichever python is around — and install.sh warns about exactly that collision
-    when it finds one. An uninstall that removed somebody's other tool because the names matched
-    would be a far worse bug than the one this fixes.
+    NEVER delete an `embabel` on PATH just because it is called `embabel`. It is not a rare name,
+    and install.sh warns when it finds one already ahead of ours. An uninstall that removed
+    somebody's other tool because the names matched would be a far worse bug than the one this
+    fixes.
 
     So: it must be a small file, it must carry the line install.sh writes, and it must name the
     directory this script is running from. Anything else is left alone.
@@ -796,7 +866,7 @@ def remove_cli_shim() -> None:
         survivor = shutil.which("embabel")
         if survivor:
             print(f"  NOTE: another 'embabel' is still on your PATH: {survivor}")
-            print("        That is not ours — probably the TUI — and it has been left alone.")
+            print("        That one is not ours, and it has been left alone.")
 
 
 def uninstall() -> None:
@@ -870,6 +940,7 @@ def ensure_mode(mode: str) -> bool:
     is idempotent — it reconciles and leaves running containers alone."""
     ensure_timezone()
     ensure_wallet_key()
+    remember_mode(mode)
     announce_github_token()
     modes = running_modes()
     other = next(((svc, name) for svc, name in modes.items() if svc != MODE_SERVICE[mode]), None)
@@ -1247,24 +1318,10 @@ def resolve_world_repo(spec: str) -> str:
 
 
 def set_bootstrap_world(spec: str) -> None:
-    """Write ASSISTANT_BOOTSTRAP_WORLD into .env, preserving everything else there.
-    .env rather than a compose edit: the compose files stay pull-only, and this is
-    exactly the kind of machine-local setting .env exists for."""
+    """Write ASSISTANT_BOOTSTRAP_WORLD into .env."""
     repo = resolve_world_repo(spec)
-    lines = []
-    if os.path.exists(".env"):
-        with open(".env") as f:
-            lines = f.read().splitlines()
-    replaced = False
-    for index, line in enumerate(lines):
-        if line.startswith("ASSISTANT_BOOTSTRAP_WORLD="):
-            lines[index] = f"ASSISTANT_BOOTSTRAP_WORLD={repo}"
-            replaced = True
-    if not replaced:
-        lines += ["", "# World template new worlds are cloned from (set by ./setup.py --world).",
-                  f"ASSISTANT_BOOTSTRAP_WORLD={repo}"]
-    with open(".env", "w") as f:
-        f.write("\n".join(lines) + "\n")
+    set_env_var("ASSISTANT_BOOTSTRAP_WORLD", repo,
+                ("# World template new worlds are cloned from (set by ./setup.py --world).",))
     print(f"  World template: {repo}")
     print("  (applies when a world is FIRST created — existing worlds keep their shape)\n")
 
@@ -1319,24 +1376,11 @@ def inspect_realms_dir(raw: str) -> tuple[str | None, list[str], list[str]]:
 
 
 def set_realms_dir(path: str) -> None:
-    """Write EMBABEL_REALMS_DIR into .env, preserving everything else there.
-    Same reasoning as the world template: the compose files stay pull-only, and
-    where this machine keeps its checkouts is exactly what .env is for."""
-    lines = []
-    if os.path.exists(".env"):
-        with open(".env") as f:
-            lines = f.read().splitlines()
-    replaced = False
-    for index, line in enumerate(lines):
-        if line.startswith("EMBABEL_REALMS_DIR="):
-            lines[index] = f"EMBABEL_REALMS_DIR={path}"
-            replaced = True
-    if not replaced:
-        lines += ["", "# Realm checkouts on this machine, mounted read-only at /realms.",
-                  "# See realms/README.md; ./worlds.py asked for this on first run.",
-                  f"EMBABEL_REALMS_DIR={path}"]
-    with open(".env", "w") as f:
-        f.write("\n".join(lines) + "\n")
+    """Write EMBABEL_REALMS_DIR into .env."""
+    set_env_var("EMBABEL_REALMS_DIR", path, (
+        "# Realm checkouts on this machine, mounted read-only at /realms.",
+        "# See realms/README.md; ./worlds.py asked for this on first run.",
+    ))
 
 
 def announce_realms(path: str, realms: list[str], notes: list[str]) -> None:
@@ -1460,15 +1504,19 @@ def main() -> int:
             uninstall()
             return 0
 
+        # What a bare `./setup.py --fresh` means: the door this machine was last
+        # set up as, not a guess. Wiping a worlds appliance and bringing back the
+        # Me door on top of its graph is not what anybody typing --fresh meant.
+        mode = args.mode or configured_mode() or "me"
         if args.world:
             set_bootstrap_world(args.world)
-        ensure_realms_dir(args.mode or "me", args.realms)
+        ensure_realms_dir(mode, args.realms)
 
         if args.fresh:
             fresh_wipe()
         started = False
         if args.mode or args.fresh:
-            started = ensure_mode(args.mode or "me")
+            started = ensure_mode(mode)
 
         container = find_mode_container(args.mode)
         base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
@@ -1526,6 +1574,7 @@ def main() -> int:
         if service == "worlds":
             print_worlds_surfaces(base)
         elif service == "assistant":
+            print_me_surfaces(base)
             launch_me_app(base, username)
         return 0
     except AlreadySetUp as e:
