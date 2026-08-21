@@ -54,7 +54,14 @@ The register every skill runs in: the appliance's own — verdict first, numbers
 zero filler — with an explicit blacklist of LLM English and STE-style structure for procedures.
 A connected world's persona layers on top; the rules are the floor.
 
-## Installing
+## relentless-testing
+
+Adversarial verification against ground truth: reconcile every figure with the source system
+directly, run the natural-language battery, assert the same fact equal everywhere, click the
+app in a real browser, ship the harness with the realm. Born from three trivially-found
+failures in one evening; exists so there is never a fourth.
+
+
 
 Symlink, so a `git pull` updates the skill too:
 

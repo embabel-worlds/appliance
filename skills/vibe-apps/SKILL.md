@@ -61,6 +61,10 @@ The floor is the theme CSS and a working table. Aim above it:
 
 ## 4. Test EVERYTHING the user will touch — before they touch it
 
+The full ladder — ground truth from the source system, exact reconciliation, the NL battery,
+same-fact consistency, browser click-through, the shipped harness — is `../relentless-testing/`.
+Run it. What follows is the floor, not the ceiling.
+
 The failure this section exists to prevent, verbatim from the field: a realm shipped with a
 verified flagship view and a served app, and the user's FIRST three natural-language questions
 all returned zero rows. "I tested my query" is not "I tested their questions."
