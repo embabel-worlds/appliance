@@ -69,6 +69,18 @@ Make the empty case happen and check it is LOUD (a warning, a named reason — n
 zero). Break a credential and confirm the failure surfaces. A surface that cannot show its
 failures will show them to the user instead.
 
+## The battery ships with the realm — and users extend it
+
+The battery is a spec-level artifact, not a script you keep: `tests/questions.yml` per the
+realm specification — GENERATED mechanically from the realm's shape (per type the count and
+list forms; per numeric field the superlative in both phrasings; per status/stage value the
+filtered ask; per date field absolute AND relative windows; plus synonym-heavy free forms),
+then extended by users with every question that ever disappointed them. Money and count
+questions assert `matchesView`: the NL answer's figure must EQUAL the curated view's — the
+realm reconciling against itself, no literals to rot. A vocabulary the battery generation
+missed ("win", "receivables", "client") is exactly what a user will type first: enumerate the
+schema's stage and status values into questions so no domain word goes unclaimed.
+
 ## The harness ships with the realm
 
 Encode L0–L4 as an executable script in the realm (`tests/verify.sh` or equivalent): source
