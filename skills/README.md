@@ -13,13 +13,40 @@ shouldn't be able to.
 
 ## scout-realms
 
-Surveys the directories you approve, works out with you which of your systems
-deserve a realm, and installs the ones you agree to. It asks before it reads
-anything, and proposes before it writes anything.
+Surveys the directories you approve, works out with you where a realm would add
+value — a join onto what the world holds, LLM intelligence the source system
+lacks, or plain capability — and installs the ones you agree to. It asks before
+it reads anything, and proposes before it writes anything.
 
 Use it when a fresh appliance is a blank page: `learn_sources` on a new install
 returns nothing, because nothing has been connected yet, and this is the thing
 that finds what to connect.
+
+## realm-doctor
+
+Diagnoses a realm that is not behaving: installed but answering nothing, verbs
+missing or stale, degraded status, empty queries, schedules that never fire.
+A symptom-first runbook — every entry in it was a real failure diagnosed on a
+live appliance, which is why the checks go where they go.
+
+## embabel-client
+
+Helps you write apps that CALL the appliance over REST — running saved views,
+querying the graph, invoking verbs — from the server's own OpenAPI spec. Its
+center of gravity is a design stance: query logic belongs in saved views on the
+server, and the app stays a thin typed client of `POST /api/v1/views/{name}/invoke`.
+
+## vibe-apps
+
+Builds single-page apps served by the world and fed by its data through the app
+runtime. Its discipline: build the data before the chrome (run the views first),
+then verify like a user — open the served page and watch it answer on live rows.
+
+## world-atlas
+
+Interrogates a world systematically — views, capabilities, schema, counts,
+realms, apps — and writes a compact atlas. The first move before prospecting,
+app-building or querying; the other skills pick up from its gap list.
 
 ## Installing
 

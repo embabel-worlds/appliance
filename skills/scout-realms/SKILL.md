@@ -1,15 +1,29 @@
 ---
 name: scout-realms
-description: Find the things in a user's estate that would RELATE to data their world already holds — the joins that make a demo land — and turn the best ones into Embabel realms. Use when the user asks what realms they could build, what their appliance could learn, what would make a good demo, how to get their data or an API into a world, or wants their estate surveyed for realm candidates.
+description: Find where a realm would add disproportionate value to a user's estate — by RELATING data the world already holds, by adding INTELLIGENCE the source system lacks (LLM-smart views that classify, summarize, judge), or by adding CAPABILITY (verbs, schedules, apps) — and turn the best candidates into Embabel realms. Use when the user asks what realms they could build, whether something could be a realm, what their appliance could learn, what would make a good demo, or wants their estate surveyed.
 ---
 
-Find what could be **related**, not what could be stored. Then interview the user about which
-relationships are worth having, and install the ones they approve.
+Find where a realm would add value a `psql` prompt cannot, then interview the user about which
+of it is worth having, and install what they approve. Value comes down three lanes, and every
+candidate should be ranked on the best lane open to it:
+
+1. **Relate** — a join onto something the world already holds. The biggest wow when the anchor
+   side is rich; worthless when it is empty.
+2. **Intelligence** — LLM smarts INSIDE the surface, where the source system has none: a view
+   that classifies rows as it reads them (visit notes into emergency/routine/follow-up), a
+   three-valued verdict over a corpus, a summary steered by voice and length, a handler that
+   enriches records on a schedule. The engine's view reductions exist for exactly this — the
+   flagship document views (`document_themes`, `does_the_corpus_say`, `position_on`) are LLM
+   reductions in view clothing, and a realm can ship its own.
+3. **Capability** — verbs, scheduled sweeps, NL query over the graph, an app on top. What the
+   realm DOES rather than what it connects.
+
+A candidate with no join can still score high on lanes 2 and 3 — say which lane carries it.
 
 The interview follows the `grilling` skill's shape, and for its reason: **facts are your job,
 decisions are theirs.** Never ask the user something you could find out yourself.
 
-## The thing that makes a realm worth building
+## Lane 1, the biggest wow when it lands: relating
 
 A realm that mirrors one database's entities answers questions its owner could already answer with
 SQL. It is a second copy of a schema. Nobody's eyebrows move.
@@ -157,11 +171,13 @@ spellings. A checkout with no origin is its own candidate rather than a match fo
   register, a postcode, planning controls at a point. Not wow alone; wow the moment a Tier 1 realm
   supplies the key. Say what it would need to light up.
 - **Tier 3 — an island, as data.** Entities sharing no identifier with anything the world holds
-  answer what SQL already answered. Say so plainly. But an island can still be worth building when
-  the value is **capability rather than connection**: a saved view that encodes a question people
-  actually ask, a scheduled handler that sweeps for a condition, NL query over the graph, an app
-  on top. On a developer world this is usually the honest pitch — name the concrete verbs and
-  views the realm would add, and rank it on those, never on a join it does not have.
+  answer what SQL already answered. Say so plainly. But an island can still be worth building on
+  the other two lanes: **intelligence** — a view that classifies or judges rows with an LLM as it
+  reads them, semantic search over text columns, an enrichment sweep — and **capability** — verbs,
+  schedules, NL query, an app. On a developer world this is usually the honest pitch — name the
+  concrete views, classifications and verbs the realm would add, and rank it on those, never on a
+  join it does not have. "This view answers a question the schema cannot" is a real pitch;
+  "imagine if it joined to something" is not.
 
 **The wow test, for choosing between Tier 1 candidates.** Disproportionate impact comes from
 small, cheap data that crosses a boundary the user believes is uncrossable — not from volume:
@@ -201,8 +217,10 @@ The questions that matter here, in roughly this order:
    care about. Ask it alongside the tiers rather than before them, so they are choosing against
    real candidates instead of in the abstract.
 1. **Which bridges are worth building** — present the tiers with the evidence and the row counts.
-2. **The demo question.** For each Tier 1 candidate, get the user to say the sentence they want to
-   be able to ask — the one that crosses both sources. This is the highest-value thing you will
+2. **The demo question.** For each candidate, get the user to say the sentence they want to be
+   able to ask. For a Tier 1 it crosses both sources; for an intelligence-lane candidate it is the
+   question the LLM answers that the schema cannot ("which of last month's visits were really
+   emergencies?"). This is the highest-value thing you will
    get from them, it is the thing a schema cannot tell you, and it decides the join direction and
    which producer you need. Offer your best guess so they can correct rather than compose.
 3. **Whether the bridge resolves.** Ask how the two sides actually match when it is not obvious —
