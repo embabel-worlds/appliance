@@ -86,6 +86,9 @@ ENV_FILE = ".env"
 # The name setup registers with MCP clients, and therefore the name --uninstall
 # has to remove. One constant so the two cannot disagree.
 MCP_SERVER_NAME = "embabel"
+# The env var Codex reads the MCP bearer token from: `codex mcp add` stores the
+# variable's NAME in its config, never the token, so the operator exports this.
+CODEX_TOKEN_ENV = "EMBABEL_MCP_TOKEN"
 # Every code-sandbox container carries this label (JvmInstance.JVM_LABEL_KEY on the
 # server). They are created by the app THROUGH the docker socket as siblings of the
 # appliance, not as compose services — so `docker compose down` does not see them.
@@ -781,8 +784,61 @@ def remove_stray_sandboxes() -> None:
         print(f"  Removed {len(strays)} sandbox container(s).")
 
 
+def env_file_value(key: str) -> str | None:
+    """One value from .env, or None. The file may already be gone during teardown."""
+    if not os.path.exists(ENV_FILE):
+        return None
+    with open(ENV_FILE) as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith(f"{key}="):
+                return stripped.split("=", 1)[1].strip() or None
+    return None
+
+
+def this_appliance_urls() -> set[str]:
+    """Every MCP URL that means THIS install, normalized for comparison.
+
+    Both modes count: Me and Worlds are the same checkout, the same volume and the
+    same account, so a registration against either port belongs to this appliance.
+    A configured public base URL counts too — that is what a remote client was
+    wired with.
+    """
+    bases = [
+        f"http://localhost:{env_file_value('ASSISTANT_PORT') or '4242'}",
+        f"http://localhost:{env_file_value('WORLDS_PORT') or '4342'}",
+        f"http://127.0.0.1:{env_file_value('ASSISTANT_PORT') or '4242'}",
+        f"http://127.0.0.1:{env_file_value('WORLDS_PORT') or '4342'}",
+    ]
+    for key in ("ASSISTANT_PUBLIC_BASE_URL", "WORLDS_PUBLIC_BASE_URL"):
+        value = env_file_value(key)
+        if value:
+            bases.append(value)
+    return {base.rstrip("/").lower() + "/mcp" for base in bases}
+
+
+def registered_mcp_url(cli: str, name: str) -> str | None:
+    """The URL a client has registered under [name], from its own `mcp get` output.
+
+    Both CLIs print a `URL:`/`url:` line; anything else (entry absent, output
+    reshaped) comes back None, which callers treat as "cannot tell".
+    """
+    try:
+        run = subprocess.run([cli, "mcp", "get", name],
+                             capture_output=True, text=True, timeout=30)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if run.returncode != 0:
+        return None
+    for line in run.stdout.splitlines():
+        match = re.match(r"\s*url:\s*(\S+)", line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
 def unwire_coding_agents() -> None:
-    """Drop the MCP registration setup minted, best effort.
+    """Drop the MCP registration setup minted — and ONLY that one, verified by URL.
 
     The token is issued once and never returned again, so a registration that
     outlives its volume is not stale config — it is a client pointed at an
@@ -790,17 +846,34 @@ def unwire_coding_agents() -> None:
     nothing to say why. Removing the account without removing this is how you end
     up with `embabel: Failed to connect` in `claude mcp list` and no idea when it
     broke.
+
+    But the NAME is not proof of ownership: '{MCP_SERVER_NAME}' in a client may
+    point at a different appliance — a remote one, another checkout on other
+    ports. Removing by name alone would take out a registration this uninstall
+    never created. So each client is asked what URL it has, and only an entry
+    pointing at this install is removed; anything else is left standing and said
+    so. "Cannot tell" also leaves it standing — deleting on uncertainty is the
+    wrong default for someone else's config.
+
+    Must run while .env still exists: this install's ports live there.
     """
-    claude = shutil.which("claude")
-    if not claude:
-        return
-    try:
-        run = subprocess.run([claude, "mcp", "remove", MCP_SERVER_NAME],
-                             capture_output=True, text=True, timeout=30)
-    except (subprocess.SubprocessError, OSError):
-        return
-    if run.returncode == 0:
-        print(f"  Removed the '{MCP_SERVER_NAME}' MCP server from Claude Code.")
+    ours = this_appliance_urls()
+    for name, cli in (("Claude Code", shutil.which("claude")), ("Codex", shutil.which("codex"))):
+        if not cli:
+            continue
+        url = registered_mcp_url(cli, MCP_SERVER_NAME)
+        if url is None:
+            continue
+        if url.rstrip("/").lower() not in ours:
+            print(f"  Left {name}'s '{MCP_SERVER_NAME}' registration alone — it points at {url}, not this appliance.")
+            continue
+        try:
+            run = subprocess.run([cli, "mcp", "remove", MCP_SERVER_NAME],
+                                 capture_output=True, text=True, timeout=30)
+        except (subprocess.SubprocessError, OSError):
+            continue
+        if run.returncode == 0:
+            print(f"  Removed the '{MCP_SERVER_NAME}' MCP server from {name}.")
 
 
 def cli_shim_paths() -> list[str]:
@@ -895,7 +968,7 @@ def uninstall() -> None:
     print("    the appliance's entire state — account, world, graph, documents, dashboards")
     print(f"    {ENV_FILE} — your provider key, timezone, and realms directory")
     print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
-    print(f"    the '{MCP_SERVER_NAME}' MCP registration, whose token dies with the volume")
+    print(f"    the '{MCP_SERVER_NAME}' MCP registration — only where it points at THIS appliance")
     for path in cli_shim_paths():
         if os.path.exists(path) and is_our_shim(path):
             print(f"    {path} — the 'embabel' command install.sh put on your PATH")
@@ -911,6 +984,9 @@ def uninstall() -> None:
 
     take_everything_down()
     remove_stray_sandboxes()
+    # Before .env goes: unwiring verifies each registration's URL against this
+    # install's ports, and those ports live in .env.
+    unwire_coding_agents()
     for name in (ENV_FILE, OVERRIDE_FILE):
         if os.path.exists(name):
             os.remove(name)
@@ -918,7 +994,6 @@ def uninstall() -> None:
         else:
             # Silence here made a re-run look like nothing happened at all.
             print(f"  No {name} to remove.")
-    unwire_coding_agents()
     remove_cli_shim()
     print("\n  Done — this checkout is back to the state a fresh clone is in.")
     print("  `embabel up` sets it up again from here.\n")
@@ -1263,7 +1338,7 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
 
 
 def wire_coding_agents(result: dict) -> None:
-    """Offer to point Claude Code at the appliance, using the token the mcp step just
+    """Offer to point Claude Code and Codex at the appliance, using the token the mcp step just
     minted. The token exists in this process exactly once — the server never returns
     it again — so this is the moment to hand it to a client.
 
@@ -1273,7 +1348,8 @@ def wire_coding_agents(result: dict) -> None:
     if not token or not url:
         return
 
-    print("\n── Wire up Claude Code " + "─" * 39)
+    print("\n── Wire up coding agents " + "─" * 37)
+    wired = False
     claude = shutil.which("claude")
     if claude:
         answer = prompt("  Point Claude Code at this appliance now (user scope)? [Y/n]: ").strip().lower()
@@ -1286,20 +1362,60 @@ def wire_coding_agents(result: dict) -> None:
                 )
                 if run.returncode == 0:
                     print(f"  Claude Code wired as '{MCP_SERVER_NAME}' — new sessions will see the appliance.")
-                    return
-                print(f"  claude mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
+                    wired = True
+                else:
+                    print(f"  claude mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
             except (subprocess.SubprocessError, OSError) as e:
                 print(f"  Could not run claude: {e}")
     else:
         print("  Claude Code CLI not found on PATH.")
 
-    # Manual fallback — also what Codex/Cursor users copy from. Printing the token is
-    # deliberate: this is the operator's own machine and the only time it is available.
+    # Codex reads the bearer token from an ENVIRONMENT VARIABLE at session start —
+    # `codex mcp add` records only the variable's NAME, never the token itself. So
+    # wiring Codex is two moves: register the server, then get the export into the
+    # operator's shell profile. The second half cannot be done for them silently
+    # (editing someone's shell profile uninvited is not this script's place), so it
+    # is printed as the one line they must add — loudly, because a registration
+    # whose variable is unset fails on every session with nothing to say why.
+    codex = shutil.which("codex")
+    if codex:
+        answer = prompt("  Point Codex at this appliance too? [Y/n]: ").strip().lower()
+        if answer in ("", "y", "yes"):
+            try:
+                existing = registered_mcp_url(codex, MCP_SERVER_NAME)
+                if existing and existing.rstrip("/").lower() != url.rstrip("/").lower() + "/mcp" \
+                        and existing.rstrip("/").lower() != url.rstrip("/").lower():
+                    print(f"  (replacing Codex's '{MCP_SERVER_NAME}' entry, which pointed at {existing})")
+                subprocess.run([codex, "mcp", "remove", MCP_SERVER_NAME],
+                               capture_output=True, text=True, timeout=30)
+                run = subprocess.run(
+                    [codex, "mcp", "add", MCP_SERVER_NAME, "--url", url,
+                     "--bearer-token-env-var", CODEX_TOKEN_ENV],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if run.returncode == 0:
+                    print(f"  Codex wired as '{MCP_SERVER_NAME}'. ONE STEP REMAINS — Codex reads the")
+                    print(f"  token from ${CODEX_TOKEN_ENV}, so add this line to your shell profile:")
+                    print(f"    export {CODEX_TOKEN_ENV}=\"{token}\"")
+                    wired = True
+                else:
+                    print(f"  codex mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
+            except (subprocess.SubprocessError, OSError) as e:
+                print(f"  Could not run codex: {e}")
+
+    if wired:
+        return
+
+    # Manual fallback — also what Cursor and other MCP clients copy from. Printing
+    # the token is deliberate: this is the operator's own machine and the only time
+    # it is available.
     print("  Wire any MCP client manually:")
     print(f"    URL:    {url}")
     print(f"    Header: Authorization: Bearer {token}")
     print(f"  (Claude Code: claude mcp add --transport http --scope user {MCP_SERVER_NAME} "
           f"{url} --header \"Authorization: Bearer <token>\")")
+    print(f"  (Codex:       codex mcp add {MCP_SERVER_NAME} --url {url} "
+          f"--bearer-token-env-var {CODEX_TOKEN_ENV}, then export {CODEX_TOKEN_ENV})")
 
 
 def resolve_world_repo(spec: str) -> str:
