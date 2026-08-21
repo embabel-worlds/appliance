@@ -295,7 +295,7 @@ rows. A join returning nothing is a guess. Review it, add the virtual join onto 
 `Organization` yourself with `realm_write`, confirm it returns rows, and only then `learn_promote`.
 Promoting is the record that a person judged it fit.
 
-**Verify by asking the demo question, not by checking status.** `realm_status` should be `active`
+`realm_status` should be `active`
 with `problems: []`, but the real test is running the sentence from question 2 and getting rows
 back that span both sides. A realm that installs clean and answers nothing is not done — say so
 rather than reporting success.

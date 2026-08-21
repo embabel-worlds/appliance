@@ -59,7 +59,31 @@ The floor is the theme CSS and a working table. Aim above it:
 - Compute time-relative things ("last 7 days") in the app's own script at load, never bake a
   date in.
 
-## 4. Verify like a user, then iterate
+## 4. Test EVERYTHING the user will touch — before they touch it
+
+The failure this section exists to prevent, verbatim from the field: a realm shipped with a
+verified flagship view and a served app, and the user's FIRST three natural-language questions
+all returned zero rows. "I tested my query" is not "I tested their questions."
+
+Non-negotiable before handing anything over:
+
+- **Every view, every parameter.** Run each view by name through the runtime path
+  (`POST /api/v1/views/{name}/invoke`), with defaults AND with each declared parameter varied,
+  and read the whole envelope — status, outcome, warnings, rows. A view that has never returned
+  rows in front of you does not exist yet.
+- **The generator is a user too.** Ask `kg_ask` the five questions a person would actually type
+  — "how many X", "which X has the most Y", the superlatives and counts — and read the CYPHER
+  it generated, not just the row count. Zero rows with an unpinned door in the generated query
+  means your schema needs a default-seeded door (`metadata: { identity: "true", default: ... }`),
+  not a better prompt. If the generator cannot answer it, the user cannot either.
+- **Empty must be loud.** For every surface, force the empty case and check what it says. "0
+  rows" with empty warnings on a question the data can answer is a defect somewhere — find it
+  before the user does.
+- **The app's own calls.** Fetch the served page AND exercise the calls its scripts make
+  (views, gateway methods) with curl using the same arguments the script sends. What you cannot
+  execute (in-browser JS), say so explicitly when handing over — never imply it was tested.
+
+## 5. Verify like a user, then iterate
 
 `vibe_app_save` validates; that is not the finish line. `vibe_app_list` returns the app's `url`
 — open it (or fetch it) and check: the runtime loads, the views return the rows you saw in step
