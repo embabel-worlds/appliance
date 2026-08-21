@@ -784,6 +784,73 @@ def remove_stray_sandboxes() -> None:
         print(f"  Removed {len(strays)} sandbox container(s).")
 
 
+CODEX_AGENTS_FILE = os.path.expanduser("~/.codex/AGENTS.md")
+AGENTS_BLOCK_BEGIN = "<!-- BEGIN embabel appliance -->"
+AGENTS_BLOCK_END = "<!-- END embabel appliance -->"
+
+
+def codex_agents_block() -> str:
+    """The global-guidance block for Codex, pointing back at this checkout.
+
+    A ROUTER, not a copy: the canonical guidance is AGENTS.md at the repo root and
+    the full runbooks are skills/*/SKILL.md, all readable by any agent from the
+    absolute path below. Embedding the path is the point — global guidance applies
+    in sessions on OTHER projects, where a relative path means nothing.
+    """
+    checkout = os.path.abspath(os.path.dirname(__file__))
+    return (
+        f"{AGENTS_BLOCK_BEGIN}\n"
+        f"## Embabel appliance\n"
+        f"The MCP server named '{MCP_SERVER_NAME}' is an Embabel appliance — the user's world\n"
+        f"runtime (data, realms, saved views, apps). Before working with it, read\n"
+        f"`{checkout}/AGENTS.md` — the first-calls list there saves failed guesses, and it\n"
+        f"routes to full runbooks under `{checkout}/skills/` for realm prospecting,\n"
+        f"realm diagnosis, calling the server from apps, building world-served apps, and\n"
+        f"interrogating a world.\n"
+        f"{AGENTS_BLOCK_END}\n"
+    )
+
+
+def install_codex_agents_block(target: str = CODEX_AGENTS_FILE) -> None:
+    """Put (or refresh) the marked block in Codex's global AGENTS.md, idempotently.
+
+    Only the region between our markers is ever touched; everything else in the
+    file is somebody's own guidance and stays byte-for-byte.
+    """
+    block = codex_agents_block()
+    existing = ""
+    if os.path.exists(target):
+        with open(target) as f:
+            existing = f.read()
+    if AGENTS_BLOCK_BEGIN in existing and AGENTS_BLOCK_END in existing:
+        head, rest = existing.split(AGENTS_BLOCK_BEGIN, 1)
+        _, tail = rest.split(AGENTS_BLOCK_END, 1)
+        updated = head + block.rstrip("\n") + tail
+    else:
+        joiner = "" if not existing or existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
+        updated = existing + joiner + block
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "w") as f:
+        f.write(updated)
+
+
+def remove_codex_agents_block(target: str = CODEX_AGENTS_FILE) -> bool:
+    """Remove OUR marked block from Codex's global AGENTS.md; everything else stays.
+    Returns True when a block was actually removed."""
+    if not os.path.exists(target):
+        return False
+    with open(target) as f:
+        existing = f.read()
+    if AGENTS_BLOCK_BEGIN not in existing or AGENTS_BLOCK_END not in existing:
+        return False
+    head, rest = existing.split(AGENTS_BLOCK_BEGIN, 1)
+    _, tail = rest.split(AGENTS_BLOCK_END, 1)
+    updated = (head.rstrip("\n") + "\n" + tail.lstrip("\n")).strip("\n")
+    with open(target, "w") as f:
+        f.write(updated + "\n" if updated else "")
+    return True
+
+
 def env_file_value(key: str) -> str | None:
     """One value from .env, or None. The file may already be gone during teardown."""
     if not os.path.exists(ENV_FILE):
@@ -874,6 +941,11 @@ def unwire_coding_agents() -> None:
             continue
         if run.returncode == 0:
             print(f"  Removed the '{MCP_SERVER_NAME}' MCP server from {name}.")
+    try:
+        if remove_codex_agents_block():
+            print(f"  Removed the appliance block from {CODEX_AGENTS_FILE}.")
+    except OSError:
+        pass
 
 
 def cli_shim_paths() -> list[str]:
@@ -1397,6 +1469,11 @@ def wire_coding_agents(result: dict) -> None:
                     print(f"  Codex wired as '{MCP_SERVER_NAME}'. ONE STEP REMAINS — Codex reads the")
                     print(f"  token from ${CODEX_TOKEN_ENV}, so add this line to your shell profile:")
                     print(f"    export {CODEX_TOKEN_ENV}=\"{token}\"")
+                    try:
+                        install_codex_agents_block()
+                        print(f"  Added appliance guidance to {CODEX_AGENTS_FILE} (a marked block; the rest of the file is untouched).")
+                    except OSError as e:
+                        print(f"  Could not update {CODEX_AGENTS_FILE}: {e}")
                     wired = True
                 else:
                     print(f"  codex mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
