@@ -34,24 +34,24 @@
       color: var(--ink); text-transform: none; letter-spacing: normal;
     }
     input:focus, select:focus, textarea:focus {
-      outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4);
+      outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 40%, transparent);
     }
     /* CodeMirror, reskinned to this surface — the Query Studio's palette. */
     .CodeMirror {
       height: auto; min-height: 260px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
       border: 1px solid var(--rule); border-radius: 3px; background: #0b1220; color: var(--ink);
     }
-    .CodeMirror-focused { border-color: var(--signal); box-shadow: 0 0 0 1px rgba(98, 95, 255, 0.4); }
+    .CodeMirror-focused { border-color: var(--signal); box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 40%, transparent); }
     .CodeMirror-gutters { background: #0b1220; border-right: 1px solid var(--rule); }
     .CodeMirror-linenumber { color: var(--faint); }
     .CodeMirror-cursor { border-left-color: var(--ink); }
-    .CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: rgba(98, 95, 255, 0.25); }
+    .CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--signal) 25%, transparent); }
     .cm-s-default .cm-keyword { color: #a778ff; }
     .cm-s-default .cm-atom { color: #3ecf8e; }
     .cm-s-default .cm-number { color: #f5a97f; }
     .cm-s-default .cm-string, .cm-s-default .cm-string-2 { color: #8fd3a7; }
     .cm-s-default .cm-comment { color: var(--faint); font-style: italic; }
-    .cm-s-default .cm-variable, .cm-s-default .cm-variable-2, .cm-s-default .cm-def, .cm-s-default .cm-property { color: #c7d2ff; }
+    .cm-s-default .cm-variable, .cm-s-default .cm-variable-2, .cm-s-default .cm-def, .cm-s-default .cm-property { color: var(--signal-ink); }
     /* Same rescue as the Query Studio: stock BUILTIN is #30a, invisible here. */
     .cm-s-default .cm-builtin { color: #3ecf8e; }
     .cm-s-default .cm-operator, .cm-s-default .cm-punctuation { color: var(--mid); }
@@ -60,7 +60,7 @@
       font-family: var(--mono); font-size: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); z-index: 20;
     }
     .CodeMirror-hint { color: var(--ink); }
-    li.CodeMirror-hint-active { background: var(--signal); color: #fff; }
+    li.CodeMirror-hint-active { background: var(--signal); color: var(--on-signal); }
     /* Validation verdicts, under the editor. A violation that names a line is
        clickable and paints that line in the editor. */
     #verdict { margin-top: 8px; }
