@@ -141,6 +141,10 @@ Also collect, as before:
   count, auth. A public reference API keyed on a company number is a strong spine.
 - **Databases.** `docker-compose*.yml`, `*.tf`, `.env*`, `application*.yml` — the service, the
   schema, how it is reached.
+- **The application in front of the data.** For every database found, record what OWNS it: a
+  Spring/Django/Rails app, its controllers, whether it exposes REST/GraphQL (or only server-side
+  pages), whether an OpenAPI spec exists or could be generated (springdoc is one dependency away
+  for a Spring app). The database is rarely the only door, and it is often the wrong one.
 
   **Ask what is RUNNING, not only what is configured.** `docker ps` and listening ports find
   databases no compose sweep will: a container started by hand, one whose compose file lives
@@ -227,14 +231,33 @@ The questions that matter here, in roughly this order:
    people with several email addresses, companies that trade under another name. github's realm
    needs three strategies for this (`existingBridge`, `learnedHandle`, `canonicalEmail`) because
    one was never enough.
-4. **How deeply to read.** `learn_source` takes `METADATA` (default, schema only),
+4. **Which door — the architecture question, asked explicitly.** A system with a middle tier
+   offers two doors, and they are different products:
+
+   - **Through the application** (its REST/GraphQL API, learned from an OpenAPI spec): every
+     read and WRITE goes through the app's validation, business rules and authorization. The
+     realm's verbs ("book a visit", "register a pet") are exactly the app's own operations,
+     typed by its own spec — the realm-github pattern. Coupled to the API contract, which is
+     what contracts are for.
+   - **Straight to the database** (`learn_connect`): richer ad-hoc reads, joins the app never
+     exposed, and the learn pipeline builds types in one pass. But a WRITE this way bypasses
+     everything the middle tier enforces, and the realm couples to schema internals the app
+     considers private.
+
+   Recommend by what the realm will DO: **reads and analytics can go to the database; anything
+   that writes goes through the application.** A hybrid is often right — learn the schema for
+   query, wire verbs to the API. When the app has no API, gaining one (or a thin one for the
+   operations the realm needs) is genuine product work worth naming as an option, not a detour
+   from the "real" route. Do not default to the database just because `learn_connect` makes it
+   the easiest thing to reach.
+5. **How deeply to read.** `learn_source` takes `METADATA` (default, schema only),
    `DISTINCT_VALUES` (low-cardinality column values — usually where the meaning is) or
    `SAMPLE_ROWS`. Recommend `DISTINCT_VALUES` for a system they own, say what it will read, and
    never widen without an explicit answer.
-5. **Credentials.** Name what is needed and where it goes — a password goes to their encrypted
+6. **Credentials.** Name what is needed and where it goes — a password goes to their encrypted
    wallet, never into YAML or git. Never invent one, and never reuse one found in a scanned `.env`
    without saying that is what you are doing.
-6. **Name and scope** per realm, once the above are settled.
+7. **Name and scope** per realm, once the above are settled.
 
 Stop when the frontier is empty. Do not install anything until they confirm the plan.
 
@@ -255,7 +278,9 @@ A `realm.yml` you found under `~/dev` is therefore not installable where it sits
 and offer the two honest routes: `install_realm` from its git repo, or have the user symlink the
 checkout into their realms directory and restart.
 
-Mining gets types and columns right and **relationships wrong** — a learned realm arrives as
+Route by the door decided in question 4, not by reachability — a running Postgres is the
+easiest thing to connect and therefore the easiest wrong default. Mining gets types and columns
+right and **relationships wrong** — a learned realm arrives as
 `auto-<source>` with its joins marked, and the report says which proposed joins actually returned
 rows. A join returning nothing is a guess. Review it, add the virtual join onto `Person` or
 `Organization` yourself with `realm_write`, confirm it returns rows, and only then `learn_promote`.
@@ -280,6 +305,10 @@ execute is a good outcome; a half-installed realm is not.
   to an in-memory database (petclinic's default profile is H2); the compose services beside it are
   opt-in. `learn_connect` needs a reachable JDBC endpoint — establish which profile or service
   provides one and whether it is running, as a fact you report, not a decision you delegate.
+- **Do not write through the back door.** A verb that mutates a system someone's application
+  owns goes through that application. `sql_update` against a live app's database bypasses its
+  validation, its business rules and its audit — propose it only for a store nothing else owns,
+  and say what is being bypassed if the user insists.
 - **One decision per question.** A round question bundling two choices gets half an answer to
   each. Split them.
 
