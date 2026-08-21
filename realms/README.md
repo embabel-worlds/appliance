@@ -26,6 +26,8 @@ in `.env` — or let `./worlds.py` ask you, which is what it does on first run.
 Everything in this directory except this file is gitignored: your checkouts are
 yours, and they are their own repositories.
 
-One thing to know rather than discover: a realm's declared npm/wasm build runs
-as part of cloning, so it never fires for a local realm. A declarative realm
-needs nothing; a realm with a build step must be built here on the host first.
+One thing to know rather than discover: a realm's declared npm build runs as
+part of cloning, so it never fires for a local realm. A declarative realm needs
+nothing, and `wasm/handlers.ts` needs nothing either — the appliance compiles it
+on load and keeps the bundle in its own storage, never in your checkout. Only a
+realm that needs npm must be built here on the host first.

@@ -138,10 +138,12 @@ services:
       #
       # READ-ONLY, and that is the design rather than a limitation: you edit on
       # the host, where your editor, your coding agent and your git remote
-      # already are, and the appliance only ever reads. One consequence to know
-      # rather than discover — a realm's declared npm/wasm build runs inside
-      # cloneRepo, so it never fires for a local reference. A declarative realm
-      # is fine; a realm with a build step must be built on the host first.
+      # already are, and the appliance only ever reads. Wasm handlers still work:
+      # build-on-load compiles wasm/handlers.ts in the container and publishes
+      # the bundle into the appliance's own storage, never into your checkout.
+      # One consequence to know rather than discover — a realm's declared npm
+      # build runs inside cloneRepo, so it never fires for a local reference;
+      # a realm that needs npm must be built on the host first.
       - ${EMBABEL_REALMS_DIR:-./realms}:/realms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
