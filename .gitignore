@@ -5,6 +5,10 @@
 .env
 .envrc
 
+# Realm credentials, passed into the container wholesale by the optional env_file
+# in both compose files. Same blast radius as .env, same rule.
+secrets.env
+
 # Which of your folders are shared into the assistant (written by the Me app's
 # "Local files" panel). Absolute host paths — this machine's business, like .env.
 docker-compose.override.yml

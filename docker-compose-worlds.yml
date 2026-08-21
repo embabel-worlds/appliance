@@ -36,6 +36,15 @@ services:
       # Same host-equals-container port rule as the Me mode: the code sandbox is
       # handed host.docker.internal:${server.port}, so the two move together.
       - "127.0.0.1:${WORLDS_PORT:-4342}:${WORLDS_PORT:-4342}"
+    # Realm credentials, without a compose edit per realm. A realm names the key it
+    # needs (`token-env:` in its apis.yml) and you put that key in secrets.env, beside
+    # this file — every line of it enters the container as-is. The alternative was a
+    # named passthrough line here for each realm anyone ever installs, which is how a
+    # committed file grows a list of everybody's integrations. Optional and gitignored;
+    # see secrets.env.example. Anything under `environment:` below still wins.
+    env_file:
+      - path: secrets.env
+        required: false
     environment:
       - SERVER_PORT=${WORLDS_PORT:-4342}
       # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
@@ -112,11 +121,6 @@ services:
       - GITHUB_TOKEN
       - GH_TOKEN
       - GITHUB_PERSONAL_ACCESS_TOKEN
-      # Diffbot's company knowledge graph — realm-diffbot's identity bridge, which resolves a
-      # DOMAIN to a company (industry, headcount, ownership, tickers). Bare pass-through like the
-      # keys above: the realm declares `token-env: DIFFBOT_TOKEN`, and until now the estate only
-      # had DIFFBOT_API_KEY, under a name nothing reads.
-      - DIFFBOT_TOKEN
       - TELEGRAM_BOT_TOKEN
       - SLACK_APP_TOKEN
     volumes:

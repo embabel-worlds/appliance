@@ -33,6 +33,13 @@ services:
       # Unpublishing this port silently breaks every sandbox tool call.
       # Same port on BOTH sides — see SERVER_PORT below.
       - "127.0.0.1:${ASSISTANT_PORT:-4242}:${ASSISTANT_PORT:-4242}"
+    # Realm credentials, without a compose edit per realm: a realm names the key it
+    # needs (`token-env:` in its apis.yml), the key goes in secrets.env beside this
+    # file, and every line of it enters the container as-is. Optional and gitignored;
+    # see secrets.env.example. Anything under `environment:` below still wins.
+    env_file:
+      - path: secrets.env
+        required: false
     environment:
       # The container port MUST equal the published host port: the code sandbox is
       # handed a tool-gateway URL of host.docker.internal:${server.port}, so a
