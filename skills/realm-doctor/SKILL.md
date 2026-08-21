@@ -83,6 +83,38 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
   them. A verb with `onType` or required input fields cannot be scheduled: the schedule is
   ignored (recorded in `problems`), the verb stays callable.
 
+## Symptom: a producer "succeeds" and its edge returns nothing
+
+The engine's worst failure shape: the fetch ran, warnings are empty, and the traversal answers
+zero. Diagnose from the FILE log, not the console — the console shows only the operator channel;
+`/app/logs/assistant.log` inside the container carries the firehose, including the two lines
+that settle most producer mysteries:
+
+    [cache] producer 'x': 3 key(s) — 0 memo, 0 shared, 3 miss
+    producer 'x' → tool 'op' args={...}      then:      producer 'x' returned 0 record(s)
+
+- **"returned 0 record(s)" against a source that demonstrably has the data** — look at the
+  logged `args`. Join keys are STRINGS throughout the engine, and an integer-typed source
+  parameter can match nothing on `["9"]` and say nothing about it (Odoo's ORM domains do
+  exactly this). Declare `keyType: int` on the producer. Prove the theory first with one direct
+  call to the source using string keys, then int keys.
+- **A sentinel non-key in the batch** — some sources spell "no relation" as `false`, not null,
+  and a falsy key inside an integer IN-list is a 500 (or worse, silence). Filter them in the
+  producer's domain and say so in a comment.
+- **Stale rows after editing a producer** — the per-key TTL cache survives `realm_refresh`;
+  restart the container when re-testing a producer change, or wait out the TTL.
+- **"virtual label not reached via a registered relationship" listing a strange self-door**
+  (`(:X)-[:R]->(X)`) — the joins are declared on the wrong side. A type declares the joins that
+  REACH it: `virtualJoins` live on the TARGET type, naming their `anchorLabel`.
+
+## Symptom: a key in secrets.env unlocks nothing
+
+`data/secrets.env` is read at world ACTIVATION, and activation fires on login-like paths — a box
+driven only by REST or MCP may never activate, so the key sits unread and the gaps endpoint
+keeps reporting the API inert after a restart. Look for "Activating world resources" in the
+log; absent, the env-var route (the variable named by `unlockedBy`, set on the server process)
+unlocks without depending on activation.
+
 ## Symptom: learn_* finds nothing
 
 - `learn_sources` empty means nothing is CONNECTED, not nothing exists — `learn_connect` first.
