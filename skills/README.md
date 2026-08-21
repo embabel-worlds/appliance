@@ -48,6 +48,15 @@ Interrogates a world systematically — views, capabilities, schema, counts,
 realms, apps — and writes a compact atlas. The first move before prospecting,
 app-building or querying; the other skills pick up from its gap list.
 
+## world-authoring
+
+Builds a capability into the user's world directly or into a realm — the user
+picks the target, the authoring is the same. Saved views (including intelligence
+views that classify and synthesize in-query), handlers on cron or signals, and
+personal apps. Its own ground is the world lane, which no other skill covers;
+realm-format depth stays in realm-authoring, and a world artifact that proves
+out gets promoted into a realm, where its hand-verification becomes a battery.
+
 ## VOICE.md
 
 The register every skill runs in: the appliance's own — verdict first, numbers not adjectives,
