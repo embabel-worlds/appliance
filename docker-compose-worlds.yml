@@ -84,6 +84,18 @@ services:
       # Same embedding model as the Me mode, NON-NEGOTIABLY: both modes write
       # vectors into the same graph. See the models element in infra.yml.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
+      # Models the operator runs on their OWN machine, outside Docker. `localhost`
+      # inside this container is the container, so an LM Studio or Ollama server
+      # they can see in a browser is invisible here — it must be addressed as the
+      # host, which Docker Desktop proxies through host.docker.internal (and the
+      # extra_hosts entry below supplies on Linux).
+      #
+      # The Me door had these and Worlds did not, so the door that sells running
+      # your own models was the one that could not reach them. Spelled in full
+      # because that is what Spring binds — see the long note in
+      # docker-compose-me.yml for what the short names silently failed to do.
+      - EMBABEL_AGENT_PLATFORM_MODELS_LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
+      - EMBABEL_AGENT_PLATFORM_MODELS_OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
       # WORLDS IS THE DEVELOPER DOOR, SO IT SAYS SO.
       #

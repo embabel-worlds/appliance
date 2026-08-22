@@ -71,8 +71,21 @@ services:
       # the host. Docker Desktop proxies host.docker.internal through to the
       # host loopback, so a server bound to 127.0.0.1 still answers; on Linux
       # the extra_hosts entry below supplies the same name.
-      - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      #
+      # THE NAME ON THE LEFT IS LOAD-BEARING, and it was wrong for as long as this
+      # feature has existed. The framework reads
+      # `embabel.agent.platform.models.{lmstudio,ollama}.base-url`, so the only
+      # environment variables Spring binds to those are the ones spelled out in
+      # full below. `LMSTUDIO_BASE_URL` bound to nothing: LM Studio kept its
+      # default of 127.0.0.1:1234 — the CONTAINER's loopback, never the user's —
+      # and Ollama, whose default is blank and which registers no models at all
+      # when blank, was simply switched off. Both failed silently, as a machine
+      # with no local models rather than as an error.
+      #
+      # The short names stay as the INPUT: they are what .env documents and what
+      # a person would think to set.
+      - EMBABEL_AGENT_PLATFORM_MODELS_LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
+      - EMBABEL_AGENT_PLATFORM_MODELS_OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:4242}
       # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
       # (see application-appliance.yml) — the browser holds the encrypted blob and
