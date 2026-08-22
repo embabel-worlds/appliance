@@ -27,6 +27,9 @@ embabel up            # start it, and finish setup if it has not been set up
 embabel status        # what is running, what is still downloading, where to go
 embabel doctor        # why it is not working
 embabel open          # the console, in your browser
+embabel backup        # everything it knows, copied somewhere safe
+embabel version       # tag, digest, the commit it was built from
+embabel bugreport     # one folder to attach to an issue, with no secrets in it
 ```
 
 ---
@@ -127,6 +130,174 @@ needs nothing; a realm with a build step must be built on the host first.
 ### `embabel realms list`
 
 Which realms the appliance can currently see.
+
+### `embabel version`
+
+Which appliance this is, in the four layers that can actually differ between
+two installs. There is no single number, and printing one would be a lie:
+
+| | |
+|---|---|
+| **Checkout** | this repo's commit — the pin for everything in files rather than images: the compose files, the Neo4j tag they name, `setup.py`, the skills |
+| **Server** | the image **tag** as compose resolves it, and the **digest** that tag currently means. `EMBABEL_VERSION` defaults to a snapshot tag, so the tag is a name; the digest is the artifact |
+| **Built from** | the commit the server's jar was built from, read out of `git.properties` inside it — with the branch, the subject line, and whether the build carried **uncommitted changes** |
+| **Graph** | the Neo4j image and its digest |
+
+A build from a dirty tree says so, loudly, because its commit names where the
+build *started* rather than what is in it. A build old enough to carry only an
+abbreviated SHA is marked `(abbreviated only)` rather than printing seven
+characters as though they were an answer.
+
+**It does not call the server.** `/actuator/info` carries the same build and git
+blocks, but it is authenticated, and the moment anyone needs the version is the
+moment the appliance will not boot, is wedged, or is halfway through an upgrade
+— when an endpoint answers nothing. This reads the image and the jar instead,
+and works with the container stopped (a little slower: it starts a throwaway
+container to read from the image).
+
+Reading the jar is cheap despite the jar being ~400MB: the zip index lives at
+the end of the file, so it takes the tail, finds one entry's offset, and reads
+a couple of hundred bytes.
+
+| Flag | |
+|---|---|
+| `--json` | the same four layers, as JSON |
+
+`embabel backup` records exactly this in each backup's `manifest.json`, so a
+year-old backup can still say what wrote it.
+
+### `embabel backup [directory]`
+
+Everything the appliance knows, copied to a folder on the host: a cold tarball
+of each of the two volumes, this machine's `.env`, `secrets.env` and mounts
+override, and a manifest recording when it was taken, from which images, at
+which checkout commit.
+
+Backups go under `~/embabel-backups` unless you name a directory — deliberately
+**outside the checkout**, because `embabel uninstall` deletes the checkout and a
+backup an uninstall removes is not a backup. Each run makes its own timestamped
+folder, so backing up twice never overwrites the first one.
+
+**The copy is cold.** Whichever mode is running stops for it and starts again
+afterwards — including on a failure, so a backup that goes wrong is never the
+reason your assistant is down. This is not caution: Community Neo4j has no
+online backup, and a graph copied while it is live restores as a corrupt graph.
+
+The volume bytes never cross a bind mount — a helper container tars them to
+stdout and the CLI streams that to the file — so Docker Desktop's file-sharing
+list has no opinion about where a backup may live, and an external disk works.
+
+| Flag | |
+|---|---|
+| `--list` | what backups are already in that directory, newest first |
+
+The folder holds credentials: the database password, provider keys, realm
+tokens. Treat it like the keys it holds — the `README.txt` written beside them
+says so too.
+
+### `embabel restore <directory>`
+
+Put a backup back, **replacing what is on this machine**: the graph, the worlds,
+the documents, and this machine's configuration. Everything added since the
+backup was taken is gone. It asks first, and names the backup's date rather than
+its folder — the date is what you are actually confirming.
+
+What gets replaced is set aside rather than deleted: one `.before-restore` file
+per config file, kept until the next restore overwrites it. A
+`docker-compose.override.yml` the Me app did not write is a **refusal**, not a
+set-aside — a hand-written override is somebody's work and a restore does not
+eat it.
+
+Restoring onto a machine with no volumes yet works, and is slow the first time:
+compose has to create them, which means pulling the images.
+
+| Flag | |
+|---|---|
+| `--yes` | skip the confirmation |
+
+### `embabel ps`
+
+What this appliance has on the host, in the three groups that fail differently:
+its own containers, the deferred extras (allowed to be missing for the first
+quarter of an hour, and not a fault), and **code sandboxes**.
+
+Sandboxes are the reason this verb exists. They are created by the server
+through the docker socket as *siblings* of the appliance rather than as compose
+services, so `down` does not take them and `docker compose ps` cannot see them.
+Until now they were visible only as one line inside `doctor`.
+
+| Flag | |
+|---|---|
+| `--json` | the same, as JSON |
+
+### `embabel prune`
+
+Remove code-sandbox containers left on the host. Asks first, and says the thing
+that makes it safe to answer: **if you run an assistant from an IDE, its
+sandboxes are in this list too.** They carry the same label and nothing here can
+tell an orphan from a live session, so it names them and lets you decide.
+
+Sandboxes only — deliberately not `docker system prune`, and not dangling
+images. This runs on developer machines where most of what Docker considers
+garbage belongs to somebody else's work, and a cleanup verb that reaches beyond
+its own project is one people learn not to run.
+
+| Flag | |
+|---|---|
+| `--yes` | skip the confirmation |
+
+### `embabel bugreport [directory]`
+
+One folder to attach to an issue, instead of six rounds of "and can you also
+send…". It holds `doctor`, `status` and `version` exactly as they printed,
+`versions.json`, the container list, what Docker says about itself and its disk,
+and per-container logs.
+
+**What is deliberately not in it.** This appliance holds someone's email,
+contacts and documents, so a diagnostic bundle is an exfiltration shape if it is
+careless. Two rules, both enforced in code rather than left to a warning:
+
+- **`.env` values are never copied.** `env-keys.txt` lists the keys and whether
+  each holds anything — "is `OPENAI_API_KEY` set" is a real diagnostic question;
+  "what is it" never is. A key that is empty and a key that is absent are
+  different bugs, so both are reported.
+- **Logs are filtered to warnings, errors and stack traces.** An INFO line from
+  this server can carry a document title, a contact's name, or the text of a
+  query somebody typed.
+
+The bundle is left unpacked beside its `.zip` so it can be read before it is
+sent. A bundle you cannot inspect is one people send blind, or not at all.
+
+| Flag | |
+|---|---|
+| `--all-logs` | full logs, not just warnings and errors — the bundle's `README.txt` then says so in the first paragraph |
+
+### `embabel reset-password`
+
+Forgot the password. Recreates the operator account and **keeps every byte of
+data** — the account lives in two small files under the volume's admin
+directory, and this deletes exactly those two. The appliance refuses to reopen
+setup over its API by design, permanently; whoever controls Docker on the host
+already has this authority, which is why it is sound rather than a back door.
+
+Was previously reachable only as `setup.py --reset-password`, so someone locked
+out had to know to go around the CLI.
+
+### `embabel completion <bash|zsh|fish>`
+
+Tab completion, **generated from the parser** rather than written beside it — a
+hand-maintained completion script is a list of verbs that quietly stops matching
+the ones that exist, which is worse than none, because it teaches people the
+command lacks a verb it has.
+
+```bash
+source <(embabel completion bash)                       # ~/.bashrc
+embabel completion zsh > "${fpath[1]}/_embabel"         # zsh
+embabel completion fish > ~/.config/fish/completions/embabel.fish
+```
+
+Verbs, their flags, and positional choices (`open console`, `realms link`) all
+complete. Flags hidden from `--help` stay hidden here too.
 
 ### `embabel upgrade`
 

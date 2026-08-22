@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The Embabel appliance, as a command rather than a directory.
 
-    embabel up · status · doctor · logs · realms · open · upgrade · down · uninstall
+    embabel up · status · doctor · version · ps · logs · realms · open
+    backup · restore · bugreport · prune · upgrade · down · uninstall
 
 WHY THIS EXISTS. Everything below was already possible — as `cd ~/embabel-me &&
 ./worlds.py`, `./setup.py --uninstall`, `docker compose -f docker-compose-worlds.yml
@@ -17,7 +18,10 @@ Python 3 standard library only, like everything else here, so it runs wherever t
 appliance does with nothing installed.
 """
 import argparse
+import contextlib
 import importlib.util
+import io
+import json
 import os
 import shutil
 import subprocess
@@ -248,6 +252,366 @@ def cmd_realms(args) -> int:
     return 0
 
 
+def _emit(as_json: bool, ok: bool, message: str, **extra) -> int:
+    """One result, in whichever register the caller reads. --json exists for the Me
+    app, whose menu calls these verbs rather than carrying a second implementation
+    of them; a human gets a sentence."""
+    if as_json:
+        print(json.dumps({"ok": ok, "message": message, **extra}))
+    else:
+        print(f"  {message}")
+    return 0 if ok else 1
+
+
+def cmd_backup(args) -> int:
+    """Everything the appliance knows, copied to the host's own disk.
+
+    Cold: whatever is running stops for the copy and comes back after it. That is
+    not caution, it is the only way — Community Neo4j has no online backup, and a
+    graph copied live restores as a corrupt graph.
+    """
+    parent = os.path.abspath(os.path.expanduser(args.directory or s.DEFAULT_BACKUP_DIR))
+
+    if args.list:
+        found = s.list_backups(parent)
+        if args.json:
+            print(json.dumps([{"path": p, **m} for p, m in found]))
+            return 0
+        if not found:
+            print(f"  No backups in {parent}.  `embabel backup` makes one.")
+            return 0
+        print(f"  Backups in {parent}\n")
+        for path, manifest in found:
+            when = manifest.get("createdAt", "(undated)")
+            size = sum(os.path.getsize(os.path.join(path, f)) for f in os.listdir(path)
+                       if f.endswith(".tgz")) / 1e6
+            print(f"    {when}   {size:,.0f} MB   {manifest.get('mode', '?')} mode   {os.path.basename(path)}")
+        print(f"\n  embabel restore {found[0][0]}")
+        return 0
+
+    try:
+        if args.json:
+            # The progress narration is for a terminal. The Me app reads stdout as
+            # one JSON object, so everything else goes to stderr where its log is.
+            with contextlib.redirect_stdout(sys.stderr):
+                dest = s.back_up(parent)
+        else:
+            print(f"  Backing up to {parent}\n")
+            dest = s.back_up(parent)
+    except s.SetupError as e:
+        return _emit(args.json, False, str(e))
+    return _emit(args.json, True, f"Backed up to {dest}", path=dest)
+
+
+def cmd_restore(args) -> int:
+    """A backup, back onto this machine — replacing what is here."""
+    backup_dir = os.path.abspath(os.path.expanduser(args.directory))
+    try:
+        manifest = s.inspect_backup(backup_dir)
+    except s.SetupError as e:
+        return _emit(args.json, False, str(e))
+
+    # WHAT IS ABOUT TO BE LOST is the thing worth printing, and the date of the
+    # backup is what somebody actually confirms — a folder name is not a decision.
+    if not args.json and not args.yes:
+        print(f"  Restoring the backup taken {manifest.get('createdAt', 'at an unknown time')}"
+              f" ({manifest.get('mode', '?')} mode).")
+        print("  This REPLACES the knowledge graph, the worlds, the documents and this")
+        print("  machine's configuration. Everything added since that backup is lost.")
+        if input("  Type 'yes' to restore: ").strip().lower() != "yes":
+            print("  Nothing was touched.")
+            return 1
+
+    try:
+        if args.json:
+            with contextlib.redirect_stdout(sys.stderr):
+                when = s.restore(backup_dir)
+        else:
+            print()
+            when = s.restore(backup_dir)
+    except s.SetupError as e:
+        return _emit(args.json, False, str(e))
+    return _emit(args.json, True,
+                 f"Restored the backup from {when} — give the appliance a moment to come up.")
+
+
+def cmd_version(args) -> int:
+    """Which appliance this is, in the four layers that can actually differ.
+
+    Not one number, because there is no one number: the tag is a name, the
+    digest is the artifact, the commit is the code inside it, and the checkout
+    is everything that lives in files rather than images. An install is only
+    reproducible if you can say all four.
+    """
+    v = s.appliance_versions(args.mode)
+    if args.json:
+        print(json.dumps(v, indent=2))
+        return 0
+
+    src, app, neo, out = v["source"], v["appliance"], v["neo4j"], v["checkout"]
+    print(f"\n  Appliance   {v['mode']} mode\n")
+
+    print(f"  Checkout    {(out.get('commit') or '?')[:12]} on {out.get('branch') or '?'}"
+          + ("  (uncommitted changes)" if out.get("dirty") else ""))
+    print(f"              {s.APPLIANCE_DIR}")
+
+    if app:
+        print(f"\n  Server      {src.get('version') or app.get('image', '').rpartition(':')[2] or '?'}")
+        print(f"              {app.get('image')}")
+        if app.get("digest"):
+            print(f"              {app['digest']}")
+        if app.get("created"):
+            print(f"              image built {app['created'][:19].replace('T', ' ')}Z")
+    if src.get("commit"):
+        # The abbrev alone means a build from before the full SHA was carried —
+        # say so rather than printing seven characters as if they were the answer.
+        short = src["commit"] if len(src["commit"]) > 12 else f"{src['commit']} (abbreviated only)"
+        print(f"\n  Built from  {short}")
+        if src.get("branch"):
+            print(f"              on {src['branch']}" + ("  DIRTY TREE" if src.get("dirty") else ""))
+        if src.get("subject"):
+            print(f"              \u201c{src['subject']}\u201d")
+        if src.get("committed"):
+            print(f"              committed {src['committed']}")
+        if src.get("dirty"):
+            print("              The build carried uncommitted changes — this commit is")
+            print("              where it started, not what is in it.")
+    else:
+        print("\n  Built from  unknown — could not read the jar (is the image pulled?)")
+
+    if neo.get("image"):
+        print(f"\n  Graph       {neo['image']}")
+        if neo.get("digest"):
+            print(f"              {neo['digest']}")
+    print()
+    return 0
+
+
+def cmd_reset_password(args) -> int:
+    """Forgot the password. setup.py owns this — it recreates the operator account
+    without touching a byte of data, and the reasoning for why that is sound rather
+    than a back door is in reset_credentials. A child process so its confirmation
+    prompt keeps the terminal it expects."""
+    return run_setup("--reset-password")
+
+
+def cmd_ps(args) -> int:
+    """What this appliance has on the host right now.
+
+    THREE GROUPS, because they fail differently. The appliance's own containers
+    are the product. The deferred extras are allowed to be missing for the first
+    quarter of an hour and are not a fault. Code sandboxes are siblings created
+    through the docker socket, not compose services — `down` does not take them,
+    which is exactly why they need somewhere to be visible.
+    """
+    containers = s.appliance_containers()
+    if args.json:
+        print(json.dumps({"containers": containers, "sandboxes": s.stray_sandbox_containers()}, indent=2))
+        return 0
+
+    if not containers:
+        print("\n  Nothing of this appliance is on the host.  `embabel up` starts it.\n")
+        return 0
+
+    print()
+    width = max(len(c["name"]) for c in containers)
+    for c in containers:
+        mark = "•" if c["state"] == "running" else "·"
+        print(f"  {mark} {c['name']:<{width}}  {c['status']}")
+
+    missing = [name for name in s.DEFERRED_WHY
+               if not any(name in c["name"] for c in containers)]
+    if missing:
+        print("\n  Not here yet   " + ", ".join(s.DEFERRED_WHY[m] for m in missing))
+        print("                 (deferred; they download after the appliance is up)")
+
+    strays = s.stray_sandbox_containers()
+    if strays:
+        print(f"\n  Code sandboxes   {len(strays)}")
+        for name in strays[:8]:
+            print(f"    {name}")
+        if len(strays) > 8:
+            print(f"    … and {len(strays) - 8} more")
+        print("  Siblings of the appliance, not compose services — `embabel prune` clears them.")
+    print()
+    return 0
+
+
+def cmd_prune(args) -> int:
+    """Remove what the appliance left behind but does not own.
+
+    Sandboxes only. NOT `docker system prune`, and not dangling images: this
+    command runs on a developer's machine where most of what docker considers
+    garbage belongs to somebody else's work, and a cleanup verb that reaches
+    past its own project is a cleanup verb people learn not to run.
+    """
+    strays = s.stray_sandbox_containers()
+    if not strays:
+        print("  Nothing to prune — no code-sandbox containers on the host.")
+        return 0
+
+    print(f"\n  {len(strays)} code-sandbox container(s):")
+    for name in strays[:12]:
+        print(f"    {name}")
+    if len(strays) > 12:
+        print(f"    … and {len(strays) - 12} more")
+    # The warning that makes this safe. These carry a label, not an owner, and
+    # this command cannot tell an orphan from a live IDE session.
+    print("\n  If you are running an assistant from an IDE, ITS sandboxes are in this list")
+    print("  and removing them will break that session.")
+    if not args.yes and input("\n  Remove them? [y/N]: ").strip().lower() not in ("y", "yes"):
+        print("  Left alone.")
+        return 1
+    removed = s.prune_sandboxes(strays)
+    print(f"  Removed {removed} of {len(strays)}.")
+    return 0 if removed == len(strays) else 1
+
+
+def cmd_bugreport(args) -> int:
+    """Everything a maintainer asks for, in one folder, with the secrets left out.
+
+    doctor and status are CAPTURED rather than re-derived — the bundle should
+    contain what the operator was shown on screen, not a second opinion produced
+    by a parallel implementation of the same checks.
+    """
+    # A namespace of their OWN: cmd_version reads .json, and handing it this
+    # verb's flags would write a JSON blob into a file called version.txt.
+    as_text = argparse.Namespace(mode=getattr(args, "mode", None), json=False)
+    captured = {}
+    for name, verb in (("doctor.txt", cmd_doctor), ("status.txt", cmd_status), ("version.txt", cmd_version)):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            try:
+                verb(as_text)
+            except Exception as e:  # a broken probe must not cost the whole bundle
+                buffer.write(f"\n({verb.__name__} failed: {e})\n")
+        captured[name] = buffer.getvalue()
+
+    print("  Collecting — containers, versions, docker's own view, and the logs.")
+    if args.all_logs:
+        print("  --all-logs: FULL logs. They can carry document titles and names; read")
+        print("  the bundle before sending it to anyone.")
+    try:
+        archive = s.bug_report(args.directory or s.DEFAULT_BACKUP_DIR, captured, everything=args.all_logs)
+    except (OSError, s.SetupError) as e:
+        print(f"\n  Could not write the report: {e}\n", file=sys.stderr)
+        return 1
+
+    print(f"\n  {archive}")
+    print(f"  {archive[:-4]}/   (the same thing unpacked — read it before you send it)")
+    print("\n  No .env values, no documents, no graph contents are in it.\n")
+    return 0
+
+
+def cmd_completion(args) -> int:
+    """Tab completion, GENERATED from the parser rather than written beside it.
+
+    A completion script maintained by hand is a list of verbs that silently stops
+    matching the ones that exist — which is worse than no completion, because it
+    teaches people the command does not have the verb they just added.
+    """
+    found = _subparsers(build_parser())
+    verbs = sorted(found)
+
+    def flags_for(name: str) -> list[str]:
+        """Every long flag EXCEPT the suppressed ones. `--json` on backup and
+        restore exists for the Me app, and offering a machine's flag to a person
+        pressing tab is how it gets used by one."""
+        flags = []
+        for action in found[name][0]._actions:
+            if action.help is argparse.SUPPRESS:
+                continue
+            flags += [opt for opt in action.option_strings if opt.startswith("--")]
+        return sorted(set(flags))
+
+    def words_for(name: str) -> list[str]:
+        """Positional choices and nested verbs — `open console`, `realms link`."""
+        words = []
+        for action in found[name][0]._actions:
+            if not action.option_strings and action.choices:
+                words += list(action.choices)
+        return sorted(set(words))
+
+    def describe(name: str) -> str:
+        return found[name][1] or name
+
+    if args.shell == "bash":
+        print("# embabel completion for bash.  Add to ~/.bashrc:")
+        print("#   source <(embabel completion bash)")
+        print("_embabel() {")
+        print(f'  local verbs="{" ".join(verbs)}"')
+        print('  if [ "$COMP_CWORD" -eq 1 ]; then')
+        print('    COMPREPLY=($(compgen -W "$verbs" -- "${COMP_WORDS[1]}")); return')
+        print("  fi")
+        print('  case "${COMP_WORDS[1]}" in')
+        for verb in verbs:
+            print(f'    {verb}) COMPREPLY=($(compgen -W "{" ".join(words_for(verb) + flags_for(verb))}" '
+                  '-- "${COMP_WORDS[COMP_CWORD]}")) ;;')
+        print("  esac")
+        print("}")
+        print("complete -F _embabel embabel")
+        return 0
+
+    if args.shell == "zsh":
+        print("#compdef embabel")
+        print("# embabel completion for zsh.  Save as _embabel on your $fpath, or:")
+        print("#   embabel completion zsh > \"${fpath[1]}/_embabel\"")
+        print("_embabel() {")
+        print("  local -a verbs")
+        print("  verbs=(")
+        for verb in verbs:
+            # The one-line help is the whole reason zsh completion is worth having
+            # over bash's: it describes the verb rather than only spelling it.
+            print(f"    {verb}:{_zsh_quote(describe(verb))}")
+        print("  )")
+        print("  if (( CURRENT == 2 )); then _describe 'embabel command' verbs; return; fi")
+        print("  case ${words[2]} in")
+        for verb in verbs:
+            options = words_for(verb) + flags_for(verb)
+            if options:
+                print(f"    {verb}) compadd {' '.join(options)} ;;")
+        print("  esac")
+        print("}")
+        print("_embabel \"$@\"")
+        return 0
+
+    print("# embabel completion for fish.  Save as:")
+    print("#   embabel completion fish > ~/.config/fish/completions/embabel.fish")
+    for verb in verbs:
+        help_text = _fish_quote(describe(verb))
+        print(f"complete -c embabel -n __fish_use_subcommand -a {verb} -d '{help_text}'")
+        for word in words_for(verb):
+            print(f"complete -c embabel -n '__fish_seen_subcommand_from {verb}' -a {word}")
+        for flag in flags_for(verb):
+            print(f"complete -c embabel -n '__fish_seen_subcommand_from {verb}' -l {flag[2:]}")
+    return 0
+
+
+def _subparsers(parser) -> dict:
+    """Verb name -> (its parser, its one-line help), out of argparse's internals.
+
+    Private API, and worth it: the alternative is a second list of verbs to keep
+    in step with the first, which is the exact drift this command generates its
+    completions to avoid. The help lives on the PARENT's pseudo-actions, not on
+    the subparser — `add_parser(help=...)` puts it there — so both are read.
+    """
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            helps = {a.dest: (a.help or "") for a in action._choices_actions}
+            return {name: (sub, helps.get(name, "")) for name, sub in action.choices.items()}
+    return {}
+
+
+def _zsh_quote(text: str) -> str:
+    """A zsh _describe entry is name:description, so a colon in the description
+    ends it early. Escape those, and flatten to one line."""
+    return text.strip().splitlines()[0].replace(":", "\\:").replace("'", "")
+
+
+def _fish_quote(text: str) -> str:
+    return text.replace("'", "").strip()
+
+
 def cmd_upgrade(args) -> int:
     """Newer images, same data. Deliberately not `up --fresh`, which is the opposite."""
     mode = resolved_mode(args.mode)
@@ -267,7 +631,9 @@ def cmd_where(args) -> int:
     return 0
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The parser, built where `completion` can also reach it. Every verb, flag and
+    choice a shell offers is read back out of this — one definition, not two."""
     parser = argparse.ArgumentParser(
         prog="embabel",
         description="The Embabel appliance: a knowledge graph, an agent runtime, and the realms you install into it.",
@@ -294,6 +660,10 @@ def main() -> int:
     p = sub.add_parser("status", help="what is running, what is still downloading, where to go")
     p.set_defaults(func=cmd_status)
 
+    p = sub.add_parser("ps", help="what this appliance has on the host, including code sandboxes")
+    p.add_argument("--json", action="store_true", help="the same, as JSON")
+    p.set_defaults(func=cmd_ps)
+
     p = sub.add_parser("doctor", help="check everything that has ever gone wrong for somebody")
     p.set_defaults(func=cmd_doctor)
 
@@ -316,6 +686,24 @@ def main() -> int:
     rsub.add_parser("list", help="which realms the appliance can see")
     p.set_defaults(func=cmd_realms)
 
+    p = sub.add_parser("version", help="which appliance this is: tag, digest, commit, checkout")
+    mode_flags(p)
+    p.add_argument("--json", action="store_true", help="the same four layers, as JSON")
+    p.set_defaults(func=cmd_version)
+
+    p = sub.add_parser("backup", help="copy everything the appliance knows to a folder")
+    p.add_argument("directory", nargs="?",
+                   help=f"where backups live; default {s.DEFAULT_BACKUP_DIR}")
+    p.add_argument("--list", action="store_true", help="what backups are already there")
+    p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("restore", help="put a backup back, REPLACING what is here")
+    p.add_argument("directory", help="a backup folder made by `embabel backup`")
+    p.add_argument("--yes", action="store_true", help="skip the confirmation")
+    p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_restore)
+
     p = sub.add_parser("upgrade", help="pull newer images, keep your data")
     mode_flags(p)
     p.set_defaults(func=cmd_upgrade)
@@ -328,10 +716,31 @@ def main() -> int:
     p = sub.add_parser("uninstall", help="remove the appliance and this machine's configuration")
     p.set_defaults(func=cmd_uninstall)
 
+    p = sub.add_parser("prune", help="remove code-sandbox containers left behind on the host")
+    p.add_argument("--yes", action="store_true", help="skip the confirmation")
+    p.set_defaults(func=cmd_prune)
+
+    p = sub.add_parser("bugreport", help="one folder to attach to an issue, with no secrets in it")
+    p.add_argument("directory", nargs="?", help=f"where to write it; default {s.DEFAULT_BACKUP_DIR}")
+    p.add_argument("--all-logs", action="store_true",
+                   help="FULL logs, not just warnings and errors — they can carry personal data")
+    p.set_defaults(func=cmd_bugreport)
+
+    p = sub.add_parser("reset-password", help="forgot the password: recreate the account, keep all data")
+    p.set_defaults(func=cmd_reset_password)
+
     p = sub.add_parser("where", help="print the appliance directory")
     p.set_defaults(func=cmd_where)
 
-    args = parser.parse_args()
+    p = sub.add_parser("completion", help="tab completion for your shell")
+    p.add_argument("shell", choices=["bash", "zsh", "fish"])
+    p.set_defaults(func=cmd_completion)
+
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
     os.chdir(HERE)  # compose files live here; every verb below assumes it
 
     if not args.command:

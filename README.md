@@ -56,7 +56,9 @@ AI), or the `docker-model-plugin` package on Docker Engine. Everything else is p
 the running mode, its port, and its setup token by itself (waiting out a still-booting
 app rather than failing), walks you through each step, and checks your API key against
 the provider before storing it, so a mistyped key fails there and then rather than at your
-first message.
+first message. Before it asks for account details or keys, it displays the complete usage-
+reporting shape, destination and cadence and asks you to continue; a successful first-run
+setup never hides the phone-home in a README you might not have opened.
 
 You do not have to edit any file before starting. `.env` exists for optional extras
 (integration keys, ports, tuning) — copy `.env.example` if and when you need one.
@@ -499,6 +501,10 @@ The `json` field is the literal request body, so it matches a packet capture byt
 The first report is 10 minutes after startup, so a short evaluation never reports at all,
 and an unreachable collector is dropped silently rather than slowing anything down.
 
+First-run `setup.py` displays the destination, cadence, every payload field and the live
+inspection URLs before it asks for account details or provider keys. It pauses for an
+explicit continue action, and an interrupted setup shows the disclosure again when resumed.
+
 There is no configuration flag to disable it, and the collector address is fixed in the
 image rather than exposed in `.env` — a variable you could blank would be an opt-out by
 another name, and we would rather say so plainly than ship one quietly. If your
@@ -516,9 +522,15 @@ Two Docker volumes hold everything that matters:
 `docker compose down` keeps both. `docker compose down -v` destroys both. To back up:
 
 ```bash
-docker run --rm -v embabel-appliance_embabel_assistant_data:/data \
-  -v "$PWD:/backup" alpine tar czf /backup/embabel-data.tgz -C /data .
+embabel backup            # both volumes, plus .env and secrets.env, to ~/embabel-backups
+embabel backup --list     # what is already there
+embabel restore <folder>  # put one back, replacing what is here
 ```
+
+The copy is cold — the appliance stops for it and starts again afterwards —
+because Community Neo4j has no online backup and a graph copied live restores
+as a corrupt graph. See [CLI.md](CLI.md) for what a backup folder holds and what
+a restore replaces.
 
 Three more volumes hold state you can throw away — `embabel_appliance_open_webui_data`,
 `embabel_appliance_prometheus_data` (metric history) and `embabel_appliance_grafana_data`
