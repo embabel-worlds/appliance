@@ -796,6 +796,7 @@ handle('docs:upload', (settings: Settings, filename: string, bytes: ArrayBuffer,
 
 handle('vc:schema', (settings: Settings) => api.kgSchema(settings))
 handle('vc:validate', (settings: Settings, cypher: string) => api.kgValidate(settings, cypher))
+handle('hints:random', (settings: Settings, exclude: string[]) => api.hintRandom(settings, exclude))
 handle('vc:generate', (settings: Settings, question: string) => {
   log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
   return api.kgGenerate(settings, question)

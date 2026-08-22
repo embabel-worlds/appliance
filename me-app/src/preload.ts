@@ -21,6 +21,7 @@ const api = {
   vcExecute: (settings: Settings, cypher: string) => ipcRenderer.invoke('vc:execute', settings, cypher),
   vcSchema: (settings: Settings) => ipcRenderer.invoke('vc:schema', settings),
   vcValidate: (settings: Settings, cypher: string) => ipcRenderer.invoke('vc:validate', settings, cypher),
+  hintRandom: (settings: Settings, exclude: string[]) => ipcRenderer.invoke('hints:random', settings, exclude),
   vcGenerate: (settings: Settings, question: string) => ipcRenderer.invoke('vc:generate', settings, question),
   vcRefine: (settings: Settings, cypher: string, instruction: string) => ipcRenderer.invoke('vc:refine', settings, cypher, instruction),
   vcViews: (settings: Settings) => ipcRenderer.invoke('vc:views', settings),

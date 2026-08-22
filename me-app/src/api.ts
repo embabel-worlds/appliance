@@ -442,6 +442,30 @@ async function kgRefine(settings: Settings, cypher: string, instruction: string)
   }
 }
 
+
+/**
+ * One tip for the chat window — the appliance resolves the acting user's set (installation
+ * tier plus whatever installed realms shipped in hints/). Null on any failure: a tip is
+ * furniture, and furniture never throws.
+ * @param {Settings} settings
+ * @param {string[]} exclude recently shown hint ids
+ */
+async function hintRandom(settings: Settings, exclude: string[]) {
+  try {
+    const q = new URLSearchParams({ surface: 'me' })
+    if (exclude.length) q.set('exclude', exclude.join(','))
+    const res = await fetch(`${settings.baseUrl}/api/v1/hints/random?${q}`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return null
+    const text = await res.text()
+    return text ? JSON.parse(text) : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * The engine's strict preflight WITHOUT execution — the editor's validator.
  * @param {Settings} settings
@@ -940,7 +964,7 @@ export {
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute, realmUpdates,
   kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
-  listViews, saveView, deleteView, viewInvocation,
+  listViews, saveView, deleteView, viewInvocation, hintRandom,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }

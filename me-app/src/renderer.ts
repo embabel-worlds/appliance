@@ -10,6 +10,8 @@ import type { Fact, GrantState, LocalMount, Settings, VerbConsent } from './type
 import { $ } from './dom'
 import { restoreTheme } from './theme'
 import { paint } from './markdown'
+import { TipRotation, renderTipCard } from '@embabel/appliance-kit/tips'
+import { ok } from '@embabel/appliance-kit'
 import './graph'
 import type { Control } from './dom'
 import type { AskStep, ChatMessage, DocSource, ModelInfo, ModelsInUse, RealmSummary, RealmUpdateResult } from './wire'
@@ -431,6 +433,31 @@ const chatInput = $('chat-input')
 const chatSendButton = $('chat-send')
 const chatStatus = $('chat-status')
 
+const chatTip = $('chat-tip')
+/* One rotation per window: the seen-set lives in localStorage, so restarts keep rotating. */
+let tipRotation: TipRotation | null = null
+
+async function showChatTip(settings: Settings) {
+  tipRotation ??= new TipRotation({
+    surface: 'me',
+    /* The renderer cannot make HTTP calls — the bridge op is the transport. */
+    hints: { random: async (exclude) => ok((await window.me.hintRandom(settings, exclude)) ?? undefined) },
+  })
+  const hint = await tipRotation.next()
+  chatTip.replaceChildren()
+  if (!hint) return
+  const card = renderTipCard(hint, {
+    onAction: (text) => { chatInput.value = text; chatInput.focus() },
+    onNext: () => { void showChatTip(settings) },
+    onDismiss: () => chatTip.replaceChildren(),
+  })
+  /* The body is markdown; the card painted it as text. Repaint through the app's own
+     sanitizing pipeline — the same policy every other model-or-realm string goes through. */
+  const body = card.querySelector('.tip-body')
+  if (body instanceof HTMLElement && hint.body) paint(body, hint.body)
+  chatTip.appendChild(card)
+}
+
 let chatStarted = false
 /** Renderer-side "thinking…" line; cleared by the next message/done event. */
 let chatWorking: string | null = null
@@ -485,6 +512,7 @@ function startChat() {
     return
   }
   void window.me.chatOpen(settings)
+  void showChatTip(settings)
   void syncChat()
   setInterval(syncChat, 3000)
 }
