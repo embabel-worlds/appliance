@@ -507,8 +507,14 @@ ipcMain.handle('verbs:state', () => outbox.state())
 /** @type {Map<string, BrowserWindow>} — one window per app, refocused on reopen */
 const appWindows = new Map()
 
-/** @param {Settings} settings @param {string} name @param {string} [title] */
-function openAppWindow(settings: Settings, name: string, title?: string) {
+/**
+ * @param {Settings} settings
+ * @param {string} nameOrUrl the app's canonical scoped URL from the listing
+ *   (`/apps/{scope}/{name}`), or a bare legacy filename from an older door
+ * @param {string} [title]
+ */
+function openAppWindow(settings: Settings, nameOrUrl: string, title?: string) {
+    const name = nameOrUrl
   const existing = appWindows.get(name)
   if (existing && !existing.isDestroyed()) {
     existing.show()
@@ -518,7 +524,7 @@ function openAppWindow(settings: Settings, name: string, title?: string) {
   const win = new BrowserWindow({
     width: 1000,
     height: 760,
-    title: title || name.replace(/\.html?$/, ''),
+    title: title || name.split('/').pop()!.replace(/\.html?$/, ''),
     backgroundColor: '#000000',
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   })
@@ -534,7 +540,12 @@ function openAppWindow(settings: Settings, name: string, title?: string) {
   })
   /* The served page sets its own <title>; don't let it be overwritten by ours
      and then flicker back — but do keep whatever the app itself declares. */
-  void win.loadURL(`${settings.baseUrl}/apps/${encodeURIComponent(name)}`)
+  /* A canonical scoped URL is used verbatim; a legacy bare name is encoded per
+     segment so a scope separator, if present, survives the encoding. */
+  const appPath = name.startsWith('/apps/')
+    ? name
+    : `/apps/${name.split('/').map(encodeURIComponent).join('/')}`
+  void win.loadURL(`${settings.baseUrl}${appPath}`)
 }
 
 handle('apps:list', (settings: Settings) => api.listApps(settings))

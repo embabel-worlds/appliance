@@ -1361,7 +1361,7 @@ async function loadApps() {
     meta.textContent = app.readOnly ? 'shipped' : 'yours'
     card.append(tile, name, description, meta)
     card.addEventListener('click', () =>
-      void window.me.openApp(settings, app.name, app.description || display))
+      void window.me.openApp(settings, app.url || app.name, app.description || display))
     appGrid.append(card)
   }
   setStatus(appsStatus, true, `${result.apps.length} app(s)`)

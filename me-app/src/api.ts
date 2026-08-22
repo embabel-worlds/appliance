@@ -881,7 +881,7 @@ async function updateAllRealms(settings: Settings) {
 
 /**
  * The world's HTML apps — user vibe-coded, world-template and realm-shipped,
- * unioned server-side in the same order /apps/{name} serves them, so this
+ * unioned server-side, each with its canonical scoped `url` (/apps/{scope}/{name}), so this
  * list and what a window opens can never disagree. readOnly=false marks the
  * user's own apps.
  * @param {Settings} settings
