@@ -116,6 +116,13 @@ discipline (build the data before the chrome, verify like a user) applies unchan
 lane: `apps/` shipped with the realm. Either way the app stays a thin client of named views —
 query logic belongs in views, tested once, not in page scripts.
 
+Apps also have a promotion path IN REVERSE: `vibe_app_duplicate` copies any app the world
+serves — realm-shipped included — into the user's world for customizing. Serving resolves
+user → template → realm per file, so a copy under the SAME name replaces what the original
+URL serves for this user, and a new name is an independent fork; multi-file apps come with
+their stem siblings, references rewritten. Never rebuild a realm app from scratch to change
+it — fork it.
+
 ## Testing, per lane
 
 A realm ships its battery: `tests/questions.yml` reconciled by a harness, per

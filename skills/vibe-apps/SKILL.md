@@ -89,6 +89,11 @@ Non-negotiable before handing anything over:
 
 ## 5. Verify like a user, then iterate
 
+To customize an app the world already serves — a realm's app included — start from
+`vibe_app_duplicate`, not from scratch: same name replaces what the user sees at the
+original URL, a new name is an independent fork, stem siblings come along with references
+rewritten. Then edit the copy like any app.
+
 `vibe_app_save` validates; that is not the finish line. `vibe_app_list` returns the app's `url`
 — open it (or fetch it) and check: the runtime loads, the views return the rows you saw in step
 2, preflight passes, empty/error states render. `vibe_app_inspect` and `vibe_app_read` support
