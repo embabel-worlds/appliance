@@ -41,6 +41,21 @@ import urllib.error
 import urllib.request
 import zlib
 
+# The package sits beside this file. Every real entry point — this script, the
+# `embabel` launcher, ./me.py and ./worlds.py — already lives in this directory,
+# so Python puts it on sys.path for us. Stated rather than relied upon, because
+# the failure mode of a caller that does not is an ImportError at first run.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# THE FACADE RE-EXPORTS THE PACKAGE. `embabel` loads this file by path and reads
+# its namespace, ./me.py and ./worlds.py exec it, and install.sh runs those — so
+# every name this file used to define has to remain reachable here. Star imports
+# are the honest way to say that: the modules own the code, this file owns the
+# contract.
+from embabel_setup.core import APPLIANCE_DIR, AlreadySetUp, SetupError, TokenRejected, Unreachable
+from embabel_setup.colour import *      # noqa: F403 — palette and marks
+from embabel_setup.words import *        # noqa: F403 — copy loader
+
 def default_base() -> str:
     """Where the Me door answers for the instance in play. A function now: the
     port moves with the instance, so a constant could only ever be right once."""
@@ -169,22 +184,6 @@ GITHUB_TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN")
 PHONE_HOME_ENDPOINT = "https://telemetry.embabel.com/v1/appliance"
 PHONE_HOME_VAR = "EMBABEL_PHONE_HOME"
 PHONE_HOME_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/PHONE_HOME.md"
-
-
-class SetupError(Exception):
-    pass
-
-
-class AlreadySetUp(SetupError):
-    pass
-
-
-class Unreachable(SetupError):
-    pass
-
-
-class TokenRejected(SetupError):
-    """The setup token itself was refused — no answer to any step can fix that."""
 
 
 # ── plumbing ────────────────────────────────────────────────────────────────
@@ -941,294 +940,6 @@ def fresh_wipe() -> None:
     print()
 
 
-# ── copy ────────────────────────────────────────────────────────────────────
-#
-# THE WORDS LIVE IN copy/, NOT IN THE CODE. Everything a person reads while
-# setting the appliance up is prose, and prose has different editors, different
-# reviewers and a different review cadence from the logic around it. Buried in
-# print() calls it could only be changed by someone willing to touch setup.py,
-# hand-wrapped to the right column, and diffed against a wall of quoting — so it
-# drifted from worlds.embabel.com, which is the one place it must agree with.
-#
-# THE FILES HOLD WORDS ONLY. No colour, no indentation, no line breaks that
-# matter: write paragraphs, separate them with a blank line, and let [say] wrap
-# and indent them at render time. An editor who wants to change a sentence
-# should not have to think about the eightieth column, and a sentence that grows
-# by two words should not reflow four lines in the diff.
-#
-# Values are interpolated by name — {path}, {port} — so a copy file can name a
-# thing the program computes without knowing how.
-
-COPY_DIR = "copy"
-# The column prose wraps at. 76 plus a two-space indent keeps the whole thing
-# inside 80, which is still what a terminal opens at.
-COPY_WIDTH = 76
-
-
-def copy_text(name: str, **fields) -> str:
-    """One copy file, interpolated, wrapped and indented ready to print.
-
-    A missing file raises rather than printing nothing: copy ships with the
-    code, so its absence is a packaging bug, and silence is the one failure mode
-    nobody notices until a user reports an empty screen.
-    """
-    path = os.path.join(APPLIANCE_DIR, COPY_DIR, f"{name}.txt")
-    try:
-        with open(path, encoding="utf-8") as f:
-            raw = f.read()
-    except OSError as e:
-        raise SetupError(f"Missing copy file {COPY_DIR}/{name}.txt — {e}")
-    return wrap_copy(raw.format(**fields) if fields else raw)
-
-
-def wrap_copy(raw: str, indent: str = "  ", width: int = COPY_WIDTH) -> str:
-    """Paragraphs wrapped and indented; blank lines kept; a line that begins with
-    whitespace in the FILE is left exactly as written.
-
-    That last rule is the escape hatch, and it is what makes a copy file able to
-    hold a command someone will retype:
-
-        embabel realms link ~/src
-
-    Wrapping that would break it, so anything already indented is passed
-    through — the same convention as markdown, which is what these files look
-    like anyway.
-    """
-    out = []
-    for block in raw.strip("\n").split("\n\n"):
-        if not block.strip():
-            continue
-        if block.startswith((" ", "\t")):
-            # dedent, not strip: the block's own INTERNAL alignment is the point
-            # of writing it verbatim. Stripping every line flattened the JSON
-            # shape below into a list of unaligned fragments.
-            body = textwrap.dedent(block).rstrip()
-            out.append("\n".join((indent + line) if line.strip() else ""
-                                  for line in body.splitlines()))
-        else:
-            flat = " ".join(line.strip() for line in block.splitlines())
-            out.append(textwrap.fill(flat, width=width,
-                                     initial_indent=indent, subsequent_indent=indent))
-    return "\n\n".join(out)
-
-
-def say(name: str, **fields) -> None:
-    """Print a copy block. The one call site style for prose, so a block can
-    never be half-wrapped or half-indented by whoever added it last."""
-    print(copy_text(name, **fields))
-
-
-# ── colour ──────────────────────────────────────────────────────────────────
-#
-# RESTRAINT IS THE POINT. This runs in terminals people screen-share, pipe into
-# files, and read over ssh on a bad connection. So: the SIXTEEN basic colours,
-# never 256 or truecolour; one accent, not a palette; and nothing carrying
-# meaning that the words do not already carry — a red line says "problem" twice
-# as fast, but a line that is ONLY red says nothing at all to the quarter of
-# readers who cannot see it, or to the log file it lands in tomorrow.
-#
-# OFF IS THE SAFE DEFAULT and it is checked in this order:
-#
-#   NO_COLOR         set to anything  -> off. The convention (no-color.org).
-#   FORCE_COLOR /    set              -> on, tty or not. For CI logs that render
-#   CLICOLOR_FORCE                       ANSI, and for testing this file.
-#   not a tty                        -> off. `embabel status > file` must be
-#                                       readable, and `| grep` must still match.
-#   TERM=dumb, TERM unset            -> off.
-#   Windows                          -> on ONLY if the console accepts VT, which
-#                                       is asked of the OS rather than assumed.
-#
-# Windows deserves the paragraph. Its console ignored ANSI for thirty years and
-# printed the escapes as literal garbage; Windows 10 added opt-in VT processing,
-# and Terminal enables it by default. ENABLE_VIRTUAL_TERMINAL_PROCESSING is the
-# flag, set through kernel32 — and if that call fails for any reason at all, the
-# answer is no colour rather than a screenful of `←[0m`.
-
-# THE EMBABEL PALETTE, from appliance-kit/css/palette.css — the same --sb-*
-# tokens the Worlds console, the Me app and every bundled theme read. The CLI
-# joining that contract rather than inventing a second one is the whole point:
-# "the schematic — light lines on black, indigo as the one signal".
-BRAND = {
-    "accent": "#625fff",    # --sb-accent, the one signal
-    "link": "#c7d2ff",      # --sb-link
-    "success": "#3ecf8e",   # --sb-success
-    "error": "#f87171",     # --sb-error
-    "warning": "#dcaa37",   # --sb-warning
-    "muted": "#6a7282",     # --sb-text-muted
-}
-
-# THREE TIERS, because a terminal that cannot render #625fff must not be handed
-# it. Truecolour gets the brand exactly; 256 gets the nearest cube entry,
-# computed rather than guessed; and everything else gets the basic sixteen.
-#
-# The basic tier is mapped BY MEANING, not by distance, and that is deliberate:
-# nearest-RGB puts --sb-error (#f87171, a soft red) on grey and --sb-success
-# (#3ecf8e) on cyan, because those are the closest of sixteen bad options. A
-# cross that is grey and a tick that is cyan are worse than no colour at all.
-BASIC_16 = {"accent": 94, "link": 36, "success": 92, "error": 91,
-            "warning": 33, "muted": 90}
-
-_CUBE_LEVELS = (0, 95, 135, 175, 215, 255)
-
-
-def _nearest_256(hex_colour: str) -> int:
-    """The closest xterm-256 index: the 6×6×6 colour cube, plus the 24 greys."""
-    want = tuple(int(hex_colour.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
-    best, best_distance = 16, None
-    for index in range(216):
-        r, g, b = index // 36, (index // 6) % 6, index % 6
-        candidate = (_CUBE_LEVELS[r], _CUBE_LEVELS[g], _CUBE_LEVELS[b])
-        distance = sum((a - b) ** 2 for a, b in zip(candidate, want))
-        if best_distance is None or distance < best_distance:
-            best, best_distance = 16 + index, distance
-    for index in range(24):
-        value = 8 + 10 * index
-        distance = sum((a - value) ** 2 for a in want)
-        if distance < best_distance:
-            best, best_distance = 232 + index, distance
-    return best
-
-
-def _depth() -> str:
-    """How much colour this terminal can actually take."""
-    if os.environ.get("COLORTERM", "") in ("truecolor", "24bit"):
-        return "true"
-    term = os.environ.get("TERM", "")
-    if "256color" in term or os.environ.get("COLORTERM"):
-        return "256"
-    return "basic"
-
-
-def _brand_codes(depth: str) -> dict:
-    if depth == "true":
-        return {name: "38;2;{};{};{}".format(
-            *(int(hexv.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)))
-            for name, hexv in BRAND.items()}
-    if depth == "256":
-        return {name: f"38;5;{_nearest_256(hexv)}" for name, hexv in BRAND.items()}
-    return {name: str(code) for name, code in BASIC_16.items()}
-
-
-_ANSI = {"reset": "\033[0m", "bold": "\033[1m", "dim": "\033[2m", "underline": "\033[4m"}
-
-
-def _windows_vt() -> bool:
-    """Ask the console to interpret ANSI, and report whether it agreed."""
-    try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        # -11 is STD_OUTPUT_HANDLE; 0x0004 is ENABLE_VIRTUAL_TERMINAL_PROCESSING.
-        handle = kernel32.GetStdHandle(-11)
-        mode = ctypes.c_uint32()
-        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-            return False
-        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))
-    except Exception:
-        return False
-
-
-def _colour_enabled() -> bool:
-    if os.environ.get("NO_COLOR") is not None:
-        return False
-    if os.environ.get("FORCE_COLOR") or os.environ.get("CLICOLOR_FORCE"):
-        return True
-    if not (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()):
-        return False
-    if os.environ.get("TERM", "") in ("", "dumb"):
-        return False
-    if sys.platform == "win32":
-        return bool(os.environ.get("WT_SESSION")) or _windows_vt()
-    return True
-
-
-COLOUR = _colour_enabled()
-DEPTH = _depth()
-for _name, _code in _brand_codes(DEPTH).items():
-    _ANSI[_name] = f"\033[{_code}m"
-
-
-def paint(text: str, *styles: str) -> str:
-    """Wrap text in styles, or return it untouched. Every colour in this file
-    goes through here, so turning colour off is one decision and not forty."""
-    if not COLOUR or not styles:
-        return text
-    return "".join(_ANSI[s] for s in styles if s in _ANSI) + text + _ANSI["reset"]
-
-
-# The vocabulary. Call sites say what a thing IS, never which colour it gets —
-# so the palette can change in one place, and a reader of the code can see the
-# intent rather than decode it.
-def bold(text: str) -> str: return paint(text, "bold")
-def dim(text: str) -> str: return paint(text, "muted")
-def accent(text: str) -> str: return paint(text, "accent")
-def good(text: str) -> str: return paint(text, "success")
-def warn(text: str) -> str: return paint(text, "warning")
-def bad(text: str) -> str: return paint(text, "error")
-def url(text: str) -> str: return paint(text, "link", "underline")
-
-
-# Marks, paired with their colour so a tick is never green in one place and
-# plain in another. ASCII fallbacks because a Windows console on an old code
-# page renders ✓ as a question mark, and a checklist of question marks is worse
-# than a checklist of plus signs.
-_UNICODE_OK = sys.stdout.encoding is None or "utf" in (sys.stdout.encoding or "").lower()
-TICK = good("✓" if _UNICODE_OK else "+")
-CROSS = bad("✗" if _UNICODE_OK else "x")
-BULLET = "•" if _UNICODE_OK else "*"
-MIDDOT = dim("·" if _UNICODE_OK else "-")
-ARROW = "←" if _UNICODE_OK else "<-"
-RULE_CHAR = "─" if _UNICODE_OK else "-"
-
-
-# The wordmark, for a terminal too narrow for the art — which is most of them,
-# since the art is 100 columns and a terminal opens at 80.
-WORDMARK = "<<  E M B A B E L  >>"
-
-
-def banner_art() -> str:
-    """The Embabel banner, in the brand's own indigo, when it fits.
-
-    The art is the SERVER'S — embabel-agent's banner.txt, the same one the JVM
-    prints on boot — so the terminal and the server show one mark rather than
-    two interpretations of one. It lives in copy/ like every other thing this
-    program says, and install.sh carries its own copy because it runs before
-    there is a checkout to read; scripts/check-copy.py fails if the two drift.
-
-    Width decides. Wrapped ASCII art is not a logo, it is a mess, and a first
-    impression that arrives broken is worse than one that arrives small.
-    """
-    try:
-        with open(os.path.join(APPLIANCE_DIR, COPY_DIR, "banner.txt"), encoding="utf-8") as f:
-            art = f.read().rstrip("\n")
-    except OSError:
-        return "  " + paint(WORDMARK, "bold", "accent")
-    widest = max((len(line) for line in art.splitlines()), default=0)
-    if not _UNICODE_OK or shutil.get_terminal_size((80, 24)).columns < widest + 2:
-        return "  " + paint(WORDMARK, "bold", "accent")
-    return "\n".join(paint(line, "accent") for line in art.splitlines())
-
-
-def banner(subtitle: str) -> str:
-    """The first two lines setup prints. A function so the preview script and the
-    program cannot drift — the whole reason the colour looked absent once already
-    was two copies of the same line, one of them stale."""
-    return ("\n" + banner_art() + "\n\n  " + paint("Embabel appliance", "bold", "accent")
-            + dim(" — ") + subtitle + "\n  " + rule())
-
-
-def rule(width: int = 60) -> str:
-    return dim(RULE_CHAR * width)
-
-
-def heading(text: str, width: int = 60) -> str:
-    """A section title with a rule running to the margin — the shape the setup
-    wizard already used, now with the title carrying the emphasis instead of the
-    line. Trimmed to width so a long title never wraps the rule onto its own row."""
-    label = f"{RULE_CHAR}{RULE_CHAR} {text} "
-    tail = RULE_CHAR * max(0, width - len(label))
-    return dim(f"{RULE_CHAR}{RULE_CHAR} ") + paint(text, "bold", "accent") + " " + dim(tail)
-
-
 # ── the status line ─────────────────────────────────────────────────────────
 #
 # First boot takes a minute or two, and for most of it the terminal said one
@@ -1334,6 +1045,61 @@ class StatusLine:
 STATUS = StatusLine()
 
 
+# The mode's image list, resolved once. `compose config` costs about a second,
+# which is fine at the start of a wait and not fine every three seconds.
+_IMAGES_FOR_MODE: dict[str, list[str]] = {}
+# Image name fragment -> what a person is waiting FOR. A tag tells somebody
+# nothing about why their install is slow; "structured PDF and Office
+# conversion" tells them what they lose by not waiting.
+IMAGE_PURPOSE = {
+    "assistant": "the appliance itself",
+    "worlds-console": "the console",
+    "neo4j": "the graph",
+    "docling": "structured PDF and Office conversion",
+    "sandbox": "the code sandbox",
+    "grafana": "dashboards",
+    "prometheus": "metrics",
+    "open-webui": "the alternative chat UI",
+}
+
+
+def images_for(mode: str) -> list[str]:
+    if mode not in _IMAGES_FOR_MODE:
+        run = _compose(mode, "config", "--images", capture=True)
+        _IMAGES_FOR_MODE[mode] = sorted({
+            line.strip() for line in (run.stdout.splitlines() if run and run.returncode == 0 else [])
+            if line.strip()
+        })
+    return _IMAGES_FOR_MODE[mode]
+
+
+def image_progress(mode: str) -> str:
+    """What Docker is doing, in the only terms it will honestly give us.
+
+    THERE IS NO PERCENTAGE TO REPORT. Docker exposes pull progress to the client
+    that started the pull and nowhere else; `docker system df` would give a
+    growing byte total but takes four seconds on a real machine, which is longer
+    than the poll interval. What IS cheap — 63ms — is asking whether each image
+    the mode needs has arrived.
+
+    So: a count, and the NAME of what is still coming, in terms of what it does.
+    "Pulling docling" means nothing to somebody watching an install stall;
+    "structured PDF and Office conversion" tells them what the wait buys.
+    """
+    needed = images_for(mode)
+    if not needed:
+        return ""
+    missing = [image for image in needed
+               if not (_docker("image", "inspect", image, "--format", "ok", timeout=10) or
+                       argparse.Namespace(returncode=1)).returncode == 0]
+    if not missing:
+        return ""
+    waiting = sorted({purpose for image in missing
+                      for fragment, purpose in IMAGE_PURPOSE.items() if fragment in image})
+    return (dim(f"images {len(needed) - len(missing)}/{len(needed)}")
+            + dim(" · pulling ") + ", ".join(waiting or ["an image"]))
+
+
 def boot_phase(container: str | None, base: str) -> str:
     """The three lamps, read fresh. Cheap enough for a 3-second poll: two docker
     inspects against the local daemon and nothing over the network."""
@@ -1351,7 +1117,15 @@ def boot_phase(container: str | None, base: str) -> str:
     if container:
         parts.append(lamp(health(container) == "healthy", "server"))
     parts.append(lamp(_answers(base), "API"))
-    return "Starting the appliance   " + dim(" · ").join(parts)
+    line = "Starting the appliance   " + dim(" · ").join(parts)
+    pulling = image_progress(mode_of(container))
+    return line + ("   " + pulling if pulling else "")
+
+
+def mode_of(container: str | None) -> str:
+    """Which mode a container belongs to, for looking up its image list."""
+    service = mode_service(container) if container else None
+    return "me" if service == "assistant" else "worlds"
 
 
 def find_graph_container() -> str | None:
@@ -2269,9 +2043,6 @@ BACKUP_STREAM_TIMEOUT = 30 * 60
 # Where backups go when nobody says. Under $HOME, not the checkout: --uninstall
 # removes the checkout, and a backup that an uninstall deletes is not a backup.
 DEFAULT_BACKUP_DIR = os.path.expanduser("~/embabel-backups")
-# Every path here is absolute rather than relying on the chdir that main() does,
-# because the Me app will call these through the CLI from its own directory.
-APPLIANCE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def volume_name(key: str) -> str:
