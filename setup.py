@@ -32,6 +32,7 @@ import secrets
 import shutil
 import struct
 import subprocess
+import tempfile
 import textwrap
 import threading
 import sys
@@ -1399,9 +1400,34 @@ def _answers(base: str) -> bool:
 # never logged, and used solely to authenticate the documentation upload below.
 _ACCOUNT: tuple[str, str] | None = None
 
-SEED_DOCS = ("README.md", "CLI.md", "PHONE_HOME.md", "WORLD_TEMPLATES.md",
-             "AGENT_GUIDE.md", "DISCOVERY.md")
-SEED_DOC_DIRS = ("docs/guide",)
+# WHAT GOES IN, AND WHY TWO THINGS CAME OUT.
+#
+# DISCOVERY.md opened with "Status: proposal. Nothing on this page is built."
+# and was seeded anyway. Asked "what is virtual cypher", the world answered from
+# it — a filesystem producer with three tiers, none of which exists — because it
+# was one of only two seeded files mentioning the term and the other said little.
+# A retrieval corpus has no way to discount a document; whatever matches wins. A
+# proposal in a knowledge base is not incomplete information, it is confident
+# misinformation, and it belongs nowhere near one.
+#
+# AGENT_GUIDE.md came out for a smaller reason: it is instructions to a coding
+# agent about how to drive an appliance, not documentation of what one is.
+SEED_DOCS = ("README.md", "CLI.md", "PHONE_HOME.md", "WORLD_TEMPLATES.md")
+# The skills ARE the user-facing documentation of authoring — views, handlers,
+# apps, realms — and world-authoring is the only thing this repo ships that
+# explains virtual Cypher at all.
+SEED_DOC_DIRS = ("docs/guide", "skills")
+
+# THE SPEC IS NOT IN THIS REPO, and it is the document that actually defines
+# virtual Cypher, realms, types and composition. It lives in realm-spec, which
+# worlds.embabel.com vendors the same way. Fetched over raw.githubusercontent —
+# not the API, so no rate limit and no token — and skipped in silence if the
+# network is not there, because a seeded world is a nicety and an installer that
+# fails without internet is not.
+SPEC_REPO = "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main"
+SPEC_DOCS = ("VIRTUAL_CYPHER.md", "VIRTUAL_CYPHER_GUIDE.md", "README.md",
+             "DECLARING_TYPES.md", "LABELS_AND_COMPOSITION.md",
+             "EXTERNAL_DOCUMENTS.md", "CONTEXT.md")
 # Big enough for the guides, small enough that a stray file cannot become an
 # ingestion job somebody did not ask for.
 SEED_MAX_BYTES = 512 * 1024
@@ -1440,11 +1466,33 @@ def documentation_files() -> list[str]:
         directory = os.path.join(APPLIANCE_DIR, folder)
         if not os.path.isdir(directory):
             continue
-        for entry in sorted(os.listdir(directory)):
-            path = os.path.join(directory, entry)
-            if entry.endswith(".md") and os.path.getsize(path) <= SEED_MAX_BYTES:
-                found.append(path)
-    return found
+        # Recursive: skills/ is skills/<name>/SKILL.md, a level deeper than docs/.
+        for root, _dirs, files in os.walk(directory):
+            for entry in sorted(files):
+                path = os.path.join(root, entry)
+                if entry.endswith(".md") and os.path.getsize(path) <= SEED_MAX_BYTES:
+                    found.append(path)
+    return sorted(found)
+
+
+def fetch_spec_documents(into: str) -> list[str]:
+    """The realm spec, downloaded to a temporary directory. Best effort."""
+    fetched = []
+    for name in SPEC_DOCS:
+        try:
+            with urllib.request.urlopen(f"{SPEC_REPO}/{name}", timeout=30) as response:
+                body = response.read()
+        except Exception:
+            continue
+        if not body or len(body) > SEED_MAX_BYTES:
+            continue
+        # Prefixed so a spec page cannot be mistaken for an appliance page in a
+        # search result — "realm-spec VIRTUAL_CYPHER.md" says where it came from.
+        path = os.path.join(into, f"realm-spec {name}")
+        with open(path, "wb") as f:
+            f.write(body)
+        fetched.append(path)
+    return fetched
 
 
 def _upload_document(base: str, auth: str, path: str) -> bool:
@@ -1478,6 +1526,8 @@ def _upload_document(base: str, auth: str, path: str) -> bool:
 def seed_documentation(base: str, auth: str) -> None:
     """Put the appliance's own guides into the world. Never raises."""
     files = documentation_files()
+    workspace = tempfile.mkdtemp(prefix="embabel-spec-")
+    files += fetch_spec_documents(workspace)
     if not files:
         return
     STATUS.start(f"Indexing the documentation   {dim('0 of ' + str(len(files)))}")
@@ -1490,6 +1540,7 @@ def seed_documentation(base: str, auth: str) -> None:
                 done += 1
     except Exception:
         pass  # best effort; setup has already succeeded
+    shutil.rmtree(workspace, ignore_errors=True)
     if done:
         STATUS.stop(f"  {TICK} Indexed {done} guide(s) — ask the world about itself, "
                     + dim("no key needed."))
