@@ -33,6 +33,7 @@
     },
     "files": [
       "dist/**/*",
+      "resources/**/*",
       "index.html",
       "query-studio.html",
       "handler-studio.html",

@@ -1,9 +1,10 @@
-You extend a world by installing a realm: a folder of declarative YAML in git.
+Extend your world by installing realms.
+Realms can extend your knowledge graph and add agents.
 Drop one in and the runtime wires up what it declares — types, actions, goals,
 APIs, MCP servers, scheduled work, saved queries, whole dashboards. Nothing to
 compile, and nothing you cannot read before you trust it.
 
-If you are writing one, the appliance can read it straight off this machine,
+If you are creating a realm, the appliance can read it straight off this machine,
 with nothing published anywhere first. Give the directory your realms live IN,
 so that adding another is a copy rather than a change here.
 

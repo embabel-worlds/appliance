@@ -1303,6 +1303,105 @@ def _answers(base: str) -> bool:
         return False
 
 
+# ── seeding the documentation ───────────────────────────────────────────────
+#
+# A NEW WORLD IS EMPTY, and the first question anybody has — "what is this, and
+# what can I ask it?" — is one the product could not answer about itself. The
+# config views answer the structural half (what realms, what views, which model
+# runs which job). This answers the prose half: the appliance's own guides, in
+# the graph, searchable, on the first run.
+#
+# It costs nothing to send anywhere. Embeddings are local and always have been,
+# so this is ~135KB through a model already running on this machine — seconds,
+# no tokens, no provider key. It is the one corpus every new user wants and the
+# only one we can ship without asking a question first.
+#
+# THE CREDENTIAL IS THE MINTED BEARER TOKEN, not the password the user just
+# typed. The MCP step mints one for precisely this kind of call and hands it
+# over once; setup holding a password to make an HTTP request would be a design
+# smell that outlives the reason for it.
+#
+# BEST EFFORT, ALWAYS. Setup has succeeded by the time this runs. A world with
+# no documentation in it is a smaller problem than an installer that fails at
+# the finish line, so every failure here is reported and swallowed.
+
+SEED_DOCS = ("README.md", "CLI.md", "PHONE_HOME.md", "WORLD_TEMPLATES.md",
+             "AGENT_GUIDE.md", "DISCOVERY.md")
+SEED_DOC_DIRS = ("docs/guide",)
+# Big enough for the guides, small enough that a stray file cannot become an
+# ingestion job somebody did not ask for.
+SEED_MAX_BYTES = 512 * 1024
+
+
+def documentation_files() -> list[str]:
+    """The guides, as absolute paths. Named explicitly rather than globbed from the
+    repo root: CONTRIBUTING and CLAUDE.md are instructions to people working ON
+    the appliance, and a user searching their world should not get them back."""
+    found = []
+    for name in SEED_DOCS:
+        path = os.path.join(APPLIANCE_DIR, name)
+        if os.path.exists(path) and os.path.getsize(path) <= SEED_MAX_BYTES:
+            found.append(path)
+    for folder in SEED_DOC_DIRS:
+        directory = os.path.join(APPLIANCE_DIR, folder)
+        if not os.path.isdir(directory):
+            continue
+        for entry in sorted(os.listdir(directory)):
+            path = os.path.join(directory, entry)
+            if entry.endswith(".md") and os.path.getsize(path) <= SEED_MAX_BYTES:
+                found.append(path)
+    return found
+
+
+def _upload_document(base: str, token: str, path: str) -> bool:
+    """One multipart POST, by hand — stdlib only, like everything else here."""
+    boundary = "----embabel" + secrets.token_hex(8)
+    with open(path, "rb") as f:
+        content = f.read()
+    name = os.path.basename(path)
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
+        "Content-Type: text/markdown\r\n\r\n"
+    ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
+
+    request = urllib.request.Request(
+        f"{base}/api/v1/documents/upload", data=body, method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}",
+                 "Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return 200 <= response.status < 300
+    except Exception:
+        return False
+
+
+def seed_documentation(base: str, token: str) -> None:
+    """Put the appliance's own guides into the world. Never raises."""
+    files = documentation_files()
+    if not files:
+        return
+    STATUS.start(f"Indexing the documentation   {dim('0 of ' + str(len(files)))}")
+    done = 0
+    try:
+        for index, path in enumerate(files, 1):
+            STATUS.set(f"Indexing the documentation   {dim(f'{index} of {len(files)}')}  "
+                       + dim(os.path.basename(path)))
+            if _upload_document(base, token, path):
+                done += 1
+    except Exception:
+        pass  # best effort; setup has already succeeded
+    if done:
+        STATUS.stop(f"  {TICK} Indexed {done} guide(s) — ask the world about itself, "
+                    + dim("no key needed."))
+    else:
+        # Silent failure would be worse than none: somebody would search for a
+        # thing the product implied was there.
+        STATUS.stop(f"  {MIDDOT} " + dim("Could not index the documentation — "
+                                         "the appliance is fine; add it later from Documents."))
+
+
 # ── instances ───────────────────────────────────────────────────────────────
 #
 # ONE APPLIANCE IS THE NORMAL CASE, and nothing about this section should be
@@ -3447,10 +3546,14 @@ def main() -> int:
         if not pending:
             print("  Everything is already configured.")
         deferred = []
+        api_token = None
         for step in pending:
             result = run_step(base, token, step, use_environment=not args.ignore_env)
             if not result and deferrable_provider_step(step):
                 deferred.append(step)
+            # Kept as it goes past: the server never returns this token again, and
+            # seeding below needs a credential that is not the user's password.
+            api_token = (result or {}).get("token") or api_token
             wire_coding_agents(result or {})
 
         print("\n  Finishing…", end=" ", flush=True)
@@ -3481,6 +3584,16 @@ def main() -> int:
             say("no-provider-next")
         else:
             print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
+        if api_token:
+            # The token goes live on the restart /complete triggers, so wait for
+            # the door to answer again before using it. call_when_ready already
+            # knows how to do that and how long to try.
+            try:
+                call_when_ready(base, token)
+            except SetupError:
+                api_token = None
+        if api_token:
+            seed_documentation(base, api_token)
         warn_if_conversion_pending()
         if service == "worlds":
             print_worlds_surfaces(base)
