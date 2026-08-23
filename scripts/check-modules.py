@@ -75,6 +75,24 @@ for filename in sorted(os.listdir(PKG)):
             if isinstance(used, ast.Name) and isinstance(used.ctx, ast.Load) and used.id not in known:
                 problems.append(f"{filename}:{used.lineno} {node.name}() uses '{used.id}'")
 
+# A `global` that names something the file does not define at module level.
+# Inside one big file that is merely untidy; across modules it is a silent
+# no-op — the wizard's `global _ACCOUNT` bound a name in setup.py while the
+# reader in seed.py stayed None, and every install reported "no credential".
+for filename in ["../setup.py"] + sorted(os.listdir(PKG)):
+    path = os.path.join(PKG, filename)
+    if not filename.endswith(".py") or not os.path.exists(path):
+        continue
+    tree = ast.parse(open(path).read(), filename)
+    at_module = bound_at_module(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Global):
+            for name in node.names:
+                if name not in at_module:
+                    problems.append(
+                        f"{filename}:{node.lineno} `global {name}` but {filename} "
+                        f"does not define it — this binds a new name here, not there")
+
 for p in sorted(set(problems)):
     print(f"  ✗ {p}")
 print(f"  {'✓ every name resolves in its own module' if not problems else f'{len(set(problems))} unresolved name(s)'}")

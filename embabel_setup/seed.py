@@ -70,6 +70,19 @@ SPEC_DOCS = ("VIRTUAL_CYPHER.md", "VIRTUAL_CYPHER_GUIDE.md", "README.md",
 # Big enough for the guides, small enough that a stray file cannot become an
 # ingestion job somebody did not ask for.
 SEED_MAX_BYTES = 512 * 1024
+def remember_account(username: str, password: str) -> None:
+    """Hold the account setup just created, for the upload below and nothing else.
+
+    A SETTER, not a `global` from another module. The wizard used to reach in
+    with `global _ACCOUNT` while living in the same file; after the split that
+    statement bound a name in setup.py's namespace instead, seed.py's stayed
+    None, and the seeding reported "no credential" on every install — silently,
+    because both halves were individually correct.
+    """
+    global _ACCOUNT
+    _ACCOUNT = (username, password)
+
+
 def seed_credential(api_token: str | None) -> str | None:
     """An Authorization header for the seed upload, or None if there is nothing.
 

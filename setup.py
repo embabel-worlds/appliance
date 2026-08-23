@@ -1445,8 +1445,7 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
             # thing: the documentation upload after setup. The alternative was to
             # depend on the MCP step's minted token, which is not always minted —
             # so seeding silently did nothing, which is how it shipped broken.
-            global _ACCOUNT
-            _ACCOUNT = (answers["username"], answers["password"])
+            remember_account(answers["username"], answers["password"])
 
         # A LAST LOOK BEFORE IT IS PERMANENT. The server accepts a step once and
         # refuses to reopen setup afterwards (410, by design), so a username typed
