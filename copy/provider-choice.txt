@@ -1,0 +1,12 @@
+A model provider key unlocks chat, reasoning and code. You can add one now, or
+start without one and add it later — nothing here is a one-time chance.
+
+Without a key, the appliance still runs and is still useful: documents are
+ingested, chunked and embedded by a model on THIS machine, so document search
+and memory work, cost nothing, and send nothing anywhere. The graph, realms,
+views, handlers, scheduled work and the console are all local machinery. What
+you do not get is chat and reasoning, which need a model.
+
+You can also point it at models on your own machine — LM Studio, Ollama, or
+the Docker Model Runner you already have — and choose which job runs where.
+The Models tab lists every job; docs/guide/local-models.md walks through it.

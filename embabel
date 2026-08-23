@@ -700,6 +700,12 @@ def cmd_where(args) -> int:
     return 0
 
 
+# One place, so a verb's examples sit beside nothing else and cannot drift from
+# the flags they use — `completion` in build_parser reads the same parser these
+# hang off, so a flag that disappears takes its own completion with it.
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"'}
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The parser, built where `completion` can also reach it. Every verb, flag and
     choice a shell offers is read back out of this — one definition, not two.
@@ -827,6 +833,16 @@ def build_parser() -> argparse.ArgumentParser:
     # nineteen verbs that line is unreadable, and — the reason it matters here —
     # a subparser suppressed from the help LIST still appears inside it.
     sub.metavar = "<command>"
+
+    # Examples last, in one pass over the parsers that now exist — rather than
+    # threaded through twenty add_parser calls. RawDescriptionHelpFormatter
+    # because argparse reflows an epilog by default, and a reflowed command is a
+    # command that does not run when it is pasted.
+    for verb, (subparser, _help) in _subparsers(parser).items():
+        lines = EXAMPLES.get(verb)
+        if lines:
+            subparser.epilog = "Examples:\n  " + lines
+            subparser.formatter_class = argparse.RawDescriptionHelpFormatter
     return parser
 
 

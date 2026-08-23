@@ -3007,10 +3007,37 @@ def confirm_answers(step: dict, answers: dict) -> bool:
     return prompt("  Correct? [Y/n]: ").strip().lower() in ("", "y", "yes")
 
 
+def deferrable_provider_step(step: dict) -> bool:
+    """Is this the model-provider step, and is there anything already satisfying it?
+
+    Keyed off the server's own field names, like from_environment beside it, so a
+    step added server-side is unaffected. Not offered when a key is already in the
+    environment — there is nothing to defer, and the question would be noise.
+    """
+    names = {field["name"] for field in step["fields"]}
+    if not {"provider", "apiKey"} <= names:
+        return False
+    return not any(os.environ.get(var, "").strip() for var in PROVIDER_ENV.values())
+
+
 def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> dict:
     print("\n" + heading(step["title"]))
     if step.get("description"):
         print(f"   {step['description']}")
+
+    # A KEY IS NOT A TOLL GATE. Asking for a paid credential before anybody has
+    # seen the product work is the commonest way a good tool loses an evaluator,
+    # and it is unnecessary here: embeddings are local and always have been, so
+    # documents, search, memory, realms, views and handlers all work with no key
+    # at all. The step stays unsatisfied, truthfully, and re-running setup — or
+    # the Models tab — picks it up later.
+    if deferrable_provider_step(step):
+        say("provider-choice")
+        answer = prompt(f"\n  Connect a provider now? [Y/n]: ").strip().lower()
+        if answer in ("n", "no"):
+            print(f"\n  {TICK} Starting without a provider key. "
+                  + dim("Add one any time: `embabel up` asks again."))
+            return {}
 
     while True:
         # Only on the FIRST attempt. A retry means the server rejected these answers, and
@@ -3419,20 +3446,41 @@ def main() -> int:
         pending = [step for step in status["steps"] if not step["satisfied"]]
         if not pending:
             print("  Everything is already configured.")
+        deferred = []
         for step in pending:
             result = run_step(base, token, step, use_environment=not args.ignore_env)
+            if not result and deferrable_provider_step(step):
+                deferred.append(step)
             wire_coding_agents(result or {})
 
         print("\n  Finishing…", end=" ", flush=True)
-        done = call(base, "/complete", token, {})
+        try:
+            done = call(base, "/complete", token, {})
+        except SetupError:
+            # The server may insist on a provider before it will close setup. If it
+            # does, the offer to defer was a promise this client could not keep —
+            # so ask for the key here rather than ending on a refusal the person
+            # was just told would not happen.
+            if not deferred:
+                raise
+            print()
+            print(f"  {warn('This appliance requires a provider key to finish setup.')}")
+            print("  " + dim("Its own configuration decides that, not this installer."))
+            for step in deferred:
+                wire_coding_agents(run_step(base, token, step, use_environment=False) or {})
+            print("\n  Finishing…", end=" ", flush=True)
+            done = call(base, "/complete", token, {})
         print(done.get("detail", "complete"))
 
         username = done.get("signInAs")
         service = mode_service(container) if container else None
         # Worlds people go to the console; `base` is the server behind it.
         where = console_url() if service == "worlds" else base
-        print(f"\n  Done. Sign in at {where}" + (f" as {username}" if username else ""))
-        print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
+        print(f"\n  Done. Sign in at {url(where)}" + (f" as {bold(username)}" if username else ""))
+        if deferred:
+            say("no-provider-next")
+        else:
+            print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
         warn_if_conversion_pending()
         if service == "worlds":
             print_worlds_surfaces(base)
