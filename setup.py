@@ -536,6 +536,16 @@ def _compose(mode: str, *argv: str, capture: bool = False):
         raise SetupError(f"docker compose failed: {e}")
 
 
+# The pre-key model warnings, matched on the app's own phrasing rather than on
+# the logger name alone — so a genuinely broken model configuration, which says
+# something else, still reaches the terminal.
+BOOT_AWAITING_KEY = re.compile(
+    r"is not registered.*(awaiting a key|falling back to the 'setup-required')")
+# No single log line should be able to flood a terminal. Wide enough for a real
+# message, short enough that a thirty-model inventory does not arrive twice.
+BOOT_LINE_MAX = 200
+
+
 def follow_boot_log(container: str) -> subprocess.Popen | None:
     """Stream the app's OPERATOR CONSOLE during first boot, and nothing else.
 
@@ -547,6 +557,19 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
 
     So: print the bordered block, and any WARN or ERROR, and drop the rest. A boot
     that fails still says so; a boot that works says only what it meant to.
+
+    EXCEPT that "any WARN" was too generous, and a fresh boot proved it. Before a
+    key exists the model provider warns once PER ROLE that its default LLM is not
+    registered — eleven warnings, each appending the full list of every model the
+    machine can see, which on a laptop with local models is thirty entries and
+    two thousand characters. Eleven of those is the wall of noise this filter was
+    written to prevent, arriving through the one door left open.
+
+    They are also, by the app's own words, expected: "This deployment is awaiting
+    a key, so that is expected." Setup supplies that key about ninety seconds
+    later. So they are counted rather than printed, and reported as one line —
+    and any other long line is truncated, because no single log line should be
+    able to flood a terminal somebody is trying to read.
     """
     try:
         proc = subprocess.Popen(
@@ -558,15 +581,27 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
 
     def pump() -> None:
         inside = False
+        awaiting_key = 0
         for line in proc.stdout:
             line = line.rstrip("\n")
             border = line.strip().startswith("═") and len(line.strip()) > 8
             if border:
                 inside = not inside
+                # The token block is the one thing here written for a person, so
+                # the tally lands just before it rather than after the wizard has
+                # already moved on.
+                if inside and awaiting_key:
+                    print(f"  {MIDDOT} {awaiting_key} model-role warning(s): no provider key yet. "
+                          "Setup asks for one next.")
+                    awaiting_key = 0
                 print(line)
                 continue
+            if not inside and BOOT_AWAITING_KEY.search(line):
+                awaiting_key += 1
+                continue
             if inside or " WARN " in line or " ERROR " in line:
-                print(line)
+                print(line if len(line) <= BOOT_LINE_MAX
+                      else line[:BOOT_LINE_MAX] + dim(" …"))
 
     thread = threading.Thread(target=pump, daemon=True)
     thread.start()
@@ -2326,6 +2361,50 @@ def remove_cli_shim() -> None:
             print("        That one is not ours, and it has been left alone.")
 
 
+def resume_command() -> str:
+    """What to type to pick setup up again, phrased for how this person got here.
+
+    "Re-run this command" is useless to somebody who ran a `curl … | sh`: the
+    command they typed downloaded an installer that is now gone from their
+    history, and the thing to run is the CLI it left behind. So look for the
+    launcher on PATH first, and fall back to the checkout's own entry point —
+    named for the mode, because ./worlds.py and ./me.py are different doors.
+    """
+    if shutil.which("embabel"):
+        return "embabel up"
+    entry = "worlds.py" if configured_mode() == "worlds" else "me.py"
+    if APPLIANCE_DIR != os.getcwd():
+        return f"cd {APPLIANCE_DIR} && ./{entry}"
+    return f"./{entry}"
+
+
+def other_running_appliances() -> list[str]:
+    """Appliances running from a DIFFERENT checkout than this one.
+
+    The `embabel` command is one per machine and forwards to whichever checkout
+    installed it, so uninstalling one appliance can take the command away from
+    another that is still serving. Compose records the directory it ran in, which
+    is the only thing on the host that can tell two checkouts apart.
+    """
+    run = _docker("ps", "--filter", "label=com.docker.compose.project",
+                  "--format", '{{index .Config.Labels "com.docker.compose.project.working_dir"}}',
+                  timeout=20)
+    if not run or run.returncode != 0:
+        run = _docker("ps", "--format", "{{.Label \"com.docker.compose.project.working_dir\"}}", timeout=20)
+    if not run or run.returncode != 0:
+        return []
+    here = os.path.realpath(APPLIANCE_DIR)
+    found = set()
+    for line in run.stdout.splitlines():
+        path = line.strip()
+        if path and os.path.realpath(path) != here and os.path.basename(path) != "":
+            # Only appliances: another compose project's working directory is
+            # none of our business and must not stop an uninstall.
+            if os.path.exists(os.path.join(path, "setup.py")):
+                found.add(path)
+    return sorted(found)
+
+
 def uninstall() -> None:
     """--uninstall: back to the state a fresh clone is in.
 
@@ -2386,8 +2465,17 @@ def uninstall() -> None:
     # The `embabel` command is one per MACHINE, not one per instance. Taking it
     # away while another appliance is still installed would uninstall one thing
     # and break a different one — so it goes only with the last of them.
+    elsewhere = other_running_appliances()
     remaining = [n for n in installed_instances() if n != instance()]
-    if remaining:
+    if elsewhere:
+        # The command is one per machine and points at whichever checkout wrote
+        # it. Removing it here left a running appliance in another directory with
+        # no way to be driven except by path — an uninstall that broke something
+        # it was never asked about.
+        print(f"\n  Kept the 'embabel' command: an appliance is running from {elsewhere[0]}"
+              + (f" (and {len(elsewhere) - 1} more)" if len(elsewhere) > 1 else "") + ".")
+        print(f"  Done — instance '{instance()}' is gone.\n")
+    elif remaining:
         print(f"\n  Kept the 'embabel' command: {', '.join(remaining)} still installed here.")
         print(f"  Done — instance '{instance()}' is gone.\n")
     else:
@@ -2602,7 +2690,8 @@ def disclose_usage_reporting(base: str) -> None:
     answer = prompt("\n  Continue setup? [Y/n]: ").strip().lower()
     if answer not in ("", "y", "yes"):
         raise SetupError(
-            "Setup paused before completion. Re-run this command when you are ready to continue."
+            "Setup paused before completion. Nothing is lost — the appliance is "
+            f"installed and running.\n  Continue with:  {resume_command()}"
         )
 
 
@@ -3153,7 +3242,8 @@ def main() -> int:
         if follower:
             follower.terminate()
         # Half-finished setup is fine: completed steps persist, so re-running resumes.
-        print("\n\n  Interrupted. Re-run this script to pick up where you left off.\n", file=sys.stderr)
+        print(f"\n\n  Interrupted. Completed steps persist — pick up where you left off with:"
+              f"\n    {resume_command()}\n", file=sys.stderr)
         return 130
 
 
