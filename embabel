@@ -232,10 +232,10 @@ def cmd_open(args) -> int:
     url = urls[what]
     print(f"  {url}")
     # The URL is printed FIRST and unconditionally: on a headless box, or over ssh,
-    # there is no browser to open and the address is the whole answer.
-    opener = next((cmd for cmd in ("open", "xdg-open", "wslview") if shutil.which(cmd)), None)
-    if opener:
-        subprocess.call([opener, url])
+    # there is no browser to open and the address is the whole answer. The opening
+    # itself is setup.py's, so `embabel open` and the end of setup agree about when
+    # a browser is the wrong answer.
+    s.open_in_browser(url)
     return 0
 
 

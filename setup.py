@@ -409,6 +409,33 @@ def packaged_me_app() -> str | None:
     return next((c for c in candidates if os.path.isdir(c)), None)
 
 
+def open_in_browser(target: str) -> bool:
+    """Open a URL, if this machine has anything to open it with.
+
+    The one moment worth doing this is the end of setup — the appliance has just
+    been waited for, so the page will render rather than refuse, which is the
+    difference between a finish and a broken link. Before the restart wait
+    existed, opening here would have shown a dead port.
+
+    Refuses in the cases where a browser is the wrong answer: no opener on PATH
+    (a server, a container), no terminal (a script, CI), or SSH_CONNECTION set —
+    over ssh the opener runs on the WRONG MACHINE, which is worse than not
+    running at all. EMBABEL_NO_BROWSER opts out for anyone who just dislikes it.
+    """
+    if os.environ.get("EMBABEL_NO_BROWSER") or os.environ.get("SSH_CONNECTION"):
+        return False
+    if not (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()):
+        return False
+    opener = next((cmd for cmd in ("open", "xdg-open", "wslview") if shutil.which(cmd)), None)
+    if not opener:
+        return False
+    try:
+        subprocess.Popen([opener, target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
 def launch_me_app(base: str, username: str | None = None) -> None:
     """Me onboarding ends in the Me app, the way worlds onboarding ends at the
     console: the appliance thinks, the app senses, and a new user should meet
@@ -3623,6 +3650,10 @@ def main() -> int:
         STATUS.stop()
         print(f"\n  {TICK} Done. Sign in at {url(where)}"
               + (f" as {bold(username)}" if username else ""))
+        # Printed first and always — the address is the whole answer on a headless
+        # box — then opened where opening means anything.
+        if open_in_browser(where):
+            print("  " + dim("Opening it in your browser…"))
         if deferred:
             say("no-provider-next")
 
