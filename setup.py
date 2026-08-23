@@ -55,94 +55,39 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from embabel_setup.core import APPLIANCE_DIR, AlreadySetUp, SetupError, TokenRejected, Unreachable
 from embabel_setup.colour import *      # noqa: F403 — palette and marks
 from embabel_setup.words import *        # noqa: F403 — copy loader
+from embabel_setup.settings import *     # noqa: F403 — which appliance, and its ports
+from embabel_setup.dockerlib import *    # noqa: F403 — docker, scoped to this instance
+from embabel_setup.status import *       # noqa: F403 — the progress line
+from embabel_setup.versions import *     # noqa: F403 — what is actually running
+from embabel_setup.upgrade import *      # noqa: F403
+from embabel_setup.backup import *       # noqa: F403
+from embabel_setup.bugreport import *    # noqa: F403
+from embabel_setup.seed import *         # noqa: F403
 
-def default_base() -> str:
-    """Where the Me door answers for the instance in play. A function now: the
-    port moves with the instance, so a constant could only ever be right once."""
-    return f"http://localhost:{ports_for(port_base())['ASSISTANT_PORT']}"
+# EXPLICITLY, because `import *` refuses names that begin with an underscore.
+# That rule broke this file on main: StatusLine's constructor read _UNICODE_OK,
+# the star import had silently not carried it, and STATUS is constructed at
+# import time — so setup.py raised NameError before doing anything, for every
+# user who picked the change up. A private name another module genuinely needs
+# is a name that has to be imported by hand, or renamed. These three are used by
+# this facade and by `embabel`; the rest stay inside their modules.
+from embabel_setup.dockerlib import _compose, _docker
 
 
-def console_url() -> str:
-    """WHERE A PERSON GOES in worlds mode — not the same as where the API is. The
-    worlds server also serves the old Vaadin UI, and sending a new operator there
-    instead of to the console makes their first impression a surface on its way out."""
-    return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}"
 
 
-def surface_urls() -> dict:
-    """Every address this instance publishes, by the name a person uses for it."""
-    p = ports_for(port_base())
-    return {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
-            "worlds": f"http://localhost:{p['WORLDS_PORT']}",
-            "console": console_url(),
-            "graph": f"http://localhost:{p['NEO4J_BROWSER_PORT']}",
-            "bolt": f"bolt://localhost:{p['NEO4J_BOLT_PORT']}",
-            "dashboards": f"http://localhost:{p['GRAFANA_PORT']}",
-            "metrics": f"http://localhost:{p['PROMETHEUS_PORT']}"}
+
 TOKEN_HEADER = "X-Embabel-Setup-Token"
-# The appliance's two modes, by compose SERVICE name. Containers are found through
-# their compose service label rather than a hardcoded container_name, so plain
-# `./setup.py` works for whichever mode is up — and keeps working if a name or
-# project prefix ever changes.
-MODE_SERVICES = ("assistant", "worlds")
-# Mode name (what a person types) -> compose file + service. `./worlds.py` and
-# `./setup.py worlds` ride these to make first run a single command.
-MODE_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
-MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
-# What has to exist before the appliance can answer at all: the graph and the mode
-# itself (plus the console, which IS the worlds surface). Together about 0.8GB.
-MODE_CORE = {
-    "me": ("neo4j", "assistant"),
-    "worlds": ("neo4j", "worlds", "worlds-console"),
-}
-# Everything else, started AFTER the mode is up and reachable. None of it is a
-# boot dependency — the mode services depend only on neo4j — and between them
-# they are most of a first run's download, docling especially. Pulling them
-# before handing over the terminal meant staring at a progress bar for several
-# gigabytes to reach a login page that needed one.
-DEFERRED_SERVICES = ("sandbox-image", "prometheus", "grafana", "docling")
-# What each is for, in the one line the operator sees while it arrives.
-DEFERRED_WHY = {
-    "docling": "structured PDF and Office conversion",
-    "sandbox-image": "the code sandbox",
-    "grafana": "dashboards",
-    "prometheus": "metrics",
-}
-# Operator mounts, written by the Me app's "Local files" panel: host folders the
-# assistant may index, bind-mounted read-only under /local. Plain `docker compose
-# up` merges this file by compose convention, but the explicit -f list used below
-# switches that convention OFF, so it must be re-included by hand — for the me
-# mode only, because it overrides the `assistant` service, which the worlds file
-# does not define (merging it there would fabricate an image-less service).
-OVERRIDE_FILE = "docker-compose.override.yml"
-# Machine-local configuration: keys, timezone, world template, realms directory.
-# Gitignored, and removed by --uninstall — which is the difference between that
-# and --fresh, since a .env that survives means the next run asks nothing.
-ENV_FILE = ".env"
 # The name setup registers with MCP clients, and therefore the name --uninstall
 # has to remove. One constant so the two cannot disagree.
 MCP_SERVER_NAME = "embabel"
 # The env var Codex reads the MCP bearer token from: `codex mcp add` stores the
 # variable's NAME in its config, never the token, so the operator exports this.
 CODEX_TOKEN_ENV = "EMBABEL_MCP_TOKEN"
-# Every code-sandbox container carries this label (JvmInstance.JVM_LABEL_KEY on the
-# server). They are created by the app THROUGH the docker socket as siblings of the
-# appliance, not as compose services — so `docker compose down` does not see them.
-SANDBOX_LABEL = "embabel-jvm"
-# The compose project both mode files declare. Anything belonging to the appliance
-# carries it as a label — which is the only reliable way to tell the appliance's
-# containers from a developer's own stack, whose names start the same way.
-# The DEFAULT project name. Everything reads compose_project() instead, which
-# resolves the instance in play — this remains only as the name that instance
-# `appliance` produces, and as the answer for anything asking before an
-# instance has been chosen.
-COMPOSE_PROJECT = "embabel-appliance"
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
 # build step). Me onboarding ends by offering to start it.
 ME_APP_DIR = "me-app"
 TOKEN_PATTERN = re.compile(r"Setup token:\s*([0-9a-f]{32,})")
-# How long to keep watching a booting container for its token before asking.
-BOOT_WAIT_SECONDS = 120
 # Where the appliance keeps its operator account, inside the container: the
 # credential file (bcrypt hashes) and the setup record. --reset-password
 # deletes exactly these two; everything else on the volume is data.
@@ -165,25 +110,7 @@ PROVIDER_ENV = {
 # is not a cosmetic detail — it is the answer most installs will actually give.
 PREFERRED_DEFAULTS = {"provider": "openai"}
 
-# The GitHub token names the assistant itself checks, in its order
-# (WorldBootstrap.resolveGitHubToken). A private realm or world template is cloned over HTTPS with
-# this as the username, so without one the clone 404s and the realm is quietly absent.
-GITHUB_TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN")
 
-# The collector is fixed in the appliance image. This is repeated here because setup
-# must disclose the destination before it asks the operator to finish installation;
-# PHONE_HOME.md and the live endpoints remain the authoritative payload views.
-# The collector, and the switch that decides whether anything reaches it. BOTH
-# live in this repo rather than in the image: the address so it can be read
-# before it is used, and the switch so turning reporting on is a thing an
-# operator does here, deliberately, rather than a default they inherit.
-#
-# OFF unless .env says otherwise. The compose files name the endpoint with an
-# empty default, so a hand-run `docker compose up` is off too — a switch that
-# only works when you go through setup.py is not a switch.
-PHONE_HOME_ENDPOINT = "https://telemetry.embabel.com/v1/appliance"
-PHONE_HOME_VAR = "EMBABEL_PHONE_HOME"
-PHONE_HOME_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/PHONE_HOME.md"
 
 
 # ── plumbing ────────────────────────────────────────────────────────────────
@@ -253,49 +180,12 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
         )
 
 
-def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None:
-    try:
-        return subprocess.run(["docker", *argv], capture_output=True, text=True, timeout=timeout)
-    except (subprocess.SubprocessError, FileNotFoundError, OSError):
-        return None
 
 
-def running_modes() -> dict[str, str]:
-    """Running mode containers of THIS instance, keyed by compose service name.
-
-    Both labels, always. The service label alone stopped being an identity the
-    moment a second instance could exist — every instance has a container
-    labelled service=worlds, and matching on that would have let a backup stop
-    somebody else's appliance and copy the wrong graph.
-    """
-    found = {}
-    for service in MODE_SERVICES:
-        run = _docker("ps",
-                      "--filter", f"label=com.docker.compose.project={compose_project()}",
-                      "--filter", f"label=com.docker.compose.service={service}",
-                      "--format", "{{.Names}}")
-        if run is not None and run.returncode == 0:
-            for name in run.stdout.split():
-                found[service] = name
-    return found
 
 
-def find_mode_container(prefer: str | None = None) -> str | None:
-    """The running mode's container. When a mode was explicitly asked for, PREFER it:
-    announcing "setting up embabel-assistant" and then refusing because the caller
-    asked for worlds is a small masterpiece of unhelpfulness."""
-    modes = running_modes()
-    if prefer and MODE_SERVICE.get(prefer) in modes:
-        return modes[MODE_SERVICE[prefer]]
-    if len(modes) > 1:
-        print(f"  Both modes are running ({', '.join(modes.values())}) — run one at a time.")
-    return next(iter(modes.values()), None)
 
 
-def mode_service(container: str) -> str | None:
-    """Which mode this container is — the compose service name from its label."""
-    run = _docker("inspect", "-f", '{{index .Config.Labels "com.docker.compose.service"}}', container)
-    return run.stdout.strip() if run is not None and run.returncode == 0 else None
 
 
 def print_worlds_surfaces(base: str) -> None:
@@ -409,47 +299,8 @@ def packaged_me_app() -> str | None:
     return next((c for c in candidates if os.path.isdir(c)), None)
 
 
-def container_started_at(container: str) -> str:
-    run = _docker("inspect", "-f", "{{.State.StartedAt}}", container, timeout=15)
-    return run.stdout.strip() if run and run.returncode == 0 else ""
 
 
-def wait_until_serving(container: str | None, base: str, was_started_at: str) -> bool:
-    """Wait out the restart /complete triggers, and return True when the door is open.
-
-    NOT call_when_ready, which is the mistake this replaces. That polls
-    GET /api/v1/setup — which answers 410 Gone the moment setup completes, by
-    design. 410 raises AlreadySetUp, a SetupError rather than an Unreachable, so
-    it is never retried: the "wait" returned instantly and setup went on to
-    announce a sign-in URL, and then to OPEN it, in the middle of a 21-second
-    restart. That is a 502 in the user's face at the last step of the install.
-    (Measured on this machine: "Started in 42.167 seconds", then "Started in
-    20.78 seconds", RestartCount 1.)
-
-    Two conditions, and the first is the one that is easy to miss: the container
-    must have RESTARTED — a poll that begins before the old process has gone
-    down finds it answering, declares victory, and hands over a URL that dies a
-    second later. StartedAt moving is the proof. Then, health and an actual HTTP
-    answer; any status counts, including 401, because a door that refuses you is
-    a door that is open.
-    """
-    if not container:
-        return _answers(base)
-    deadline = time.monotonic() + BOOT_WAIT_SECONDS
-    restarted = False
-    while time.monotonic() < deadline:
-        STATUS.set(boot_phase(container, base))
-        if not restarted:
-            now = container_started_at(container)
-            restarted = bool(now and was_started_at and now != was_started_at)
-        elif _answers(base):
-            run = _docker("inspect", "-f",
-                          "{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}",
-                          container, timeout=10)
-            if run and run.returncode == 0 and run.stdout.strip() in ("healthy", "running"):
-                return True
-        time.sleep(2)
-    return _answers(base)
 
 
 def open_in_browser(target: str) -> bool:
@@ -531,106 +382,16 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     print("  are filled in already; enter your password and it will offer its first scan.")
 
 
-def container_base_url(container: str) -> str | None:
-    """The mode's URL from its own SERVER_PORT. The compose files keep the host and
-    container ports equal by design, so the container's port IS the published one."""
-    run = _docker("inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", container)
-    if run is not None and run.returncode == 0:
-        for line in run.stdout.splitlines():
-            if line.startswith("SERVER_PORT="):
-                return f"http://localhost:{line.split('=', 1)[1].strip()}"
-    return None
 
 
-def github_token() -> tuple[str, str] | None:
-    """A GitHub token for cloning PRIVATE realms and world templates, and where it came from.
-
-    Same courtesy the provider keys get in `from_environment`: a developer who already has one
-    should not be asked for it. The difference is where it lives. An OpenAI key is an env var or
-    nothing, but a GitHub token on a working machine is usually in the `gh` CLI's own store and NOT
-    exported — so the env vars are checked first (any of the three the assistant reads) and `gh` is
-    the fallback that makes it automatic for most people.
-
-    Returns None when there is nothing to find, which is the ordinary case for a user who only ever
-    installs public realms. Nothing is written to disk: see `compose_env`.
-    """
-    for var in GITHUB_TOKEN_VARS:
-        value = os.environ.get(var, "").strip()
-        if value:
-            return value, f"${var}"
-    try:
-        run = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10)
-    except (subprocess.SubprocessError, FileNotFoundError, OSError):
-        return None  # no gh, or it misbehaved — a public-realm install is unaffected
-    token = run.stdout.strip() if run.returncode == 0 else ""
-    return (token, "the gh CLI") if token else None
 
 
-def phone_home_on() -> bool:
-    """Whether this appliance reports usage. False unless .env says true."""
-    value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()
-    return value in ("1", "true", "yes", "on")
 
 
-def compose_env() -> dict:
-    """The environment `docker compose` runs with.
-
-    A discovered token is passed to the compose PROCESS rather than written to `.env`, and that is
-    deliberate. `.env` is gitignored, but it is still a plaintext credential sitting in a checkout,
-    and the timezone precedent does not carry: a zone is not a secret. The cost is that a later
-    hand-run `docker compose up` gets no token unless the operator exports one — which is why the
-    line printed below names the variable rather than just saying it worked.
-    """
-    env = dict(os.environ)
-    found = github_token()
-    if found:
-        env["GITHUB_TOKEN"] = found[0]
-    # The port block, computed rather than trusted. The settings file carries it
-    # too — this is what makes a hand-edited or half-written file produce a
-    # working appliance on the right ports instead of a confusing half-collision.
-    for var, value in ports_for(port_base()).items():
-        env[var] = str(value)
-    env["EMBABEL_INSTANCE"] = instance()
-    # The switch resolved to an address. Empty is the off state the compose files
-    # already default to; this only ever turns it ON.
-    env["ASSISTANT_PHONE_HOME_ENDPOINT"] = PHONE_HOME_ENDPOINT if phone_home_on() else ""
-    return env
 
 
-def announce_github_token() -> None:
-    """Say once, before the containers start, whether private realms will resolve. Never print the
-    token itself — this runs in terminals people screen-share."""
-    found = github_token()
-    if not found:
-        return
-    print(f"  Found a GitHub token ({found[1]}) — private realms and world templates will clone.")
-    print("  It is passed to the containers for this run only, never written to .env.\n")
 
 
-def _compose(mode: str, *argv: str, capture: bool = False):
-    """docker compose against the mode's file, from the appliance directory.
-    capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
-    # -p and --env-file are what make a second instance a second instance: the
-    # project prefixes every container, volume and network, and the settings file
-    # carries that instance's port block. For the default instance both resolve to
-    # exactly what compose would have done on its own.
-    # --env-file ONLY IF IT EXISTS. Compose treats a named-but-missing env file as
-    # an error, and a fresh clone has no .env yet — passing it unconditionally
-    # made every compose call fail on exactly the path a new user is on, and
-    # again after `uninstall`. Omitting it is also correct: compose then reads
-    # `.env` from the project directory by convention, which for the default
-    # instance is the same file.
-    cmd = ["docker", "compose", "-p", compose_project()]
-    if os.path.exists(env_path()):
-        cmd += ["--env-file", env_path()]
-    cmd += ["-f", MODE_COMPOSE[mode]]
-    if mode == "me" and os.path.exists(OVERRIDE_FILE):
-        cmd += ["-f", OVERRIDE_FILE]
-    cmd += argv
-    try:
-        return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env())
-    except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
-        raise SetupError(f"docker compose failed: {e}")
 
 
 # The pre-key model warnings, matched on the app's own phrasing rather than on
@@ -828,676 +589,73 @@ def ensure_wallet_key() -> None:
     print("  Generated EMBABEL_KEY_SECRET in .env — your saved credentials now survive a restart.")
 
 
-def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
-    """Write `key=value` into .env, preserving everything else there.
-
-    .env rather than a compose edit, always: the compose files stay pull-only, and
-    a machine-local answer — a template, a checkout directory, which door you came
-    through — is exactly what .env is for. An existing line is replaced where it
-    sits, so the file keeps whatever shape its owner gave it; [why] is the comment
-    written above a line that is new.
-    """
-    lines: list[str] = []
-    if os.path.exists(env_file()):
-        with open(env_file()) as f:
-            lines = f.read().splitlines()
-    for index, line in enumerate(lines):
-        if line.startswith(f"{key}="):
-            lines[index] = f"{key}={value}"
-            break
-    else:
-        lines += ["", *why, f"{key}={value}"]
-    with open(env_file(), "w") as f:
-        f.write("\n".join(lines) + "\n")
-
-
-def configured_mode() -> str | None:
-    """Which door this appliance was last set up as, from .env.
-
-    The installer's default is Me and the CLI's is Worlds, so without this a
-    `embabel down` followed by `embabel up` quietly started the OTHER product on
-    the same graph — a person who installed an assistant got a world runtime back,
-    with nothing anywhere saying why.
-    """
-    value = os.environ.get("EMBABEL_MODE", "").strip()
-    if value in MODE_COMPOSE:
-        return value
-    if os.path.exists(env_file()):
-        with open(env_file()) as f:
-            for line in f:
-                if line.strip().startswith("EMBABEL_MODE="):
-                    value = line.split("=", 1)[1].strip()
-                    return value if value in MODE_COMPOSE else None
-    return None
-
-
-def remember_mode(mode: str) -> None:
-    """Record the door, so the CLI can come back to it rather than to its default."""
-    if configured_mode() == mode:
-        return
-    set_env_var("EMBABEL_MODE", mode, (
-        "# The door this appliance was last started as. `embabel up` returns to it",
-        "# instead of its own default; starting the other mode rewrites this line.",
-    ))
-
-
-def take_everything_down() -> None:
-    """Every service and volume in the project, whichever mode was last up. Both
-    mode files merged so nothing is missed — shared by --fresh and --uninstall,
-    which differ in what they take with them, not in how they stop.
-
-    Compose's own output is CAPTURED rather than shown. It ends on lines like
-    "! Network embabel-appliance_default  Resource is still in use", which is not
-    a failure — it is compose declining to break a network that a container of
-    yours, from some other project, is attached to. Shown raw as the last thing
-    before "Done", it reads as the uninstall having failed. So: run it quietly,
-    then report what is actually gone by looking.
-    """
-    # -p, or this tears down the DEFAULT instance whichever one you asked for —
-    # the mode files carry `name: embabel-appliance`, so without it every
-    # instance's uninstall would delete the same appliance.
-    cmd = ["docker", "compose", "-p", compose_project()]
-    if os.path.exists(env_path()):  # missing is normal mid-uninstall; see _compose
-        cmd += ["--env-file", env_path()]
-    cmd += ["-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
-            "down", "--volumes", "--remove-orphans"]
-    run = subprocess.run(cmd, capture_output=True, text=True)
-
-    # BY PROJECT LABEL, not by name. Matching "embabel-" caught embabel-assistant-neo4j
-    # and embabel-assistant-docling — a developer's own stack from the assistant repo,
-    # a different compose project entirely — and reported somebody else's healthy
-    # containers as an uninstall that had failed.
-    left = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={compose_project()}",
-                   "--format", "{{.Names}}")
-    remaining = [n.strip() for n in (left.stdout.splitlines() if left and left.returncode == 0 else [])
-                 if n.strip()]
-    if remaining:
-        print(f"  ! {len(remaining)} container(s) would not stop: {', '.join(remaining)}")
-        print(f"    {(run.stderr or run.stdout).strip().splitlines()[-1] if (run.stderr or run.stdout).strip() else ''}")
-    else:
-        print("  Containers and volumes removed.")
-
-    # The network is the one thing a foreign container can hold open. Name the
-    # holder: "resource is still in use" is a fact about somebody's OTHER project,
-    # and without the name it reads as this uninstall having left a mess.
-    net = _docker("network", "inspect", f"{compose_project()}_default",
-                  "--format", "{{range .Containers}}{{.Name}} {{end}}")
-    if net and net.returncode == 0 and net.stdout.strip():
-        holders = net.stdout.split()
-        print(f"  Kept the network: {', '.join(holders)} is attached to it.")
-        print("    Not ours to disconnect — it belongs to another compose project.")
-
-
-def fresh_wipe() -> None:
-    """--fresh: delete the whole appliance state after saying exactly what dies."""
-    print("  --fresh DELETES the appliance's entire state:")
-    print("    account and password, world, knowledge graph, documents, dashboards.")
-    print("  Images and the local embedding model survive; nothing else does.")
-    answer = prompt("  Type 'yes' to wipe: ").strip().lower()
-    if answer != "yes":
-        raise SetupError("Not wiped — nothing was touched.")
-    take_everything_down()
-    print()
-
-
-# ── the status line ─────────────────────────────────────────────────────────
-#
-# First boot takes a minute or two, and for most of it the terminal said one
-# sentence and then nothing. Silence during a long wait is indistinguishable
-# from a hang, and the honest fix is not a spinner — it is telling the truth
-# about what is happening, which the host can actually observe.
-#
-# WHAT IT SHOWS IS REAL, never a fake percentage. Three lamps, each read from
-# docker or from the API on every tick:
-#
-#   graph    the neo4j container's own healthcheck
-#   server   the mode container's healthcheck
-#   API      whether the door answers HTTP yet
-#
-# A boot that stalls therefore shows WHICH of the three it stalled on, which is
-# the difference between "it is slow" and a support conversation.
-#
-# ONE WRITER FOR THE BOTTOM LINE. The boot log prints from its own thread at the
-# same time, and two writers sharing a line produce shredded output — so every
-# log line goes through [log], which erases the status, prints, and redraws it.
-# That coordination is the whole reason this is a class and not a print().
-#
-# It disables itself whenever colour does: piped output must stay clean, and a
-# progress animation in a CI log is thousands of lines of carriage returns.
-
-SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-SPINNER_ASCII = "|/-\\"
-
-
-class StatusLine:
-    """A single self-updating line, safe to share with a thread that prints."""
-
-    def __init__(self) -> None:
-        self.enabled = COLOUR and _UNICODE_OK is not None
-        self.text = ""
-        self.started = 0.0
-        self.frame = 0
-        self.live = False
-        self._lock = threading.Lock()
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def _frames(self) -> str:
-        return SPINNER if _UNICODE_OK else SPINNER_ASCII
-
-    def _render(self) -> str:
-        elapsed = int(time.monotonic() - self.started)
-        mark = accent(self._frames()[self.frame % len(self._frames())])
-        clock = dim(f"{elapsed // 60}:{elapsed % 60:02d}")
-        return f"  {mark} {self.text}  {clock}"
-
-    def _erase(self) -> None:
-        # Overwrite with spaces rather than an ANSI erase: \r plus blanks works
-        # on every terminal this runs on, including the ones that ignore CSI K.
-        sys.stdout.write("\r" + " " * 78 + "\r")
-
-    def _animate(self) -> None:
-        while not self._stop.wait(0.12):
-            with self._lock:
-                if self.live:
-                    self.frame += 1
-                    sys.stdout.write("\r" + self._render())
-                    sys.stdout.flush()
-
-    def start(self, text: str) -> None:
-        if not self.enabled:
-            print(f"  {text}")
-            return
-        with self._lock:
-            self.text, self.started, self.live = text, time.monotonic(), True
-        if self._thread is None:
-            self._thread = threading.Thread(target=self._animate, daemon=True)
-            self._thread.start()
-
-    def set(self, text: str) -> None:
-        """Change what the line says without restarting the clock — the elapsed
-        time is of the WAIT, not of the phase, because that is the number
-        somebody is deciding whether to worry about."""
-        if not self.enabled:
-            return
-        with self._lock:
-            self.text = text
-
-    def log(self, line: str) -> None:
-        """Print above the status line. Every concurrent writer uses this."""
-        with self._lock:
-            if self.live and self.enabled:
-                self._erase()
-            print(line)
-            if self.live and self.enabled:
-                sys.stdout.write("\r" + self._render())
-                sys.stdout.flush()
-
-    def stop(self, final: str | None = None) -> None:
-        with self._lock:
-            if self.live and self.enabled:
-                self._erase()
-            self.live = False
-            if final:
-                print(final)
-
-
-STATUS = StatusLine()
-
-
-# The mode's image list, resolved once. `compose config` costs about a second,
-# which is fine at the start of a wait and not fine every three seconds.
-_IMAGES_FOR_MODE: dict[str, list[str]] = {}
-# Image name fragment -> what a person is waiting FOR. A tag tells somebody
-# nothing about why their install is slow; "structured PDF and Office
-# conversion" tells them what they lose by not waiting.
-IMAGE_PURPOSE = {
-    "assistant": "the appliance itself",
-    "worlds-console": "the console",
-    "neo4j": "the graph",
-    "docling": "structured PDF and Office conversion",
-    "sandbox": "the code sandbox",
-    "grafana": "dashboards",
-    "prometheus": "metrics",
-    "open-webui": "the alternative chat UI",
-}
-
-
-def images_for(mode: str) -> list[str]:
-    if mode not in _IMAGES_FOR_MODE:
-        run = _compose(mode, "config", "--images", capture=True)
-        _IMAGES_FOR_MODE[mode] = sorted({
-            line.strip() for line in (run.stdout.splitlines() if run and run.returncode == 0 else [])
-            if line.strip()
-        })
-    return _IMAGES_FOR_MODE[mode]
-
-
-def image_progress(mode: str) -> str:
-    """What Docker is doing, in the only terms it will honestly give us.
-
-    THERE IS NO PERCENTAGE TO REPORT. Docker exposes pull progress to the client
-    that started the pull and nowhere else; `docker system df` would give a
-    growing byte total but takes four seconds on a real machine, which is longer
-    than the poll interval. What IS cheap — 63ms — is asking whether each image
-    the mode needs has arrived.
-
-    So: a count, and the NAME of what is still coming, in terms of what it does.
-    "Pulling docling" means nothing to somebody watching an install stall;
-    "structured PDF and Office conversion" tells them what the wait buys.
-    """
-    needed = images_for(mode)
-    if not needed:
-        return ""
-    missing = [image for image in needed
-               if not (_docker("image", "inspect", image, "--format", "ok", timeout=10) or
-                       argparse.Namespace(returncode=1)).returncode == 0]
-    if not missing:
-        return ""
-    waiting = sorted({purpose for image in missing
-                      for fragment, purpose in IMAGE_PURPOSE.items() if fragment in image})
-    return (dim(f"images {len(needed) - len(missing)}/{len(needed)}")
-            + dim(" · pulling ") + ", ".join(waiting or ["an image"]))
-
-
-def boot_phase(container: str | None, base: str) -> str:
-    """The three lamps, read fresh. Cheap enough for a 3-second poll: two docker
-    inspects against the local daemon and nothing over the network."""
-    def health(name: str) -> str:
-        run = _docker("inspect", "-f",
-                      "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
-                      name, timeout=10)
-        return run.stdout.strip() if run and run.returncode == 0 else "?"
-
-    def lamp(ok: bool, label: str) -> str:
-        return f"{good(BULLET) if ok else MIDDOT} {label if ok else dim(label)}"
-
-    graph = find_graph_container()
-    parts = [lamp(graph is not None and health(graph) == "healthy", "graph")]
-    if container:
-        parts.append(lamp(health(container) == "healthy", "server"))
-    parts.append(lamp(_answers(base), "API"))
-    line = "Starting the appliance   " + dim(" · ").join(parts)
-    pulling = image_progress(mode_of(container))
-    return line + ("   " + pulling if pulling else "")
-
-
-def mode_of(container: str | None) -> str:
-    """Which mode a container belongs to, for looking up its image list."""
-    service = mode_service(container) if container else None
-    return "me" if service == "assistant" else "worlds"
-
-
-def find_graph_container() -> str | None:
-    run = _docker("ps", "--filter", f"label=com.docker.compose.project={compose_project()}",
-                  "--filter", "label=com.docker.compose.service=neo4j",
-                  "--format", "{{.Names}}", timeout=15)
-    names = run.stdout.split() if run and run.returncode == 0 else []
-    return names[0] if names else None
-
-
-def _answers(base: str) -> bool:
-    """Does the door answer at all? Any HTTP status counts — 401 is an answer."""
-    try:
-        import urllib.request
-        urllib.request.urlopen(base, timeout=2)
-        return True
-    except urllib.error.HTTPError:
-        return True
-    except Exception:
-        return False
-
-
-# ── seeding the documentation ───────────────────────────────────────────────
-#
-# A NEW WORLD IS EMPTY, and the first question anybody has — "what is this, and
-# what can I ask it?" — is one the product could not answer about itself. The
-# config views answer the structural half (what realms, what views, which model
-# runs which job). This answers the prose half: the appliance's own guides, in
-# the graph, searchable, on the first run.
-#
-# It costs nothing to send anywhere. Embeddings are local and always have been,
-# so this is ~135KB through a model already running on this machine — seconds,
-# no tokens, no provider key. It is the one corpus every new user wants and the
-# only one we can ship without asking a question first.
-#
-# THE CREDENTIAL IS THE MINTED BEARER TOKEN, not the password the user just
-# typed. The MCP step mints one for precisely this kind of call and hands it
-# over once; setup holding a password to make an HTTP request would be a design
-# smell that outlives the reason for it.
-#
-# BEST EFFORT, ALWAYS. Setup has succeeded by the time this runs. A world with
-# no documentation in it is a smaller problem than an installer that fails at
-# the finish line, so every failure here is reported and swallowed.
-
-# The operator account, as it is created. Process memory only: never written,
-# never logged, and used solely to authenticate the documentation upload below.
-_ACCOUNT: tuple[str, str] | None = None
-
-# WHAT GOES IN, AND WHY TWO THINGS CAME OUT.
-#
-# DISCOVERY.md opened with "Status: proposal. Nothing on this page is built."
-# and was seeded anyway. Asked "what is virtual cypher", the world answered from
-# it — a filesystem producer with three tiers, none of which exists — because it
-# was one of only two seeded files mentioning the term and the other said little.
-# A retrieval corpus has no way to discount a document; whatever matches wins. A
-# proposal in a knowledge base is not incomplete information, it is confident
-# misinformation, and it belongs nowhere near one.
-#
-# AGENT_GUIDE.md came out for a smaller reason: it is instructions to a coding
-# agent about how to drive an appliance, not documentation of what one is.
-SEED_DOCS = ("README.md", "CLI.md", "PHONE_HOME.md", "WORLD_TEMPLATES.md")
-# The skills ARE the user-facing documentation of authoring — views, handlers,
-# apps, realms — and world-authoring is the only thing this repo ships that
-# explains virtual Cypher at all.
-SEED_DOC_DIRS = ("docs/guide", "skills")
-
-# THE SPEC IS NOT IN THIS REPO, and it is the document that actually defines
-# virtual Cypher, realms, types and composition. It lives in realm-spec, which
-# worlds.embabel.com vendors the same way. Fetched over raw.githubusercontent —
-# not the API, so no rate limit and no token — and skipped in silence if the
-# network is not there, because a seeded world is a nicety and an installer that
-# fails without internet is not.
-SPEC_REPO = "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main"
-SPEC_DOCS = ("VIRTUAL_CYPHER.md", "VIRTUAL_CYPHER_GUIDE.md", "README.md",
-             "DECLARING_TYPES.md", "LABELS_AND_COMPOSITION.md",
-             "EXTERNAL_DOCUMENTS.md", "CONTEXT.md")
-# Big enough for the guides, small enough that a stray file cannot become an
-# ingestion job somebody did not ask for.
-SEED_MAX_BYTES = 512 * 1024
-
-
-def seed_credential(api_token: str | None) -> str | None:
-    """An Authorization header for the seed upload, or None if there is nothing.
-
-    THE ACCOUNT, NOT THE MCP TOKEN — and the reverse of what this function did
-    first. The token the MCP step mints authorizes `/mcp`; the REST surface does
-    not accept it, and answers 401 to `POST /api/v1/documents/upload`. Measured
-    against a live appliance: bearer 401, Basic 200 `{"status":"ingested"}`.
-    Preferring the token therefore guaranteed the seed failed on exactly the
-    installs where the MCP step HAD run, which is most of them.
-
-    `api_token` is still taken when there is no account — a run driven with
-    --token against an already-provisioned appliance has one and not the other.
-    """
-    if _ACCOUNT:
-        return "Basic " + base64.b64encode(f"{_ACCOUNT[0]}:{_ACCOUNT[1]}".encode()).decode()
-    if api_token:
-        return f"Bearer {api_token}"
-    return None
-
-
-def documentation_files() -> list[str]:
-    """The guides, as absolute paths. Named explicitly rather than globbed from the
-    repo root: CONTRIBUTING and CLAUDE.md are instructions to people working ON
-    the appliance, and a user searching their world should not get them back."""
-    found = []
-    for name in SEED_DOCS:
-        path = os.path.join(APPLIANCE_DIR, name)
-        if os.path.exists(path) and os.path.getsize(path) <= SEED_MAX_BYTES:
-            found.append(path)
-    for folder in SEED_DOC_DIRS:
-        directory = os.path.join(APPLIANCE_DIR, folder)
-        if not os.path.isdir(directory):
-            continue
-        # Recursive: skills/ is skills/<name>/SKILL.md, a level deeper than docs/.
-        for root, _dirs, files in os.walk(directory):
-            for entry in sorted(files):
-                path = os.path.join(root, entry)
-                if entry.endswith(".md") and os.path.getsize(path) <= SEED_MAX_BYTES:
-                    found.append(path)
-    return sorted(found)
-
-
-def fetch_spec_documents(into: str) -> list[str]:
-    """The realm spec, downloaded to a temporary directory. Best effort."""
-    fetched = []
-    for name in SPEC_DOCS:
-        try:
-            with urllib.request.urlopen(f"{SPEC_REPO}/{name}", timeout=30) as response:
-                body = response.read()
-        except Exception:
-            continue
-        if not body or len(body) > SEED_MAX_BYTES:
-            continue
-        # Prefixed so a spec page cannot be mistaken for an appliance page in a
-        # search result — "realm-spec VIRTUAL_CYPHER.md" says where it came from.
-        path = os.path.join(into, f"realm-spec {name}")
-        with open(path, "wb") as f:
-            f.write(body)
-        fetched.append(path)
-    return fetched
-
-
-def _upload_document(base: str, auth: str, path: str) -> bool:
-    """One multipart POST, by hand — stdlib only, like everything else here.
-
-    `auth` is a complete Authorization header value, Bearer or Basic, because
-    which credential is available depends on which steps the wizard ran.
-    """
-    boundary = "----embabel" + secrets.token_hex(8)
-    with open(path, "rb") as f:
-        content = f.read()
-    name = os.path.basename(path)
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
-        "Content-Type: text/markdown\r\n\r\n"
-    ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
-
-    request = urllib.request.Request(
-        f"{base}/api/v1/documents/upload", data=body, method="POST",
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}",
-                 "Authorization": auth},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            return 200 <= response.status < 300
-    except Exception:
-        return False
-
-
-def seed_documentation(base: str, auth: str) -> None:
-    """Put the appliance's own guides into the world. Never raises."""
-    files = documentation_files()
-    workspace = tempfile.mkdtemp(prefix="embabel-spec-")
-    files += fetch_spec_documents(workspace)
-    if not files:
-        return
-    STATUS.start(f"Indexing the documentation   {dim('0 of ' + str(len(files)))}")
-    done = 0
-    try:
-        for index, path in enumerate(files, 1):
-            STATUS.set(f"Indexing the documentation   {dim(f'{index} of {len(files)}')}  "
-                       + dim(os.path.basename(path)))
-            if _upload_document(base, auth, path):
-                done += 1
-    except Exception:
-        pass  # best effort; setup has already succeeded
-    shutil.rmtree(workspace, ignore_errors=True)
-    if done:
-        STATUS.stop(f"  {TICK} Indexed {done} guide(s) — ask the world about itself, "
-                    + dim("no key needed."))
-    else:
-        # Silent failure would be worse than none: somebody would search for a
-        # thing the product implied was there.
-        STATUS.stop(f"  {MIDDOT} " + dim("Could not index the documentation — "
-                                         "the appliance is fine; add it later from Documents."))
-
-
-# ── instances ───────────────────────────────────────────────────────────────
-#
-# ONE APPLIANCE IS THE NORMAL CASE, and nothing about this section should be
-# visible to somebody who has one. There is no --instance to learn, no name to
-# invent, no flag in `embabel --help`: the default instance is called
-# `appliance`, its compose project is `embabel-appliance`, its settings are
-# `.env`, and that is the whole story until somebody installs a second one.
-#
-# A SECOND ONE is what turns the machinery on. Instances differ in exactly three
-# things, and everything else follows from them:
-#
-#   the PROJECT     embabel-<instance> — compose prefixes every volume, network
-#                   and container with it, so two instances share nothing by
-#                   accident. This is also why no service may declare
-#                   container_name: a fixed name is global to the docker daemon
-#                   and would collide on the second install.
-#   the ENV FILE    .env for the default, .env.<instance> beside it. One
-#                   checkout, several settings files — rather than several
-#                   checkouts, each with its own copy of this script free to
-#                   drift from the others.
-#   the PORT BASE   sixteen consecutive host ports, EMBABEL_PORT_BASE + offset.
-#                   Allocated when the instance is created, never guessed later.
-#
-# WHY 11042 (see PORTS below). Babel is Genesis 11. 42 is the Answer, and the
-# Babel fish is out of the same book — so the number says the product's name
-# rather than punning on one syllable of it. It is unassigned by IANA, absent
-# from /etc/services, and sits below the Linux ephemeral floor of 32768, which
-# 0xBABE (47806) does not — that one would have failed intermittently forever.
-
-DEFAULT_INSTANCE = "appliance"
-# 4242 was inherited and contended: OpenTSDB, Quassel and CrashPlan all default
-# there, and CrashPlan takes 4242 AND 4243 — the assistant and the Neo4j browser.
-DEFAULT_PORT_BASE = 11042
-PORT_BLOCK = 16
-# Offset within the block -> the variable the compose files read. Adding a
-# service means taking the next free offset here; the spare tail is why there
-# are sixteen and not eight.
-PORT_OFFSETS = {
-    "ASSISTANT_PORT": 0,        # the Me front door
-    "WORLDS_PORT": 1,           # the worlds API
-    "WORLDS_CONSOLE_PORT": 2,   # the Worlds front door
-    "NEO4J_BROWSER_PORT": 3,
-    "NEO4J_BOLT_PORT": 4,
-    "GRAFANA_PORT": 5,
-    "PROMETHEUS_PORT": 6,
-    "OPEN_WEBUI_PORT": 7,
-}
-# Instance 24 would land on 11434, which is Ollama's — and the compose files
-# talk to Ollama there. A ceiling nobody will reach, stated so it cannot be hit
-# by surprise.
-MAX_INSTANCES = 23
-
-# Which instance THIS process is talking to. Set once, by the CLI, before any
-# verb runs. A module-level value rather than a parameter on forty functions
-# because it models something true: one process, one appliance.
-_instance = DEFAULT_INSTANCE
-
-
-# What compose accepts as a project name: lowercase, starting alphanumeric, then
-# letters, digits, underscore, hyphen. The name also becomes a FILENAME
-# (.env.<name>), so the same rule keeps `--instance ../../etc/passwd` from being
-# a path and `--instance "my world"` from being two shell words.
-INSTANCE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-
-
-def use_instance(name: str) -> None:
-    """Choose the instance for this process, refusing a name that cannot be one.
-
-    Validated HERE rather than at the flag, because setup.py is also entered
-    directly and through the environment — three doors, one gate.
-    """
-    global _instance
-    name = (name or DEFAULT_INSTANCE).strip()
-    if not INSTANCE_NAME.match(name):
-        raise SetupError(
-            f"'{name}' cannot be an instance name. Use lowercase letters, digits, "
-            "'-' and '_', starting with a letter or digit — it becomes a docker "
-            "project name and a settings filename."
-        )
-    if len(name) > 40:
-        raise SetupError(f"'{name}' is too long for an instance name (40 characters).")
-    _instance = name
-
-
-def instance() -> str:
-    return _instance
-
-
-def compose_project(name: str | None = None) -> str:
-    """The compose project, which is the real identity of an instance."""
-    return f"embabel-{name or _instance}"
-
-
-def env_file(name: str | None = None) -> str:
-    """Settings for an instance. The default's is plain `.env`, because the
-    common case must not be made to look like a special case."""
-    name = name or _instance
-    return ENV_FILE if name == DEFAULT_INSTANCE else f"{ENV_FILE}.{name}"
-
-
-def env_path(name: str | None = None) -> str:
-    return os.path.join(APPLIANCE_DIR, env_file(name))
-
-
-def port_base(name: str | None = None) -> int:
-    value = env_file_value("EMBABEL_PORT_BASE", name)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return DEFAULT_PORT_BASE
-
-
-def ports_for(base: int) -> dict:
-    return {var: base + offset for var, offset in PORT_OFFSETS.items()}
-
-
-def installed_instances() -> list[str]:
-    """Every instance this machine knows about — from its settings file, and
-    from docker, because an instance whose .env was deleted still has volumes
-    and still answers, and hiding it would be the unhelpful kind of tidy."""
-    found = set()
-    for entry in os.listdir(APPLIANCE_DIR):
-        if entry == ENV_FILE:
-            found.add(DEFAULT_INSTANCE)
-        elif entry.startswith(f"{ENV_FILE}.") and not entry.endswith((".example", ".before-restore")):
-            found.add(entry[len(ENV_FILE) + 1:])
-    run = _docker("ps", "-a", "--format", "{{.Label \"com.docker.compose.project\"}}", timeout=20)
-    if run and run.returncode == 0:
-        for line in run.stdout.split():
-            if line.startswith("embabel-"):
-                found.add(line[len("embabel-"):])
-    return sorted(found)
-
-
-def ensure_port_block() -> int:
-    """Give this instance a port block if it does not have one yet.
-
-    Written at CREATION and never recomputed, because a base that is derived
-    fresh each run is a base that moves when a sibling instance is removed —
-    every bookmark, every registered MCP URL and every `.env` in a realm
-    checkout would silently start pointing at a different appliance.
-    """
-    existing = env_file_value("EMBABEL_PORT_BASE")
-    if existing:
-        return int(existing)
-    # The default instance is the ANCHOR and always owns the first block. Handing
-    # it one off the free list let a sibling push the primary appliance off the
-    # port every bookmark, MCP registration and realm checkout already names.
-    base = DEFAULT_PORT_BASE if instance() == DEFAULT_INSTANCE else free_port_base()
-    set_env_var("EMBABEL_PORT_BASE", str(base), (
-        "# The sixteen host ports this appliance owns, allocated when it was",
-        "# created. Everything else is this + a fixed offset. Do not edit it to",
-        "# move one service — set that service's own PORT variable instead.",
-    ))
-    if instance() != DEFAULT_INSTANCE or base != DEFAULT_PORT_BASE:
-        print(f"  Instance '{instance()}' uses ports {base}-{base + PORT_BLOCK - 1}.")
-    return base
-
-
-def free_port_base() -> int:
-    """The next unused block. Bases in use are read from the instances that
-    exist rather than counted, so removing the second of three instances frees
-    its block instead of stranding it."""
-    used = {port_base(name) for name in installed_instances() if name != instance()}
-    used.add(DEFAULT_PORT_BASE)  # reserved for the default instance, always
-    for n in range(MAX_INSTANCES + 1):
-        candidate = DEFAULT_PORT_BASE + n * PORT_BLOCK
-        if candidate not in used:
-            return candidate
-    raise SetupError(
-        f"All {MAX_INSTANCES + 1} port blocks are in use. The next one would collide "
-        f"with Ollama on 11434, which this appliance talks to."
-    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ── upgrade ─────────────────────────────────────────────────────────────────
@@ -1521,801 +679,78 @@ def free_port_base() -> int:
 # what it skipped.
 
 
-def _head() -> str | None:
-    run = subprocess.run(["git", "-C", APPLIANCE_DIR, "rev-parse", "HEAD"],
-                         capture_output=True, text=True)
-    return run.stdout.strip() if run.returncode == 0 else None
-
-
-def pull_checkout() -> tuple[bool, str]:
-    """Fast-forward the checkout. Returns (moved, what to tell the operator)."""
-    if not os.path.isdir(os.path.join(APPLIANCE_DIR, ".git")):
-        return False, "not a git checkout — images only"
-    before = _head()
-    run = subprocess.run(["git", "-C", APPLIANCE_DIR, "pull", "--ff-only"],
-                         capture_output=True, text=True, timeout=180)
-    if run.returncode != 0:
-        # The two ordinary reasons, named: local edits, or no upstream. Either
-        # way this is a note, not a failure — the images below still move.
-        reason = (run.stderr or run.stdout).strip().splitlines()
-        return False, f"checkout NOT updated ({reason[-1] if reason else 'git declined'})"
-    after = _head()
-    if before and after and before != after:
-        changed = subprocess.run(["git", "-C", APPLIANCE_DIR, "diff", "--name-only", f"{before}..{after}"],
-                                 capture_output=True, text=True)
-        files = changed.stdout.split() if changed.returncode == 0 else []
-        note = f"checkout updated {before[:7]} → {after[:7]} ({len(files)} file(s))"
-        if any(f.startswith(f"{ME_APP_DIR}/") for f in files):
-            # dist/ is built from these, and nothing in the run path rebuilds it.
-            note += "\n    the Me app changed — rebuild it: npm --prefix me-app run build"
-        return True, note
-    return False, "checkout already current"
-
-
-def upgrade(mode: str) -> dict:
-    """Latest checkout, latest published images, containers actually running them.
-
-    The digests are read on both sides rather than trusting `up -d` to have done
-    something: "pulled" and "the container is now on it" are different claims,
-    and only the second one is the thing anybody wanted.
-    """
-    notes = []
-    _moved, note = pull_checkout()
-    notes.append(note)
-
-    # Read BEFORE the pull, because the pull is what moves the tag underneath it.
-    before = image_identity(mode_image(mode) or "")
-
-    if _compose(mode, "pull").returncode != 0:
-        raise SetupError("docker compose pull failed — see the output above.")
-    if _compose(mode, "up", "-d").returncode != 0:
-        raise SetupError("docker compose up failed — see the output above.")
-
-    after = image_identity(mode_image(mode) or "")
-    if before.get("digest") and after.get("digest") and before["digest"] != after["digest"]:
-        notes.append(f"server image {before['digest'][7:19]} → {after['digest'][7:19]}")
-        # A locally-built image can be NEWER than what the registry serves,
-        # because snapshot tags publish on release rather than on every push.
-        # Landing on the published build is exactly what this verb is for, so
-        # this is a NOTE and not a refusal — but a local build vanishing without
-        # a word is the kind of surprise people spend an afternoon on.
-        if before.get("created") and after.get("created") and after["created"] < before["created"]:
-            notes.append("NOTE: the published image is OLDER than the one that was running.\n"
-                         "    If that was your own build, this replaced it — which is what\n"
-                         "    `upgrade` means. Rebuild it if you wanted it back.")
-        else:
-            notes.append("give the server a moment to come back")
-    elif after.get("digest"):
-        notes.append("server image already current")
-
-    # `up -d` recreates a container whose image changed, but "pulled" and "the
-    # container is now running it" are different claims and only the second is
-    # what anybody wanted. So check, rather than assume.
-    container = find_mode_container(mode)
-    if container and not _same_image(container, mode_image(mode)):
-        notes.append(f"WARNING: {container} is NOT running the pulled image.\n"
-                     "    `embabel down` then `embabel up` will land it.")
-    return {"mode": mode, "notes": notes, "digest": after.get("digest")}
-
-
-def _same_image(container: str, image: str | None) -> bool:
-    """Is this container running THAT image, by local image id rather than by tag?
-    A tag is a moving name; two containers can both say `:0.2.0-SNAPSHOT` and be
-    different builds, which is the whole failure this check exists to catch."""
-    if not image:
-        return True
-    running = _docker("inspect", container, "--format", "{{.Image}}", timeout=15)
-    wanted = _docker("image", "inspect", image, "--format", "{{.Id}}", timeout=15)
-    if not running or not wanted or running.returncode != 0 or wanted.returncode != 0:
-        return True  # cannot tell; do not cry wolf
-    return running.stdout.strip() == wanted.stdout.strip()
-
-
-# ── what is on the host, and getting rid of what should not be ──────────────
-
-def appliance_containers() -> list[dict]:
-    """Every container belonging to this compose project, running or not.
-
-    BY PROJECT LABEL, never by name prefix. A developer's own stack from the
-    assistant repo is called embabel-assistant-something too, and reporting
-    their containers as the appliance's is how `uninstall` once claimed to have
-    failed — see take_everything_down for the same lesson learned the same way.
-    """
-    run = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={compose_project()}",
-                  "--format", "{{.Names}}\t{{.State}}\t{{.Status}}\t{{.Image}}", timeout=20)
-    if not run or run.returncode != 0:
-        return []
-    found = []
-    for line in run.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) == 4:
-            found.append(dict(zip(("name", "state", "status", "image"), (p.strip() for p in parts))))
-    return sorted(found, key=lambda c: c["name"])
-
-
-def prune_sandboxes(names: list[str]) -> int:
-    """Remove the named sandbox containers. The CALLER decides which and asks —
-    see remove_stray_sandboxes for why this must never guess: a developer running
-    an assistant from an IDE has sandboxes carrying the same label, and killing
-    those mid-session is the exact bug the per-jvm scoping exists to prevent."""
-    if not names:
-        return 0
-    run = _docker("rm", "-f", *names, timeout=120)
-    return len(names) if run and run.returncode == 0 else 0
-
-
-# ── bug report ──────────────────────────────────────────────────────────────
-#
-# One folder somebody can attach to an issue, instead of six rounds of "and can
-# you also send…". The contents are chosen by what has actually been asked for
-# in those rounds: which images, which commit, what docker says, what the
-# service said before it stopped saying anything.
-#
-# WHAT IT MUST NOT CONTAIN. This appliance holds somebody's email, contacts and
-# documents, so a diagnostic bundle is a data-exfiltration shape if it is
-# careless. Two rules, both enforced here rather than left to a warning:
-#
-#   - .env values are NEVER copied. The KEYS are, because "is OPENAI_API_KEY
-#     set" is a real diagnostic question and "what is it" never is.
-#   - Logs are filtered to WARN, ERROR and stack traces by DEFAULT. An INFO
-#     line in this server can carry a document title, a contact's name, or the
-#     text of a query somebody typed. The full log is available behind a flag
-#     that says what it is, so including it is a decision somebody made.
-#
-# The bundle is left as a FOLDER and a zip beside it, so it can be read before
-# it is sent. A bundle you cannot inspect is one people send blind or not at all.
-
-BUGREPORT_LOG_LINES = 2000
-# Lines worth keeping from a JVM log without keeping the JVM log. Anchored to
-# the level field Spring writes, plus the shapes a stack trace takes.
-LOG_INTERESTING = re.compile(
-    r"\b(WARN|ERROR|FATAL|SEVERE)\b|^\s+at\s+[\w$.]+\(|^(Caused by|Suppressed):|Exception|Error:")
-
-
-def _redacted_env() -> str:
-    """Which settings exist and whether they have a value — never the value.
-
-    A key with an empty value and a key that is absent are DIFFERENT bugs, and
-    the whole point of this file is telling them apart, so both are reported.
-    """
-    path = env_path()
-    if not os.path.exists(path):
-        return f"# no {env_file()} — this appliance has not been set up here\n"
-    lines = [f"# {env_file()}, VALUES REMOVED. Key, then whether it holds anything.\n"]
-    with open(path) as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            key, _, value = line.partition("=")
-            value = value.strip()
-            lines.append(f"{key.strip()} = {f'set ({len(value)} chars)' if value else 'EMPTY'}\n")
-    if len(lines) == 1:
-        lines.append("# (the file exists but holds no settings)\n")
-    return "".join(lines)
-
-
-def _container_log(name: str, everything: bool) -> str:
-    run = _docker("logs", "--tail", str(BUGREPORT_LOG_LINES), name, timeout=60)
-    if not run:
-        return "(could not read this container's log)\n"
-    text = (run.stdout or "") + (run.stderr or "")
-    if everything:
-        return text
-    kept = [line for line in text.splitlines() if LOG_INTERESTING.search(line)]
-    header = (f"# FILTERED to warnings, errors and stack traces — {len(kept)} of "
-              f"{len(text.splitlines())} lines from the last {BUGREPORT_LOG_LINES}.\n"
-              f"# An INFO line here can carry a document title or somebody's name, so the\n"
-              f"# full log is only included with `embabel bugreport --all-logs`.\n\n")
-    return header + "\n".join(kept) + "\n"
-
-
-def bug_report(dest_dir: str, extra: dict, everything: bool = False) -> str:
-    """Collect a diagnostic bundle into a new timestamped folder, and zip it.
-
-    `extra` is text the CALLER already has — the CLI's own doctor and status
-    output. Re-deriving those here would be a second implementation of both,
-    free to disagree with what the operator was just shown on screen.
-    """
-    dest = os.path.join(os.path.abspath(os.path.expanduser(dest_dir)),
-                        f"embabel-bugreport-{instance()}-{backup_timestamp()}")
-    os.makedirs(dest, exist_ok=True)
-
-    def write(name: str, text: str) -> None:
-        with open(os.path.join(dest, name), "w") as f:
-            f.write(text)
-
-    for name, text in extra.items():
-        write(name, text)
-
-    write("versions.json", json.dumps(appliance_versions(), indent=2) + "\n")
-    write("env-keys.txt", _redacted_env())
-
-    containers = appliance_containers()
-    write("containers.txt", "".join(
-        f"{c['name']:<38} {c['state']:<10} {c['status']:<28} {c['image']}\n" for c in containers)
-        or "(no containers belonging to this appliance)\n")
-
-    write("sandboxes.txt", "".join(f"{n}\n" for n in stray_sandbox_containers(mine_only=False))
-          or "(none)\n")
-
-    for section, argv in (("docker-info.txt", ("info",)),
-                          ("docker-disk.txt", ("system", "df", "-v")),
-                          ("docker-model.txt", ("model", "status"))):
-        run = _docker(*argv, timeout=60)
-        write(section, (run.stdout + run.stderr) if run else "(command failed)\n")
-
-    os.makedirs(os.path.join(dest, "logs"), exist_ok=True)
-    for container in containers:
-        write(os.path.join("logs", f"{container['name']}.log"),
-              _container_log(container["name"], everything))
-
-    write("README.txt",
-          "Embabel appliance bug report — " + time.strftime("%c") + "\n\n"
-          "Attach the .zip beside this folder to your issue. Read it first if you\n"
-          "like — that is why it is left unpacked.\n\n"
-          "WHAT IS NOT HERE: no .env VALUES (env-keys.txt lists the keys and whether\n"
-          "each holds anything, never what), no documents, no graph contents.\n\n"
-          + ("LOGS ARE COMPLETE in this bundle — it was taken with --all-logs. An INFO\n"
-             "line can carry a document title, a contact's name, or a query somebody\n"
-             "typed. Read logs/ before sending this to anyone.\n"
-             if everything else
-             "LOGS ARE FILTERED to warnings, errors and stack traces. If a maintainer\n"
-             "needs more, `embabel bugreport --all-logs` includes everything — read it\n"
-             "before sending, because INFO lines can carry personal data.\n"))
-
-    archive = shutil.make_archive(dest, "zip", root_dir=dest)
-    return archive
-
-
-# ── what is actually running ────────────────────────────────────────────────
-#
-# FOUR LAYERS DIFFER, and only one of them is the thing people say out loud.
-# EMBABEL_VERSION defaults to a SNAPSHOT tag, which is a name rather than an
-# identity — two machines both "on 0.2.0-SNAPSHOT" can be weeks apart. What
-# pins an install is the image DIGEST, and what pins the code inside it is the
-# commit the jar was built from.
-#
-# NOT AN HTTP CALL, deliberately. The server does answer this — /actuator/info
-# carries the same build and git blocks — but it is authenticated, and more to
-# the point the moment somebody needs the version is the moment the appliance
-# will not boot, is wedged, or is halfway through an upgrade. An endpoint
-# answers none of those. Everything below reads the image and the jar, and
-# works with the container stopped.
-#
-# READING THE JAR CHEAPLY. The appliance jar is ~400MB and the container has no
-# unzip, no python and a JRE with no `jar` tool. So: read the zip's central
-# directory off the END of the file, find the one entry's offset, and `dd` out
-# its couple of hundred bytes. Three small reads instead of copying 400MB to
-# learn six lines.
-
-# Where the git and build metadata live inside the Spring Boot jar. The Maven
-# build bakes both in (git-commit-id-maven-plugin, spring-boot-maven-plugin).
-JAR_PATH = "/app/assistant.jar"
-JAR_GIT_ENTRY = "BOOT-INF/classes/git.properties"
-JAR_BUILD_ENTRY = "META-INF/build-info.properties"
-
-
-def _run_in(target: str, is_container: bool, *args: str, binary: bool = False):
-    """A command against a running container if there is one, else against the
-    image itself. A stopped appliance still has an image, and `version` has to
-    answer for a stopped appliance — that is most of why anyone asks."""
-    if is_container:
-        argv = ["docker", "exec", target, *args]
-    else:
-        argv = ["docker", "run", "--rm", "--entrypoint", args[0], target, *args[1:]]
-    try:
-        return subprocess.run(argv, capture_output=True, timeout=60,
-                              text=not binary)
-    except (subprocess.SubprocessError, FileNotFoundError, OSError):
-        return None
-
-
-def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
-    """One file out of the jar, without moving the jar.
-
-    Zip stores its index at the END, so the tail gives every entry's offset;
-    then a single seek reads that entry's bytes. Zip64 because the jar is well
-    past 4GB worth of entries' worth of offsets on some builds — the classic
-    end-of-central-directory records 0xFFFFFFFF and defers to the Zip64 one.
-    """
-    tail = _run_in(target, is_container, "sh", "-c", f"tail -c 70000 {JAR_PATH}", binary=True)
-    if not tail or tail.returncode != 0:
-        return None
-    data = tail.stdout
-    marker = data.rfind(b"PK\x05\x06")
-    if marker < 0:
-        return None
-    try:
-        _size, offset = struct.unpack("<II", data[marker + 12:marker + 20])
-        if offset == 0xFFFFFFFF:
-            zip64 = data.rfind(b"PK\x06\x06")
-            _size, offset = struct.unpack("<QQ", data[zip64 + 40:zip64 + 56])
-
-        block = 65536
-        got = _run_in(target, is_container, "dd", f"if={JAR_PATH}", f"bs={block}",
-                      f"skip={offset // block}", "status=none", binary=True)
-        if not got or got.returncode != 0:
-            return None
-        directory = got.stdout[offset % block:]
-        at = directory.find(entry.encode())
-        if at < 0:
-            return None
-        header = directory[at - 46:at]
-        method = struct.unpack("<H", header[10:12])[0]
-        compressed = struct.unpack("<I", header[20:24])[0]
-        local = struct.unpack("<I", header[42:46])[0]
-
-        block = 4096
-        got = _run_in(target, is_container, "dd", f"if={JAR_PATH}", f"bs={block}",
-                      f"skip={local // block}", "count=8", "status=none", binary=True)
-        if not got or got.returncode != 0:
-            return None
-        raw = got.stdout[local % block:]
-        name_len, extra_len = struct.unpack("<HH", raw[26:30])
-        start = 30 + name_len + extra_len
-        body = raw[start:start + compressed]
-        # 8 is DEFLATE, 0 is STORED; a raw stream, so a negative window size.
-        text = zlib.decompress(body, -15) if method == 8 else body
-        return text.decode("utf8", "replace")
-    except (struct.error, zlib.error, IndexError):
-        return None
-
-
-def parse_properties(text: str | None) -> dict:
-    """A .properties file, enough for the two the jar carries. Not a general
-    parser: these are machine-generated, and the only escaping in them is the
-    plugin's backslash before ':' in timestamps and commit messages."""
-    found = {}
-    for line in (text or "").splitlines():
-        if not line.strip() or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        found[key.strip()] = value.replace("\\:", ":").replace("\\=", "=").strip()
-    return found
-
-
-def image_identity(image: str) -> dict:
-    """The tag as written, and the digest that tag currently means.
-
-    The DIGEST is the answer to "which build is this" — the tag moves, and for
-    an unpinned SNAPSHOT it moves often. `created` is the image's build time,
-    which is how you tell a pull from last night from one from March.
-    """
-    run = _docker("image", "inspect", image, "--format",
-                  "{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}\t{{.Created}}", timeout=20)
-    if not run or run.returncode != 0:
-        return {"image": image, "digest": None, "created": None}
-    digest, _, created = run.stdout.strip().partition("\t")
-    return {"image": image, "digest": digest.partition("@")[2] or None, "created": created or None}
-
-
-def source_identity(mode: str) -> dict:
-    """The commit the running appliance was BUILT from, read out of its jar.
-
-    Prefers the live container — `docker exec` costs nothing when one is up.
-    Falls back to the image, which starts a throwaway container for two reads.
-    """
-    container = find_mode_container(mode)
-    target, is_container = (container, True) if container else (mode_image(mode), False)
-    if not target:
-        return {}
-    git = parse_properties(_jar_entry(target, is_container, JAR_GIT_ENTRY))
-    build = parse_properties(_jar_entry(target, is_container, JAR_BUILD_ENTRY))
-    return {
-        # `git.commit.id` is the full SHA; older builds carry only the abbrev,
-        # because the Maven plugin was filtering the full one out by a name it
-        # does not emit. Both are reported so a backup taken before that fix is
-        # still readable rather than blank.
-        "commit": git.get("git.commit.id") or git.get("git.commit.id.abbrev"),
-        "abbrev": git.get("git.commit.id.abbrev"),
-        "branch": git.get("git.branch"),
-        "subject": git.get("git.commit.message.short"),
-        "committed": git.get("git.commit.time"),
-        # A build cut from a working tree with uncommitted changes. The commit
-        # above then names where the build STARTED, not what is in it — which
-        # is worth saying out loud rather than leaving to be discovered.
-        "dirty": git.get("git.dirty") == "true",
-        "version": build.get("build.version"),
-        "built": build.get("build.time"),
-    }
-
-
-def mode_image(mode: str) -> str | None:
-    """The image THIS mode's service runs.
-
-    A running container is asked directly; otherwise compose resolves it, with
-    its ${EMBABEL_VERSION:-...} defaults applied. The service is looked up BY
-    KEY in the rendered config rather than by matching image lines — `--images`
-    prints every service's image, and the worlds service and the docling image
-    (ghcr.io/embabel-worlds/...) share enough of a substring that a text match
-    reports the wrong one.
-    """
-    container = find_mode_container(mode)
-    if container:
-        run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15)
-        if run and run.returncode == 0 and run.stdout.strip():
-            return run.stdout.strip()
-    run = _compose(mode, "config", "--format", "json", capture=True)
-    if run is None or run.returncode != 0:
-        return None
-    try:
-        return json.loads(run.stdout)["services"][MODE_SERVICE[mode]]["image"]
-    except (ValueError, KeyError, TypeError):
-        return None
-
-
-def checkout_identity() -> dict:
-    """This repo — the pin for everything that is NOT in an image: the compose
-    files, the Neo4j tag they name, setup.py, the skills."""
-    def git(*args: str) -> str | None:
-        run = subprocess.run(["git", "-C", APPLIANCE_DIR, *args], capture_output=True, text=True)
-        return run.stdout.strip() if run.returncode == 0 else None
-
-    dirty = git("status", "--porcelain")
-    return {
-        "commit": git("rev-parse", "HEAD"),
-        "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-        "dirty": bool(dirty),
-    }
-
-
-def appliance_versions(mode: str | None = None) -> dict:
-    """Every layer that can differ between two installs, in one dict. Shared by
-    `embabel version` and the backup manifest, so a backup records exactly what
-    `version` would have printed on the day it was taken."""
-    mode = mode or backup_mode()
-    image = mode_image(mode)
-    return {
-        "mode": mode,
-        "checkout": checkout_identity(),
-        "appliance": image_identity(image) if image else {},
-        "source": source_identity(mode),
-        "neo4j": image_identity(neo4j_image() or ""),
-    }
-
-
-def neo4j_image() -> str | None:
-    """Pinned in the tracked compose files rather than in .env, so the CHECKOUT
-    is its version — but read it rather than restating it here."""
-    container = "embabel-appliance-neo4j"
-    run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15)
-    if run and run.returncode == 0 and run.stdout.strip():
-        return run.stdout.strip()
-    with open(os.path.join(APPLIANCE_DIR, "infra.yml")) as f:
-        for line in f:
-            if line.strip().startswith("image: neo4j:"):
-                return line.split("image:", 1)[1].strip()
-    return None
-
-
-# ── backup and restore ──────────────────────────────────────────────────────
-#
-# WHAT A BACKUP IS. Everything a person would grieve over lives in two named
-# volumes — embabel_assistant_data (worlds, documents, artifacts, credentials)
-# and embabel_appliance_neo4j_data (the knowledge graph) — plus the host-side
-# files that make this checkout THIS appliance. A backup is a plain folder
-# holding a cold tarball of each volume, those files, and a manifest saying
-# what made it. A folder rather than one enveloping archive on purpose: the
-# tarballs inside are already compressed, and re-archiving gigabytes buys a
-# second wait and nothing else.
-#
-# COLD ON PURPOSE. Community Neo4j has no online backup. So whichever mode is
-# running is stopped, the volumes are copied at rest, and the SAME mode is
-# brought back up — a copy taken under a live graph is corrupt in exactly the
-# cases that make somebody reach for a backup.
-#
-# The bytes never cross a bind mount: a helper container tars the volume to
-# stdout and this process streams that to a file (and back, on restore). So
-# Docker Desktop's file-sharing list never has an opinion about where backups
-# may live, and a backup can be written to an external disk.
-#
-# THIS IS HOST WORK, not server work — a container cannot copy the volume it is
-# running from. It lives here, beside the other lifecycle verbs, because the Me
-# app's menu and `embabel backup` must not be two implementations that disagree.
-
-# The keys as the compose files declare them; the REAL names carry the project
-# prefix, which is pinned in docker-compose.yml precisely so they cannot move
-# out from under an install.
-BACKUP_VOLUMES = (
-    ("embabel_assistant_data", "assistant-data.tgz", "worlds and documents"),
-    ("embabel_appliance_neo4j_data", "neo4j-data.tgz", "the knowledge graph"),
-)
-# Host-side state that shapes the appliance. Without .env a restored graph is
-# unreachable — Neo4j's password lives IN its volume and the appliance's copy of
-# it lives here. secrets.env holds the realm API credentials the compose files
-# load by `env_file:`; a restore without it comes back with every authenticating
-# realm silently dead, which is a worse outcome than a refusal.
-def backup_config_files() -> tuple[str, ...]:
-    """A function, not a constant: which settings file belongs to this appliance
-    depends on which instance it is."""
-    return (env_file(), OVERRIDE_FILE, "secrets.env")
-# The Me app writes the override and stamps it (mounts.ts). A file WITHOUT the
-# stamp was written by a person, and a restore does not eat their work.
-OVERRIDE_MARKER = "# Written by Embabel Me"
-# Has tar, weighs a few MB, and is pinned so a backup taken next year is cut by
-# the same tool as one taken today.
-BACKUP_HELPER_IMAGE = "alpine:3.22"
-BACKUP_MANIFEST = "manifest.json"
-# Copying a graph can legitimately take a long time. This is a backstop against
-# a wedged docker CLI, not a pace expectation.
-BACKUP_STREAM_TIMEOUT = 30 * 60
-# Where backups go when nobody says. Under $HOME, not the checkout: --uninstall
-# removes the checkout, and a backup that an uninstall deletes is not a backup.
-DEFAULT_BACKUP_DIR = os.path.expanduser("~/embabel-backups")
-
-
-def volume_name(key: str) -> str:
-    """The real Docker volume name — compose prefixes every volume with the project."""
-    return f"{compose_project()}_{key}"
-
-
-def volume_exists(key: str) -> bool:
-    run = _docker("volume", "inspect", volume_name(key), timeout=15)
-    return run is not None and run.returncode == 0
-
-
-def require_docker() -> None:
-    """The volumes are only reachable through the daemon, so say that rather than
-    letting each of the calls below fail separately with its own wording."""
-    run = _docker("info", timeout=20)
-    if run is None or run.returncode != 0:
-        raise SetupError("Docker is not running — the appliance's volumes are only reachable through it.")
-
-
-def running_mode_names() -> list[str]:
-    """The modes that are up, as mode names rather than compose service names."""
-    by_service = {service: mode for mode, service in MODE_SERVICE.items()}
-    return [by_service[service] for service in running_modes() if service in by_service]
-
-
-def backup_mode() -> str:
-    """Which mode's compose file to stop, start and create volumes with.
-
-    Whatever is running, else whatever was set up here, else me — and me is the
-    fallback rather than worlds because its file is the one that defines BOTH
-    volumes and can therefore create them from nothing on a fresh machine.
-    """
-    running = running_mode_names()
-    return running[0] if running else (configured_mode() or "me")
-
-
-def _stream_volume(argv: list[str], path: str, *, into_volume: bool) -> tuple[bool, str]:
-    """Run docker with one end of the pipe on a host file — how a volume leaves the
-    machine as a tarball, and comes back, without a bind mount in between."""
-    try:
-        with open(path, "rb" if into_volume else "wb") as f:
-            run = subprocess.run(
-                ["docker", *argv],
-                stdin=f if into_volume else subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL if into_volume else f,
-                stderr=subprocess.PIPE,
-                timeout=BACKUP_STREAM_TIMEOUT,
-            )
-        return run.returncode == 0, run.stderr.decode(errors="replace").strip()
-    except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
-        return False, str(e)
-
-
-def _tail(text: str, limit: int = 300) -> str:
-    """The end of a long output, visibly truncated — never chopped in silence."""
-    return f"…{text[-limit:]}" if len(text) > limit else text
-
-
-def backup_timestamp() -> str:
-    """Local time, filesystem-plain: 2026-08-22-1430. A backup is named by when it was taken."""
-    return time.strftime("%Y-%m-%d-%H%M")
-
-
-def inspect_backup(backup_dir: str) -> dict:
-    """Is this folder a backup we can restore? Returns its manifest.
-
-    Read BEFORE the confirmation prompt, so the prompt can name the DATE of the
-    backup about to replace an appliance. A folder name is not what somebody
-    should be confirming.
-    """
-    try:
-        with open(os.path.join(backup_dir, BACKUP_MANIFEST)) as f:
-            manifest = json.load(f)
-    except (OSError, ValueError):
-        raise SetupError(f"No readable {BACKUP_MANIFEST} in {backup_dir} — that is not an Embabel backup.")
-    # Both volumes or nothing: a graph without its documents (or the reverse) is
-    # an appliance that contradicts itself, which is worse than a refusal.
-    for _key, filename, _what in BACKUP_VOLUMES:
-        if not os.path.exists(os.path.join(backup_dir, filename)):
-            raise SetupError(f"Backup is incomplete — {filename} is missing.")
-    return manifest
-
-
-def list_backups(parent: str) -> list[tuple[str, dict]]:
-    """Every restorable backup directly under a folder, newest first. Unreadable
-    entries are skipped rather than reported — this is a listing, not a doctor."""
-    found = []
-    for entry in sorted(os.listdir(parent)) if os.path.isdir(parent) else []:
-        path = os.path.join(parent, entry)
-        if not os.path.isdir(path):
-            continue
-        try:
-            found.append((path, inspect_backup(path)))
-        except SetupError:
-            continue
-    return sorted(found, key=lambda pair: pair[1].get("createdAt", ""), reverse=True)
-
-
-def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
-    """Enough to answer, a year from now, "what is this and can I restore it here".
-
-    The identity recorded is the one `embabel version` prints, and for the same
-    reason: the TAG is a name that moves, so a manifest saying "0.2.0-SNAPSHOT"
-    dates a backup to nothing. The image digest and the commit the jar was built
-    from do not move, and between them they say exactly what wrote these bytes.
-    """
-    manifest = {
-        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "instance": instance(),
-        "mode": mode,
-        "files": saved,
-        "versions": appliance_versions(mode),
-    }
-    with open(os.path.join(dest, BACKUP_MANIFEST), "w") as f:
-        json.dump(manifest, f, indent=2)
-        f.write("\n")
-    with open(os.path.join(dest, "README.txt"), "w") as f:
-        f.write(
-            f"Embabel appliance backup — {time.strftime('%c')}\n\n"
-            "Everything this appliance knew, at rest: the knowledge graph, worlds,\n"
-            "documents, and the settings that shaped them. Restore it with:\n\n"
-            f"    embabel --instance {instance()} restore {os.path.abspath(dest)}\n\n"
-            "manifest.json records the exact images and commit that wrote these bytes.\n\n"
-            "The .env and secrets.env here carry credentials — the database password,\n"
-            "API keys, realm tokens. Treat this folder like the keys it holds.\n"
-        )
-
-
-def _copy_out(dest: str, mode: str) -> None:
-    """The copy itself, between the stop and the restart."""
-    saved = []
-    for key, filename, what in BACKUP_VOLUMES:
-        name = volume_name(key)
-        if not volume_exists(key):
-            raise SetupError(f"Volume {name} does not exist — has the appliance ever run on this machine?")
-        ok, err = _stream_volume(
-            ["run", "--rm", "-v", f"{name}:/from:ro", BACKUP_HELPER_IMAGE, "tar", "czf", "-", "-C", "/from", "."],
-            os.path.join(dest, filename), into_volume=False)
-        if not ok:
-            raise SetupError(f"Backing up {what} failed: {_tail(err)}")
-        size = os.path.getsize(os.path.join(dest, filename)) / 1e6
-        print(f"    {what}  {size:,.0f} MB")
-        saved.append(filename)
-
-    for filename in backup_config_files():
-        if os.path.exists(os.path.join(APPLIANCE_DIR, filename)):
-            shutil.copyfile(os.path.join(APPLIANCE_DIR, filename), os.path.join(dest, filename))
-            saved.append(filename)
-    _write_manifest(dest, saved, mode)
-
-
-def back_up(dest_dir: str = DEFAULT_BACKUP_DIR) -> str:
-    """Copy the appliance into a new timestamped folder under dest_dir."""
-    require_docker()
-    mode = backup_mode()
-    # Bring-back is decided by what is running NOW, never assumed: backing up a
-    # deliberately stopped appliance must not be the thing that starts it.
-    was_running = running_mode_names()
-
-    dest = os.path.join(os.path.abspath(os.path.expanduser(dest_dir)),
-                        f"embabel-backup-{instance()}-{backup_timestamp()}")
-    os.makedirs(dest, exist_ok=True)
-
-    if was_running:
-        print(f"  Stopping the {mode} mode — a graph copied while it is live is a graph that will not restore.")
-        for stopping in was_running:
-            _compose(stopping, "stop", capture=True)
-
-    try:
-        _copy_out(dest, mode)
-    finally:
-        # The appliance comes back whether the copy worked or not. A failed backup
-        # must never be the reason somebody's assistant is down.
-        for restarting in was_running:
-            _compose(restarting, "up", "-d", capture=True)
-    return dest
-
-
-def restore(backup_dir: str) -> str:
-    """Replace this appliance's data and configuration with a backup's.
-
-    Destructive by definition, and nothing here asks — the CALLER owns the
-    confirmation, because the Me app's dialog and the CLI's prompt are the same
-    decision asked in two different rooms.
-    """
-    manifest = inspect_backup(backup_dir)
-    require_docker()
-    came_from = manifest.get("instance")
-    if came_from and came_from != instance():
-        # Allowed, and useful — cloning one appliance into a scratch one is half
-        # the reason to have two. But it overwrites a DIFFERENT appliance than
-        # the backup came from, so it is said out loud rather than discovered.
-        print(f"  This backup was taken from '{came_from}'; restoring it into "
-              f"'{instance()}'.")
-    mode = manifest.get("mode") or backup_mode()
-    was_running = running_mode_names()
-    for stopping in was_running or [mode]:
-        _compose(stopping, "stop", capture=True)
-
-    # Config first, volumes second: .env decides the ports and the Neo4j password
-    # the restored graph was created under, so compose must be reading the
-    # backup's copy by the time anything comes back up. What is replaced is set
-    # ASIDE, not deleted — one .before-restore per file, kept until the next
-    # restore overwrites it. Restoring means the backup's world, so a file the
-    # backup does NOT have is set aside too.
-    for filename in backup_config_files():
-        current = os.path.join(APPLIANCE_DIR, filename)
-        replacement = os.path.join(backup_dir, filename)
-        if os.path.exists(current):
-            if filename == OVERRIDE_FILE:
-                with open(current) as f:
-                    if not f.read().startswith(OVERRIDE_MARKER):
-                        raise SetupError(f"{filename} was hand-written, not generated — "
-                                         "move it aside yourself, then restore again.")
-            os.replace(current, f"{current}.before-restore")
-        if os.path.exists(replacement):
-            shutil.copyfile(replacement, current)
-
-    # A fresh machine has no volumes yet. Let COMPOSE create them: a volume made
-    # by `docker run` lacks compose's project labels, and `up` on some versions
-    # refuses to adopt it. `up --no-start` also pulls images, so a first restore
-    # on a clean machine is a long one; on an existing install this never runs.
-    if any(not volume_exists(key) for key, _filename, _what in BACKUP_VOLUMES):
-        print("  Creating the appliance's volumes (this pulls images — it can take a while).")
-        _compose(mode, "up", "--no-start")
-
-    for key, filename, what in BACKUP_VOLUMES:
-        print(f"    {what}")
-        ok, err = _stream_volume(
-            ["run", "--rm", "-i", "-v", f"{volume_name(key)}:/to", BACKUP_HELPER_IMAGE,
-             "sh", "-c", "find /to -mindepth 1 -delete && tar xzf - -C /to"],
-            os.path.join(backup_dir, filename), into_volume=True)
-        if not ok:
-            raise SetupError(f"Restoring {what} failed: {_tail(err)}")
-
-    # Up unconditionally, even if nothing was running when this started. Backup
-    # is the verb that must not change what is up; restore is the verb whose
-    # whole point is the restored appliance, and leaving it stopped would be
-    # answering "put my data back" with a machine that says nothing.
-    _compose(mode, "up", "-d", capture=True)
-    return manifest.get("createdAt", "an unknown time")
-
-
-# The server stamps every sandbox with this (JvmInstance.INSTANCE_LABEL_KEY),
-# naming the appliance it belongs to. The jvm label beside it cannot serve: its
-# value is a per-process UUID, so a sandbox outlived by its JVM — the only kind
-# worth pruning — matches nothing the host can name.
-SANDBOX_INSTANCE_LABEL = "embabel-instance"
-
-
-def stray_sandbox_containers(mine_only: bool = True) -> list[str]:
-    """Sandbox containers still on the host, by name.
-
-    THIS instance's, by the label the server stamps on them. Sandboxes carry no
-    compose project — they are siblings created through the docker socket, not
-    services — so without that label the only filter available was the bare
-    `embabel-jvm` key, which matches every appliance's and every IDE run's alike.
-    Pass mine_only=False to see all of them, which is what a bug report wants.
-
-    The server sweeps these itself, but only two of the three cases: on shutdown it
-    removes containers matching ITS OWN jvm id, and on startup it reaps EXITED ones
-    from any jvm. A RUNNING sandbox whose jvm died without its shutdown hook — a
-    kill -9, a crashed Docker VM, a `down` that timed out into SIGKILL — is caught
-    by neither, and holds its memory until somebody notices.
-    """
-    argv = ["ps", "-a", "--filter", f"label={SANDBOX_LABEL}"]
-    if mine_only:
-        argv += ["--filter", f"label={SANDBOX_INSTANCE_LABEL}={instance()}"]
-    run = _docker(*argv, "--format", "{{.Names}}")
-    if not run or run.returncode != 0:
-        return []
-    return [line.strip() for line in run.stdout.splitlines() if line.strip()]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def remove_stray_sandboxes() -> None:
@@ -2413,20 +848,6 @@ def remove_codex_agents_block(target: str = CODEX_AGENTS_FILE) -> bool:
     return True
 
 
-def env_file_value(key: str, name: str | None = None) -> str | None:
-    """One value from an instance's settings, or None. Defaults to the current
-    instance; `name` is for reading ANOTHER one, which is how the port allocator
-    finds out which blocks are already spoken for. The file may already be gone
-    during teardown."""
-    path = env_path(name)
-    if not os.path.exists(path):
-        return None
-    with open(path) as f:
-        for line in f:
-            stripped = line.strip()
-            if stripped.startswith(f"{key}="):
-                return stripped.split("=", 1)[1].strip() or None
-    return None
 
 
 def this_appliance_urls() -> set[str]:
@@ -2597,31 +1018,6 @@ def resume_command() -> str:
     return f"./{entry}"
 
 
-def other_running_appliances() -> list[str]:
-    """Appliances running from a DIFFERENT checkout than this one.
-
-    The `embabel` command is one per machine and forwards to whichever checkout
-    installed it, so uninstalling one appliance can take the command away from
-    another that is still serving. Compose records the directory it ran in, which
-    is the only thing on the host that can tell two checkouts apart.
-    """
-    run = _docker("ps", "--filter", "label=com.docker.compose.project",
-                  "--format", '{{index .Config.Labels "com.docker.compose.project.working_dir"}}',
-                  timeout=20)
-    if not run or run.returncode != 0:
-        run = _docker("ps", "--format", "{{.Label \"com.docker.compose.project.working_dir\"}}", timeout=20)
-    if not run or run.returncode != 0:
-        return []
-    here = os.path.realpath(APPLIANCE_DIR)
-    found = set()
-    for line in run.stdout.splitlines():
-        path = line.strip()
-        if path and os.path.realpath(path) != here and os.path.basename(path) != "":
-            # Only appliances: another compose project's working directory is
-            # none of our business and must not stop an uninstall.
-            if os.path.exists(os.path.join(path, "setup.py")):
-                found.add(path)
-    return sorted(found)
 
 
 def uninstall() -> None:
