@@ -1,5 +1,5 @@
 #!/bin/sh
-# Embabel Me — one-command install.
+# Embabel Worlds — one-command install.
 #
 #   curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
 #
@@ -17,7 +17,7 @@
 # Environment:
 #   EMBABEL_HOME   where to install         (default: ~/embabel/worlds)
 #   EMBABEL_REF    branch or tag to fetch   (default: main)
-#   EMBABEL_MODE   me | worlds              (default: me)
+#   EMBABEL_MODE   worlds | me              (default: worlds)
 
 set -eu
 
@@ -26,7 +26,11 @@ REPO="${EMBABEL_REPO:-embabel-worlds/appliance}"
 # means you get whatever landed this morning, which is not what an installer
 # should hand a new user.
 REF="${EMBABEL_REF:-main}"
-MODE="${EMBABEL_MODE:-${EMBABEL_DOOR:-me}}"   # EMBABEL_DOOR: the old name, still honoured
+# WORLDS IS THE DOOR. This script is what worlds.embabel.com hands somebody who
+# has installed nothing, so the product it opens must be the one they just read
+# about — Me defaulted here for historical reasons and greeted every visitor by
+# naming the other product. `EMBABEL_MODE=me` still installs the assistant.
+MODE="${EMBABEL_MODE:-${EMBABEL_DOOR:-worlds}}"   # EMBABEL_DOOR: the old name, still honoured
 # ~/embabel/worlds — vendor, then product, then whatever the product keeps
 # (realms/ lands at ~/embabel/worlds/realms). ~/embabel-me was wrong twice over:
 # it named a vendor and a door with one hyphen, and it named the door you happened
@@ -53,12 +57,15 @@ HOME_DIR="${EMBABEL_HOME:-$DEFAULT_HOME}"
 say() { printf '  %s\n' "$*"; }
 die() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
 
-# The door you are actually installing. The banner said "Embabel Me" whichever
-# mode you asked for, so the Worlds install opened by naming the other product.
+# The door you are actually installing, described in the SITE'S words —
+# worlds-site/src/pages/index.astro. Somebody arrives here straight off that
+# page, and an installer that pitches the product differently from the page
+# that sent them reads as a different product.
 if [ "$MODE" = "worlds" ]; then
   printf '\n  Embabel Worlds — the world your AI acts in\n'
-  printf '  A governed, living knowledge graph of your business, built from the\n'
-  printf '  systems you already run. It belongs to you, and it runs here.\n\n'
+  printf '  A governed, living knowledge graph of your business, derived from the\n'
+  printf '  systems you already run and owned by you. Insight across the whole\n'
+  printf '  business, in days.\n\n'
 else
   printf '\n  Embabel Me — your own assistant, on your own machine\n\n'
 fi
