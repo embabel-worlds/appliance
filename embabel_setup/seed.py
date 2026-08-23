@@ -169,6 +169,24 @@ def fetch_spec_documents(into: str) -> list[str]:
             f.write(body)
         fetched.append(path)
     return fetched
+def upload_name(path: str) -> str:
+    """The filename to upload a guide under — which is also its identity.
+
+    The server keys a document on the name it arrives with, so two uploads that
+    share one lose the first. Every skill is `skills/<name>/SKILL.md`, so all
+    seven arrived as "SKILL.md" and collapsed into a single document: six skills
+    silently unsearchable, with the installer still reporting 26 indexed because
+    each POST really did succeed. The realm spec already carries a prefix for
+    this exact reason; skills needed the same and did not have it.
+    """
+    parts = path.split(os.sep)
+    if "skills" in parts:
+        owner = parts[parts.index("skills") + 1:-1]
+        if owner:
+            return f"{owner[-1]} {os.path.basename(path)}"
+    return os.path.basename(path)
+
+
 def _upload_document(base: str, auth: str, path: str) -> bool:
     """One multipart POST, by hand — stdlib only, like everything else here.
 
@@ -178,7 +196,7 @@ def _upload_document(base: str, auth: str, path: str) -> bool:
     boundary = "----embabel" + secrets.token_hex(8)
     with open(path, "rb") as f:
         content = f.read()
-    name = os.path.basename(path)
+    name = upload_name(path)
     body = (
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
@@ -207,7 +225,7 @@ def seed_documentation(base: str, auth: str) -> None:
     try:
         for index, path in enumerate(files, 1):
             STATUS.set(f"Indexing the documentation   {dim(f'{index} of {len(files)}')}  "
-                       + dim(os.path.basename(path)))
+                       + dim(upload_name(path)))
             if _upload_document(base, auth, path):
                 done += 1
     except Exception:
