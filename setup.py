@@ -148,7 +148,16 @@ GITHUB_TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN")
 # The collector is fixed in the appliance image. This is repeated here because setup
 # must disclose the destination before it asks the operator to finish installation;
 # PHONE_HOME.md and the live endpoints remain the authoritative payload views.
+# The collector, and the switch that decides whether anything reaches it. BOTH
+# live in this repo rather than in the image: the address so it can be read
+# before it is used, and the switch so turning reporting on is a thing an
+# operator does here, deliberately, rather than a default they inherit.
+#
+# OFF unless .env says otherwise. The compose files name the endpoint with an
+# empty default, so a hand-run `docker compose up` is off too — a switch that
+# only works when you go through setup.py is not a switch.
 PHONE_HOME_ENDPOINT = "https://telemetry.embabel.com/v1/appliance"
+PHONE_HOME_VAR = "EMBABEL_PHONE_HOME"
 PHONE_HOME_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/PHONE_HOME.md"
 
 
@@ -478,6 +487,12 @@ def github_token() -> tuple[str, str] | None:
     return (token, "the gh CLI") if token else None
 
 
+def phone_home_on() -> bool:
+    """Whether this appliance reports usage. False unless .env says true."""
+    value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
 def compose_env() -> dict:
     """The environment `docker compose` runs with.
 
@@ -497,6 +512,9 @@ def compose_env() -> dict:
     for var, value in ports_for(port_base()).items():
         env[var] = str(value)
     env["EMBABEL_INSTANCE"] = instance()
+    # The switch resolved to an address. Empty is the off state the compose files
+    # already default to; this only ever turns it ON.
+    env["ASSISTANT_PHONE_HOME_ENDPOINT"] = PHONE_HOME_ENDPOINT if phone_home_on() else ""
     return env
 
 
@@ -591,17 +609,17 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
                 # the tally lands just before it rather than after the wizard has
                 # already moved on.
                 if inside and awaiting_key:
-                    print(f"  {MIDDOT} {awaiting_key} model-role warning(s): no provider key yet. "
-                          "Setup asks for one next.")
+                    STATUS.log(f"  {MIDDOT} {awaiting_key} model-role warning(s): no provider key yet. "
+                               "Setup asks for one next.")
                     awaiting_key = 0
-                print(line)
+                STATUS.log(line)
                 continue
             if not inside and BOOT_AWAITING_KEY.search(line):
                 awaiting_key += 1
                 continue
             if inside or " WARN " in line or " ERROR " in line:
-                print(line if len(line) <= BOOT_LINE_MAX
-                      else line[:BOOT_LINE_MAX] + dim(" …"))
+                STATUS.log(line if len(line) <= BOOT_LINE_MAX
+                           else line[:BOOT_LINE_MAX] + dim(" …"))
 
     thread = threading.Thread(target=pump, daemon=True)
     thread.start()
@@ -1101,6 +1119,151 @@ def heading(text: str, width: int = 60) -> str:
     label = f"{RULE_CHAR}{RULE_CHAR} {text} "
     tail = RULE_CHAR * max(0, width - len(label))
     return dim(f"{RULE_CHAR}{RULE_CHAR} ") + paint(text, "bold", "accent") + " " + dim(tail)
+
+
+# ── the status line ─────────────────────────────────────────────────────────
+#
+# First boot takes a minute or two, and for most of it the terminal said one
+# sentence and then nothing. Silence during a long wait is indistinguishable
+# from a hang, and the honest fix is not a spinner — it is telling the truth
+# about what is happening, which the host can actually observe.
+#
+# WHAT IT SHOWS IS REAL, never a fake percentage. Three lamps, each read from
+# docker or from the API on every tick:
+#
+#   graph    the neo4j container's own healthcheck
+#   server   the mode container's healthcheck
+#   API      whether the door answers HTTP yet
+#
+# A boot that stalls therefore shows WHICH of the three it stalled on, which is
+# the difference between "it is slow" and a support conversation.
+#
+# ONE WRITER FOR THE BOTTOM LINE. The boot log prints from its own thread at the
+# same time, and two writers sharing a line produce shredded output — so every
+# log line goes through [log], which erases the status, prints, and redraws it.
+# That coordination is the whole reason this is a class and not a print().
+#
+# It disables itself whenever colour does: piped output must stay clean, and a
+# progress animation in a CI log is thousands of lines of carriage returns.
+
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+SPINNER_ASCII = "|/-\\"
+
+
+class StatusLine:
+    """A single self-updating line, safe to share with a thread that prints."""
+
+    def __init__(self) -> None:
+        self.enabled = COLOUR and _UNICODE_OK is not None
+        self.text = ""
+        self.started = 0.0
+        self.frame = 0
+        self.live = False
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _frames(self) -> str:
+        return SPINNER if _UNICODE_OK else SPINNER_ASCII
+
+    def _render(self) -> str:
+        elapsed = int(time.monotonic() - self.started)
+        mark = accent(self._frames()[self.frame % len(self._frames())])
+        clock = dim(f"{elapsed // 60}:{elapsed % 60:02d}")
+        return f"  {mark} {self.text}  {clock}"
+
+    def _erase(self) -> None:
+        # Overwrite with spaces rather than an ANSI erase: \r plus blanks works
+        # on every terminal this runs on, including the ones that ignore CSI K.
+        sys.stdout.write("\r" + " " * 78 + "\r")
+
+    def _animate(self) -> None:
+        while not self._stop.wait(0.12):
+            with self._lock:
+                if self.live:
+                    self.frame += 1
+                    sys.stdout.write("\r" + self._render())
+                    sys.stdout.flush()
+
+    def start(self, text: str) -> None:
+        if not self.enabled:
+            print(f"  {text}")
+            return
+        with self._lock:
+            self.text, self.started, self.live = text, time.monotonic(), True
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._animate, daemon=True)
+            self._thread.start()
+
+    def set(self, text: str) -> None:
+        """Change what the line says without restarting the clock — the elapsed
+        time is of the WAIT, not of the phase, because that is the number
+        somebody is deciding whether to worry about."""
+        if not self.enabled:
+            return
+        with self._lock:
+            self.text = text
+
+    def log(self, line: str) -> None:
+        """Print above the status line. Every concurrent writer uses this."""
+        with self._lock:
+            if self.live and self.enabled:
+                self._erase()
+            print(line)
+            if self.live and self.enabled:
+                sys.stdout.write("\r" + self._render())
+                sys.stdout.flush()
+
+    def stop(self, final: str | None = None) -> None:
+        with self._lock:
+            if self.live and self.enabled:
+                self._erase()
+            self.live = False
+            if final:
+                print(final)
+
+
+STATUS = StatusLine()
+
+
+def boot_phase(container: str | None, base: str) -> str:
+    """The three lamps, read fresh. Cheap enough for a 3-second poll: two docker
+    inspects against the local daemon and nothing over the network."""
+    def health(name: str) -> str:
+        run = _docker("inspect", "-f",
+                      "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
+                      name, timeout=10)
+        return run.stdout.strip() if run and run.returncode == 0 else "?"
+
+    def lamp(ok: bool, label: str) -> str:
+        return f"{good(BULLET) if ok else MIDDOT} {label if ok else dim(label)}"
+
+    graph = find_graph_container()
+    parts = [lamp(graph is not None and health(graph) == "healthy", "graph")]
+    if container:
+        parts.append(lamp(health(container) == "healthy", "server"))
+    parts.append(lamp(_answers(base), "API"))
+    return "Starting the appliance   " + dim(" · ").join(parts)
+
+
+def find_graph_container() -> str | None:
+    run = _docker("ps", "--filter", f"label=com.docker.compose.project={compose_project()}",
+                  "--filter", "label=com.docker.compose.service=neo4j",
+                  "--format", "{{.Names}}", timeout=15)
+    names = run.stdout.split() if run and run.returncode == 0 else []
+    return names[0] if names else None
+
+
+def _answers(base: str) -> bool:
+    """Does the door answer at all? Any HTTP status counts — 401 is an answer."""
+    try:
+        import urllib.request
+        urllib.request.urlopen(base, timeout=2)
+        return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:
+        return False
 
 
 # ── instances ───────────────────────────────────────────────────────────────
@@ -2617,12 +2780,14 @@ def call_when_ready(base: str, token: str) -> dict:
     announced = False
     while True:
         try:
-            return call(base, "", token)
+            answer = call(base, "", token)
+            STATUS.stop()
+            return answer
         except Unreachable:
             if time.monotonic() >= deadline:
                 raise
             if not announced:
-                print("  Waiting for the appliance to finish starting…")
+                STATUS.start("Waiting for the appliance to answer")
                 announced = True
             time.sleep(2)
 
@@ -2640,7 +2805,7 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
         if container:
             token = token_from_logs(container)
             if token:
-                print(f"  Found the setup token in the {container} log.\n")
+                STATUS.stop(f"  {TICK} The appliance is up. Setup token read from its log.\n")
                 return token
         state = probe(base)  # raises AlreadySetUp — the friendliest outcome
         if state == "pending":
@@ -2650,11 +2815,13 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
         if container is None or time.monotonic() >= deadline:
             break
         if not announced:
-            print(f"  The appliance is still starting — watching the {container} log "
-                  f"for its setup token (up to {BOOT_WAIT_SECONDS}s)…")
+            STATUS.start(boot_phase(container, base))
             announced = True
+        else:
+            STATUS.set(boot_phase(container, base))
         time.sleep(3)
 
+    STATUS.stop()
     if container is None and state == "unreachable":
         raise SetupError(
             f"No appliance is running: no mode container was found and {base} does not answer.\n"
@@ -2683,6 +2850,12 @@ def disclose_usage_reporting(base: str) -> None:
     this function is never reached again; an interrupted setup shows it again on resume,
     which is preferable to remembering an acknowledgement for an incomplete install.
     """
+    # NOTHING TO DISCLOSE WHEN NOTHING IS SENT. Reporting is off by default now,
+    # and a page explaining a transmission that will not happen is worse than
+    # silence: it teaches people the appliance phones home when it does not.
+    if not phone_home_on():
+        return
+
     print("\n" + heading("Usage reporting"))
     say("usage-reporting", endpoint=PHONE_HOME_ENDPOINT,
         doc_url=PHONE_HOME_DOC_URL, base=base)

@@ -110,13 +110,21 @@ To be explicit, because the absence of a thing is hard to verify from a field li
   does not advance. Reporting can never slow down or break your installation.
 - Your instance logs one line at startup naming this document.
 
-## Can I turn it off?
+## Is it on?
 
-There is no configuration flag to disable reporting — it is part of what the product is,
-and we would rather be candid about that than ship a switch and hope you do not find the
-traffic. What we offer instead is this document, the `/api/v1/phone-home` endpoint that
-shows you the exact bytes, and a payload deliberately built so that nothing sensitive
-*can* be in it. A test in our build (`PhoneHomeContentTest`) seeds an installation with
+**No — not unless you turn it on.** Reporting is off by default: set
+`EMBABEL_PHONE_HOME=true` in `.env` and nothing is transmitted.
+
+Both the switch and the collector address live in the appliance repo rather than in the
+image, so enabling reporting is something an operator does deliberately, in a file they
+can read, instead of a default they inherit and have to go looking for. With it off, the
+compose files hand the server an empty endpoint: it still assembles the report, so
+`/api/v1/phone-home/preview` shows exactly what *would* be sent, and it has nowhere to
+send it.
+
+Everything below describes what is reported when you say yes. It is worth reading first:
+this document, the `/api/v1/phone-home` endpoint that shows you the exact bytes, and a
+payload deliberately built so that nothing sensitive *can* be in it. A test in our build (`PhoneHomeContentTest`) seeds an installation with
 distinctive names in every place content could leak and fails the build if any of them
 reach the payload.
 

@@ -155,6 +155,12 @@ services:
       # bare jar — and this mode from the worlds mode. It is a constant, not information
       # about you — see PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose
+      # USAGE REPORTING IS OFF UNLESS THIS APPLIANCE TURNS IT ON. The image defaults
+      # this to Embabel's collector; naming it here with an empty default overrides
+      # that, and an empty endpoint means the server assembles reports and transmits
+      # nothing. Set EMBABEL_PHONE_HOME=true in .env to opt in — setup.py resolves
+      # that to the collector address, which lives in this repo and not in the image.
+      - ASSISTANT_PHONE_HOME_ENDPOINT=${ASSISTANT_PHONE_HOME_ENDPOINT:-}
       # Without an external organization role provider, this fallback applies to
       # every authenticated principal. Admin by default lets the setup-created
       # operator use admin-gated local surfaces; set `user` to opt out.

@@ -523,14 +523,15 @@ The `json` field is the literal request body, so it matches a packet capture byt
 The first report is 10 minutes after startup, so a short evaluation never reports at all,
 and an unreachable collector is dropped silently rather than slowing anything down.
 
-First-run `setup.py` displays the destination, cadence, every payload field and the live
-inspection URLs before it asks for account details or provider keys. It pauses for an
-explicit continue action, and an interrupted setup shows the disclosure again when resumed.
+**It is off by default.** Your appliance sends Embabel nothing unless you set
+`EMBABEL_PHONE_HOME=true` in `.env`. The switch and the collector address both live in
+this repo rather than in the image, so turning it on is a thing you do, in a file you can
+read, and not a default you inherit.
 
-There is no configuration flag to disable it, and the collector address is fixed in the
-image rather than exposed in `.env` — a variable you could blank would be an opt-out by
-another name, and we would rather say so plainly than ship one quietly. If your
-environment forbids outbound telemetry, block the endpoint at your network.
+With it on, first-run setup displays the destination, cadence, every payload field and
+the live inspection URLs before it asks for account details or provider keys, and pauses
+for an explicit continue. With it off, setup says nothing about reporting — describing a
+transmission that will not happen is worse than silence.
 
 ## Your data
 
