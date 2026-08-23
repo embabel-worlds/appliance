@@ -8,12 +8,14 @@ filtered to warnings and errors because an INFO line can carry a document title.
 import os
 import re
 import shutil
+import json
 import time
 
 from .colour import MIDDOT, TICK, dim
 from .core import APPLIANCE_DIR
 from .dockerlib import _docker, appliance_containers, stray_sandbox_containers
 from .settings import env_file, env_path, instance
+from .backup import backup_timestamp
 from .versions import appliance_versions
 
 # ── bug report ──────────────────────────────────────────────────────────────

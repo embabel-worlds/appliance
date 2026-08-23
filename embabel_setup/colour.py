@@ -8,6 +8,9 @@ import os
 import shutil
 import sys
 
+from .core import APPLIANCE_DIR
+from .words import COPY_DIR
+
 # ── colour ──────────────────────────────────────────────────────────────────
 #
 # RESTRAINT IS THE POINT. This runs in terminals people screen-share, pipe into

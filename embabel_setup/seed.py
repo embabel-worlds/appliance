@@ -4,6 +4,7 @@ A new world is empty, so the first question anybody has — what is this, and wh
 can I ask it — was one the product could not answer about itself. Embeddings are
 local, so this costs nothing and sends nothing anywhere.
 """
+import base64
 import os
 import secrets
 import shutil

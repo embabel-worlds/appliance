@@ -8,7 +8,8 @@ import os
 import subprocess
 
 from .colour import dim
-from .core import APPLIANCE_DIR, SetupError
+from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
+
 from .dockerlib import _compose, _docker, find_mode_container
 from .versions import image_identity, mode_image
 

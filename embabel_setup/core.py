@@ -1,6 +1,7 @@
 """The two things every other module needs: where the appliance is, and how it
 fails. Kept apart so nothing has to import a large module to raise an error."""
 import os
+import sys
 
 # Every path is absolute rather than relying on a chdir, because the Me app and
 # the CLI both call in from their own working directories.
@@ -53,3 +54,37 @@ MODE_CORE = {
 # mode only, because it overrides the `assistant` service, which the worlds file
 # does not define (merging it there would fabricate an image-less service).
 OVERRIDE_FILE = "docker-compose.override.yml"
+
+
+# How long to wait for a container that is still booting. Here because both the
+# token hunt and the restart wait need it and neither owns it.
+BOOT_WAIT_SECONDS = 120
+
+
+# ── plumbing ────────────────────────────────────────────────────────────────
+
+def prompt(text: str) -> str:
+    """prompt(), with the one failure it has in this program handled.
+
+    Setup is interactive by design, and the way it is invoked most often —
+    `curl … | sh` — hands it a stdin that is already at EOF, because the shell
+    read the installer from that same pipe. The result was EOFError surfacing as
+    a traceback under the first question it asked, which reads as the software
+    being broken rather than as a terminal being absent.
+
+    install.sh now reattaches /dev/tty before handing over, so this is the second
+    line of defence — for a genuinely non-interactive run, where the right answer
+    is to say which command to run by hand.
+    """
+    try:
+        return input(text)
+    except EOFError:
+        raise SetupError(
+            "No terminal to ask on — setup needs to ask you a few questions.\n"
+            "Run it directly:  cd ~/embabel/worlds && ./worlds.py   (or ./me.py)"
+        )
+
+
+# The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
+# build step). Me onboarding ends by offering to start it.
+ME_APP_DIR = "me-app"

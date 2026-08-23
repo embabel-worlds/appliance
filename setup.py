@@ -84,9 +84,6 @@ MCP_SERVER_NAME = "embabel"
 # The env var Codex reads the MCP bearer token from: `codex mcp add` stores the
 # variable's NAME in its config, never the token, so the operator exports this.
 CODEX_TOKEN_ENV = "EMBABEL_MCP_TOKEN"
-# The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
-# build step). Me onboarding ends by offering to start it.
-ME_APP_DIR = "me-app"
 TOKEN_PATTERN = re.compile(r"Setup token:\s*([0-9a-f]{32,})")
 # Where the appliance keeps its operator account, inside the container: the
 # credential file (bcrypt hashes) and the setup record. --reset-password
@@ -113,28 +110,6 @@ PREFERRED_DEFAULTS = {"provider": "openai"}
 
 
 
-# ── plumbing ────────────────────────────────────────────────────────────────
-
-def prompt(text: str) -> str:
-    """prompt(), with the one failure it has in this program handled.
-
-    Setup is interactive by design, and the way it is invoked most often —
-    `curl … | sh` — hands it a stdin that is already at EOF, because the shell
-    read the installer from that same pipe. The result was EOFError surfacing as
-    a traceback under the first question it asked, which reads as the software
-    being broken rather than as a terminal being absent.
-
-    install.sh now reattaches /dev/tty before handing over, so this is the second
-    line of defence — for a genuinely non-interactive run, where the right answer
-    is to say which command to run by hand.
-    """
-    try:
-        return input(text)
-    except EOFError:
-        raise SetupError(
-            "No terminal to ask on — setup needs to ask you a few questions.\n"
-            "Run it directly:  cd ~/embabel/worlds && ./worlds.py   (or ./me.py)"
-        )
 
 
 def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
