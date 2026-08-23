@@ -161,6 +161,17 @@ services:
       # nothing. Set EMBABEL_PHONE_HOME=true in .env to opt in — setup.py resolves
       # that to the collector address, which lives in this repo and not in the image.
       - ASSISTANT_PHONE_HOME_ENDPOINT=${ASSISTANT_PHONE_HOME_ENDPOINT:-}
+      # ENTITY EXTRACTION OFF BY DEFAULT. Every ingested document otherwise costs
+      # an LLM call that asks a model to pull typed entities out of it, and on
+      # this appliance it failed on every single one: the model returns a null
+      # `properties` and the binder rejects it, three attempts per document,
+      # before logging that ingest had already succeeded anyway. Seeding the
+      # documentation alone meant 25 documents times 3 failed calls at first run.
+      #
+      # It is off rather than fixed because the fix is in the dice library and
+      # the value is optional: search and retrieval do not use it. Set
+      # ASSISTANT_ENTITY_EXTRACTION=true to turn it back on.
+      - ASSISTANT_INFRASTRUCTURE_DOCUMENT_PIPELINE_ENTITY_EXTRACTION=${ASSISTANT_ENTITY_EXTRACTION:-false}
       # Without an external organization role provider, this fallback applies to
       # every authenticated principal. Admin by default lets the setup-created
       # operator use admin-gated local surfaces; set `user` to opt out.
