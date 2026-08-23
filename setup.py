@@ -409,6 +409,49 @@ def packaged_me_app() -> str | None:
     return next((c for c in candidates if os.path.isdir(c)), None)
 
 
+def container_started_at(container: str) -> str:
+    run = _docker("inspect", "-f", "{{.State.StartedAt}}", container, timeout=15)
+    return run.stdout.strip() if run and run.returncode == 0 else ""
+
+
+def wait_until_serving(container: str | None, base: str, was_started_at: str) -> bool:
+    """Wait out the restart /complete triggers, and return True when the door is open.
+
+    NOT call_when_ready, which is the mistake this replaces. That polls
+    GET /api/v1/setup — which answers 410 Gone the moment setup completes, by
+    design. 410 raises AlreadySetUp, a SetupError rather than an Unreachable, so
+    it is never retried: the "wait" returned instantly and setup went on to
+    announce a sign-in URL, and then to OPEN it, in the middle of a 21-second
+    restart. That is a 502 in the user's face at the last step of the install.
+    (Measured on this machine: "Started in 42.167 seconds", then "Started in
+    20.78 seconds", RestartCount 1.)
+
+    Two conditions, and the first is the one that is easy to miss: the container
+    must have RESTARTED — a poll that begins before the old process has gone
+    down finds it answering, declares victory, and hands over a URL that dies a
+    second later. StartedAt moving is the proof. Then, health and an actual HTTP
+    answer; any status counts, including 401, because a door that refuses you is
+    a door that is open.
+    """
+    if not container:
+        return _answers(base)
+    deadline = time.monotonic() + BOOT_WAIT_SECONDS
+    restarted = False
+    while time.monotonic() < deadline:
+        STATUS.set(boot_phase(container, base))
+        if not restarted:
+            now = container_started_at(container)
+            restarted = bool(now and was_started_at and now != was_started_at)
+        elif _answers(base):
+            run = _docker("inspect", "-f",
+                          "{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}",
+                          container, timeout=10)
+            if run and run.returncode == 0 and run.stdout.strip() in ("healthy", "running"):
+                return True
+        time.sleep(2)
+    return _answers(base)
+
+
 def open_in_browser(target: str) -> bool:
     """Open a URL, if this machine has anything to open it with.
 
@@ -3613,6 +3656,7 @@ def main() -> int:
             wire_coding_agents(result or {})
 
         print("\n  Finishing…", end=" ", flush=True)
+        started_before = container_started_at(container) if container else ""
         try:
             done = call(base, "/complete", token, {})
         except SetupError:
@@ -3643,11 +3687,8 @@ def main() -> int:
         # met a dead port and concluded the install had failed.
         if not deferred:
             STATUS.start("Restarting to pick up your provider key")
-        try:
-            call_when_ready(base, token)
-        except SetupError:
-            pass
-        STATUS.stop()
+            wait_until_serving(container, base, started_before)
+            STATUS.stop()
         print(f"\n  {TICK} Done. Sign in at {url(where)}"
               + (f" as {bold(username)}" if username else ""))
         # Printed first and always — the address is the whole answer on a headless
