@@ -21,7 +21,7 @@ shown again, so if you no longer have it, the simplest honest answer is to re-ru
 
 ```bash
 claude mcp add --transport http --scope user embabel \
-  http://localhost:4342/mcp --header "Authorization: Bearer <token>"
+  http://localhost:11043/mcp --header "Authorization: Bearer <token>"
 ```
 
 Other agents — Codex, Cursor, anything speaking MCP — take the same URL and the same

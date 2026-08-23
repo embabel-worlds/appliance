@@ -39,7 +39,29 @@ import urllib.error
 import urllib.request
 import zlib
 
-DEFAULT_BASE = "http://localhost:4242"
+def default_base() -> str:
+    """Where the Me door answers for the instance in play. A function now: the
+    port moves with the instance, so a constant could only ever be right once."""
+    return f"http://localhost:{ports_for(port_base())['ASSISTANT_PORT']}"
+
+
+def console_url() -> str:
+    """WHERE A PERSON GOES in worlds mode — not the same as where the API is. The
+    worlds server also serves the old Vaadin UI, and sending a new operator there
+    instead of to the console makes their first impression a surface on its way out."""
+    return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}"
+
+
+def surface_urls() -> dict:
+    """Every address this instance publishes, by the name a person uses for it."""
+    p = ports_for(port_base())
+    return {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
+            "worlds": f"http://localhost:{p['WORLDS_PORT']}",
+            "console": console_url(),
+            "graph": f"http://localhost:{p['NEO4J_BROWSER_PORT']}",
+            "bolt": f"bolt://localhost:{p['NEO4J_BOLT_PORT']}",
+            "dashboards": f"http://localhost:{p['GRAFANA_PORT']}",
+            "metrics": f"http://localhost:{p['PROMETHEUS_PORT']}"}
 TOKEN_HEADER = "X-Embabel-Setup-Token"
 # The appliance's two modes, by compose SERVICE name. Containers are found through
 # their compose service label rather than a hardcoded container_name, so plain
@@ -50,11 +72,6 @@ MODE_SERVICES = ("assistant", "worlds")
 # `./setup.py worlds` ride these to make first run a single command.
 MODE_COMPOSE = {"me": "docker-compose-me.yml", "worlds": "docker-compose-worlds.yml"}
 MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
-# WHERE A PERSON GOES, per mode — which is not the same as where the API is. The
-# worlds server on 4342 also serves the old Vaadin UI, and sending a new operator
-# there instead of to the console means their first impression is a surface that
-# is on its way out.
-CONSOLE_PORT = 4343
 # What has to exist before the appliance can answer at all: the graph and the mode
 # itself (plus the console, which IS the worlds surface). Together about 0.8GB.
 MODE_CORE = {
@@ -98,6 +115,10 @@ SANDBOX_LABEL = "embabel-jvm"
 # The compose project both mode files declare. Anything belonging to the appliance
 # carries it as a label — which is the only reliable way to tell the appliance's
 # containers from a developer's own stack, whose names start the same way.
+# The DEFAULT project name. Everything reads compose_project() instead, which
+# resolves the instance in play — this remains only as the name that instance
+# `appliance` produces, and as the answer for anything asking before an
+# instance has been chosen.
 COMPOSE_PROJECT = "embabel-appliance"
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
 # build step). Me onboarding ends by offering to start it.
@@ -189,7 +210,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
         if e.code == 410:
             raise AlreadySetUp(
                 "This appliance is already set up.\n"
-                f"Worlds: the console at http://localhost:{CONSOLE_PORT}   ·   Me: {base}"
+                f"Worlds: the console at {console_url()}   ·   Me: {base}"
                 "\n(Forgot the password? --reset-password recreates the account and keeps all data.)"
             )
         if e.code == 401:
@@ -221,10 +242,18 @@ def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None
 
 
 def running_modes() -> dict[str, str]:
-    """Running mode containers, keyed by compose service name."""
+    """Running mode containers of THIS instance, keyed by compose service name.
+
+    Both labels, always. The service label alone stopped being an identity the
+    moment a second instance could exist — every instance has a container
+    labelled service=worlds, and matching on that would have let a backup stop
+    somebody else's appliance and copy the wrong graph.
+    """
     found = {}
     for service in MODE_SERVICES:
-        run = _docker("ps", "--filter", f"label=com.docker.compose.service={service}",
+        run = _docker("ps",
+                      "--filter", f"label=com.docker.compose.project={compose_project()}",
+                      "--filter", f"label=com.docker.compose.service={service}",
                       "--format", "{{.Names}}")
         if run is not None and run.returncode == 0:
             for name in run.stdout.split():
@@ -255,7 +284,7 @@ def print_worlds_surfaces(base: str) -> None:
     surface a worlds operator reaches next, in one block. The API/MCP lines use the
     mode's real detected port; the rest are the compose defaults (.env moves them)."""
     print("  \u2500\u2500 Your Worlds surfaces " + "\u2500" * 38)
-    print("  Console        http://localhost:4343   \u2190 START HERE")
+    print(f"  Console        {surface_urls()['console']}   \u2190 START HERE")
     print("                 The Worlds console: realms, documents, keys, views, chat.")
     print("                 Opens with the commissioning sequence.")
     print()
@@ -263,8 +292,8 @@ def print_worlds_surfaces(base: str) -> None:
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
-    print("  Dashboards     http://localhost:4246   \u00b7   Metrics  http://localhost:4247")
+    print(f"  Graph          {surface_urls()['graph']}  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
+    print(f"  Dashboards     {surface_urls()['dashboards']}   \u00b7   Metrics  {surface_urls()['metrics']}")
     print()
 
 
@@ -282,7 +311,7 @@ def print_me_surfaces(base: str) -> None:
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print("  Graph          http://localhost:4243  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
+    print(f"  Graph          {surface_urls()['graph']}  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
     print()
 
 
@@ -457,6 +486,12 @@ def compose_env() -> dict:
     found = github_token()
     if found:
         env["GITHUB_TOKEN"] = found[0]
+    # The port block, computed rather than trusted. The settings file carries it
+    # too — this is what makes a hand-edited or half-written file produce a
+    # working appliance on the right ports instead of a confusing half-collision.
+    for var, value in ports_for(port_base()).items():
+        env[var] = str(value)
+    env["EMBABEL_INSTANCE"] = instance()
     return env
 
 
@@ -473,7 +508,20 @@ def announce_github_token() -> None:
 def _compose(mode: str, *argv: str, capture: bool = False):
     """docker compose against the mode's file, from the appliance directory.
     capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
-    cmd = ["docker", "compose", "-f", MODE_COMPOSE[mode]]
+    # -p and --env-file are what make a second instance a second instance: the
+    # project prefixes every container, volume and network, and the settings file
+    # carries that instance's port block. For the default instance both resolve to
+    # exactly what compose would have done on its own.
+    # --env-file ONLY IF IT EXISTS. Compose treats a named-but-missing env file as
+    # an error, and a fresh clone has no .env yet — passing it unconditionally
+    # made every compose call fail on exactly the path a new user is on, and
+    # again after `uninstall`. Omitting it is also correct: compose then reads
+    # `.env` from the project directory by convention, which for the default
+    # instance is the same file.
+    cmd = ["docker", "compose", "-p", compose_project()]
+    if os.path.exists(env_path()):
+        cmd += ["--env-file", env_path()]
+    cmd += ["-f", MODE_COMPOSE[mode]]
     if mode == "me" and os.path.exists(OVERRIDE_FILE):
         cmd += ["-f", OVERRIDE_FILE]
     cmd += argv
@@ -625,13 +673,13 @@ def ensure_wallet_key() -> None:
     exactly like TZ above."""
     if os.environ.get("EMBABEL_KEY_SECRET"):
         return  # exported in the shell — compose sees it directly
-    if os.path.exists(ENV_FILE):
-        with open(ENV_FILE) as f:
+    if os.path.exists(env_file()):
+        with open(env_file()) as f:
             if any(line.strip().startswith("EMBABEL_KEY_SECRET=") for line in f):
                 return
     # 32 bytes, base64 — AES-256, the length WalletEncryptionConfiguration validates.
     key = base64.b64encode(secrets.token_bytes(32)).decode()
-    with open(ENV_FILE, "a") as f:
+    with open(env_file(), "a") as f:
         f.write(
             "\n# The key your wallet is encrypted with, generated once by setup.py.\n"
             "# KEEP IT. Changing or losing it does not lock you out of the appliance —\n"
@@ -639,7 +687,7 @@ def ensure_wallet_key() -> None:
             "# them. Back it up with anything else you would not want to retype.\n"
             f"EMBABEL_KEY_SECRET={key}\n"
         )
-    os.chmod(ENV_FILE, 0o600)
+    os.chmod(env_file(), 0o600)
     print("  Generated EMBABEL_KEY_SECRET in .env — your saved credentials now survive a restart.")
 
 
@@ -653,8 +701,8 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
     written above a line that is new.
     """
     lines: list[str] = []
-    if os.path.exists(ENV_FILE):
-        with open(ENV_FILE) as f:
+    if os.path.exists(env_file()):
+        with open(env_file()) as f:
             lines = f.read().splitlines()
     for index, line in enumerate(lines):
         if line.startswith(f"{key}="):
@@ -662,7 +710,7 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
             break
     else:
         lines += ["", *why, f"{key}={value}"]
-    with open(ENV_FILE, "w") as f:
+    with open(env_file(), "w") as f:
         f.write("\n".join(lines) + "\n")
 
 
@@ -677,8 +725,8 @@ def configured_mode() -> str | None:
     value = os.environ.get("EMBABEL_MODE", "").strip()
     if value in MODE_COMPOSE:
         return value
-    if os.path.exists(ENV_FILE):
-        with open(ENV_FILE) as f:
+    if os.path.exists(env_file()):
+        with open(env_file()) as f:
             for line in f:
                 if line.strip().startswith("EMBABEL_MODE="):
                     value = line.split("=", 1)[1].strip()
@@ -708,15 +756,21 @@ def take_everything_down() -> None:
     before "Done", it reads as the uninstall having failed. So: run it quietly,
     then report what is actually gone by looking.
     """
-    cmd = ["docker", "compose", "-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
-           "down", "--volumes", "--remove-orphans"]
+    # -p, or this tears down the DEFAULT instance whichever one you asked for —
+    # the mode files carry `name: embabel-appliance`, so without it every
+    # instance's uninstall would delete the same appliance.
+    cmd = ["docker", "compose", "-p", compose_project()]
+    if os.path.exists(env_path()):  # missing is normal mid-uninstall; see _compose
+        cmd += ["--env-file", env_path()]
+    cmd += ["-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
+            "down", "--volumes", "--remove-orphans"]
     run = subprocess.run(cmd, capture_output=True, text=True)
 
     # BY PROJECT LABEL, not by name. Matching "embabel-" caught embabel-assistant-neo4j
     # and embabel-assistant-docling — a developer's own stack from the assistant repo,
     # a different compose project entirely — and reported somebody else's healthy
     # containers as an uninstall that had failed.
-    left = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={COMPOSE_PROJECT}",
+    left = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={compose_project()}",
                    "--format", "{{.Names}}")
     remaining = [n.strip() for n in (left.stdout.splitlines() if left and left.returncode == 0 else [])
                  if n.strip()]
@@ -729,7 +783,7 @@ def take_everything_down() -> None:
     # The network is the one thing a foreign container can hold open. Name the
     # holder: "resource is still in use" is a fact about somebody's OTHER project,
     # and without the name it reads as this uninstall having left a mess.
-    net = _docker("network", "inspect", "embabel-appliance_default",
+    net = _docker("network", "inspect", f"{compose_project()}_default",
                   "--format", "{{range .Containers}}{{.Name}} {{end}}")
     if net and net.returncode == 0 and net.stdout.strip():
         holders = net.stdout.split()
@@ -749,6 +803,292 @@ def fresh_wipe() -> None:
     print()
 
 
+# ── instances ───────────────────────────────────────────────────────────────
+#
+# ONE APPLIANCE IS THE NORMAL CASE, and nothing about this section should be
+# visible to somebody who has one. There is no --instance to learn, no name to
+# invent, no flag in `embabel --help`: the default instance is called
+# `appliance`, its compose project is `embabel-appliance`, its settings are
+# `.env`, and that is the whole story until somebody installs a second one.
+#
+# A SECOND ONE is what turns the machinery on. Instances differ in exactly three
+# things, and everything else follows from them:
+#
+#   the PROJECT     embabel-<instance> — compose prefixes every volume, network
+#                   and container with it, so two instances share nothing by
+#                   accident. This is also why no service may declare
+#                   container_name: a fixed name is global to the docker daemon
+#                   and would collide on the second install.
+#   the ENV FILE    .env for the default, .env.<instance> beside it. One
+#                   checkout, several settings files — rather than several
+#                   checkouts, each with its own copy of this script free to
+#                   drift from the others.
+#   the PORT BASE   sixteen consecutive host ports, EMBABEL_PORT_BASE + offset.
+#                   Allocated when the instance is created, never guessed later.
+#
+# WHY 11042 (see PORTS below). Babel is Genesis 11. 42 is the Answer, and the
+# Babel fish is out of the same book — so the number says the product's name
+# rather than punning on one syllable of it. It is unassigned by IANA, absent
+# from /etc/services, and sits below the Linux ephemeral floor of 32768, which
+# 0xBABE (47806) does not — that one would have failed intermittently forever.
+
+DEFAULT_INSTANCE = "appliance"
+# 4242 was inherited and contended: OpenTSDB, Quassel and CrashPlan all default
+# there, and CrashPlan takes 4242 AND 4243 — the assistant and the Neo4j browser.
+DEFAULT_PORT_BASE = 11042
+PORT_BLOCK = 16
+# Offset within the block -> the variable the compose files read. Adding a
+# service means taking the next free offset here; the spare tail is why there
+# are sixteen and not eight.
+PORT_OFFSETS = {
+    "ASSISTANT_PORT": 0,        # the Me front door
+    "WORLDS_PORT": 1,           # the worlds API
+    "WORLDS_CONSOLE_PORT": 2,   # the Worlds front door
+    "NEO4J_BROWSER_PORT": 3,
+    "NEO4J_BOLT_PORT": 4,
+    "GRAFANA_PORT": 5,
+    "PROMETHEUS_PORT": 6,
+    "OPEN_WEBUI_PORT": 7,
+}
+# Instance 24 would land on 11434, which is Ollama's — and the compose files
+# talk to Ollama there. A ceiling nobody will reach, stated so it cannot be hit
+# by surprise.
+MAX_INSTANCES = 23
+
+# Which instance THIS process is talking to. Set once, by the CLI, before any
+# verb runs. A module-level value rather than a parameter on forty functions
+# because it models something true: one process, one appliance.
+_instance = DEFAULT_INSTANCE
+
+
+# What compose accepts as a project name: lowercase, starting alphanumeric, then
+# letters, digits, underscore, hyphen. The name also becomes a FILENAME
+# (.env.<name>), so the same rule keeps `--instance ../../etc/passwd` from being
+# a path and `--instance "my world"` from being two shell words.
+INSTANCE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def use_instance(name: str) -> None:
+    """Choose the instance for this process, refusing a name that cannot be one.
+
+    Validated HERE rather than at the flag, because setup.py is also entered
+    directly and through the environment — three doors, one gate.
+    """
+    global _instance
+    name = (name or DEFAULT_INSTANCE).strip()
+    if not INSTANCE_NAME.match(name):
+        raise SetupError(
+            f"'{name}' cannot be an instance name. Use lowercase letters, digits, "
+            "'-' and '_', starting with a letter or digit — it becomes a docker "
+            "project name and a settings filename."
+        )
+    if len(name) > 40:
+        raise SetupError(f"'{name}' is too long for an instance name (40 characters).")
+    _instance = name
+
+
+def instance() -> str:
+    return _instance
+
+
+def compose_project(name: str | None = None) -> str:
+    """The compose project, which is the real identity of an instance."""
+    return f"embabel-{name or _instance}"
+
+
+def env_file(name: str | None = None) -> str:
+    """Settings for an instance. The default's is plain `.env`, because the
+    common case must not be made to look like a special case."""
+    name = name or _instance
+    return ENV_FILE if name == DEFAULT_INSTANCE else f"{ENV_FILE}.{name}"
+
+
+def env_path(name: str | None = None) -> str:
+    return os.path.join(APPLIANCE_DIR, env_file(name))
+
+
+def port_base(name: str | None = None) -> int:
+    value = env_file_value("EMBABEL_PORT_BASE", name)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_PORT_BASE
+
+
+def ports_for(base: int) -> dict:
+    return {var: base + offset for var, offset in PORT_OFFSETS.items()}
+
+
+def installed_instances() -> list[str]:
+    """Every instance this machine knows about — from its settings file, and
+    from docker, because an instance whose .env was deleted still has volumes
+    and still answers, and hiding it would be the unhelpful kind of tidy."""
+    found = set()
+    for entry in os.listdir(APPLIANCE_DIR):
+        if entry == ENV_FILE:
+            found.add(DEFAULT_INSTANCE)
+        elif entry.startswith(f"{ENV_FILE}.") and not entry.endswith((".example", ".before-restore")):
+            found.add(entry[len(ENV_FILE) + 1:])
+    run = _docker("ps", "-a", "--format", "{{.Label \"com.docker.compose.project\"}}", timeout=20)
+    if run and run.returncode == 0:
+        for line in run.stdout.split():
+            if line.startswith("embabel-"):
+                found.add(line[len("embabel-"):])
+    return sorted(found)
+
+
+def ensure_port_block() -> int:
+    """Give this instance a port block if it does not have one yet.
+
+    Written at CREATION and never recomputed, because a base that is derived
+    fresh each run is a base that moves when a sibling instance is removed —
+    every bookmark, every registered MCP URL and every `.env` in a realm
+    checkout would silently start pointing at a different appliance.
+    """
+    existing = env_file_value("EMBABEL_PORT_BASE")
+    if existing:
+        return int(existing)
+    # The default instance is the ANCHOR and always owns the first block. Handing
+    # it one off the free list let a sibling push the primary appliance off the
+    # port every bookmark, MCP registration and realm checkout already names.
+    base = DEFAULT_PORT_BASE if instance() == DEFAULT_INSTANCE else free_port_base()
+    set_env_var("EMBABEL_PORT_BASE", str(base), (
+        "# The sixteen host ports this appliance owns, allocated when it was",
+        "# created. Everything else is this + a fixed offset. Do not edit it to",
+        "# move one service — set that service's own PORT variable instead.",
+    ))
+    if instance() != DEFAULT_INSTANCE or base != DEFAULT_PORT_BASE:
+        print(f"  Instance '{instance()}' uses ports {base}-{base + PORT_BLOCK - 1}.")
+    return base
+
+
+def free_port_base() -> int:
+    """The next unused block. Bases in use are read from the instances that
+    exist rather than counted, so removing the second of three instances frees
+    its block instead of stranding it."""
+    used = {port_base(name) for name in installed_instances() if name != instance()}
+    used.add(DEFAULT_PORT_BASE)  # reserved for the default instance, always
+    for n in range(MAX_INSTANCES + 1):
+        candidate = DEFAULT_PORT_BASE + n * PORT_BLOCK
+        if candidate not in used:
+            return candidate
+    raise SetupError(
+        f"All {MAX_INSTANCES + 1} port blocks are in use. The next one would collide "
+        f"with Ollama on 11434, which this appliance talks to."
+    )
+
+
+# ── upgrade ─────────────────────────────────────────────────────────────────
+#
+# TWO THINGS MOVE, and for a long time the CLI moved only one. The images are
+# most of the appliance, but the CHECKOUT is the rest of it — the compose files,
+# the Neo4j tag they pin, this script, the skills. An upgrade that pulled images
+# and left the checkout behind ran new servers against old plumbing, and the Me
+# app's menu (which did pull the checkout) and `embabel upgrade` meant different
+# things by the same word.
+#
+# ONTO THE LATEST BUILD, never a local one. Nothing here builds an image: the
+# compose files are pull-only by design — see the note at the top of
+# docker-compose.yml — and this verb's whole job is to land on what the registry
+# publishes. A locally-built image being replaced is therefore the CORRECT
+# outcome, but it is still surprising, so it is reported rather than silent.
+#
+# --ff-only, ALWAYS. A dirty or diverged checkout is left exactly as it is and
+# the images still update. An upgrade command that rebases somebody's work, or
+# that refuses to do the other half because of it, is worse than one that says
+# what it skipped.
+
+
+def _head() -> str | None:
+    run = subprocess.run(["git", "-C", APPLIANCE_DIR, "rev-parse", "HEAD"],
+                         capture_output=True, text=True)
+    return run.stdout.strip() if run.returncode == 0 else None
+
+
+def pull_checkout() -> tuple[bool, str]:
+    """Fast-forward the checkout. Returns (moved, what to tell the operator)."""
+    if not os.path.isdir(os.path.join(APPLIANCE_DIR, ".git")):
+        return False, "not a git checkout — images only"
+    before = _head()
+    run = subprocess.run(["git", "-C", APPLIANCE_DIR, "pull", "--ff-only"],
+                         capture_output=True, text=True, timeout=180)
+    if run.returncode != 0:
+        # The two ordinary reasons, named: local edits, or no upstream. Either
+        # way this is a note, not a failure — the images below still move.
+        reason = (run.stderr or run.stdout).strip().splitlines()
+        return False, f"checkout NOT updated ({reason[-1] if reason else 'git declined'})"
+    after = _head()
+    if before and after and before != after:
+        changed = subprocess.run(["git", "-C", APPLIANCE_DIR, "diff", "--name-only", f"{before}..{after}"],
+                                 capture_output=True, text=True)
+        files = changed.stdout.split() if changed.returncode == 0 else []
+        note = f"checkout updated {before[:7]} → {after[:7]} ({len(files)} file(s))"
+        if any(f.startswith(f"{ME_APP_DIR}/") for f in files):
+            # dist/ is built from these, and nothing in the run path rebuilds it.
+            note += "\n    the Me app changed — rebuild it: npm --prefix me-app run build"
+        return True, note
+    return False, "checkout already current"
+
+
+def upgrade(mode: str) -> dict:
+    """Latest checkout, latest published images, containers actually running them.
+
+    The digests are read on both sides rather than trusting `up -d` to have done
+    something: "pulled" and "the container is now on it" are different claims,
+    and only the second one is the thing anybody wanted.
+    """
+    notes = []
+    _moved, note = pull_checkout()
+    notes.append(note)
+
+    # Read BEFORE the pull, because the pull is what moves the tag underneath it.
+    before = image_identity(mode_image(mode) or "")
+
+    if _compose(mode, "pull").returncode != 0:
+        raise SetupError("docker compose pull failed — see the output above.")
+    if _compose(mode, "up", "-d").returncode != 0:
+        raise SetupError("docker compose up failed — see the output above.")
+
+    after = image_identity(mode_image(mode) or "")
+    if before.get("digest") and after.get("digest") and before["digest"] != after["digest"]:
+        notes.append(f"server image {before['digest'][7:19]} → {after['digest'][7:19]}")
+        # A locally-built image can be NEWER than what the registry serves,
+        # because snapshot tags publish on release rather than on every push.
+        # Landing on the published build is exactly what this verb is for, so
+        # this is a NOTE and not a refusal — but a local build vanishing without
+        # a word is the kind of surprise people spend an afternoon on.
+        if before.get("created") and after.get("created") and after["created"] < before["created"]:
+            notes.append("NOTE: the published image is OLDER than the one that was running.\n"
+                         "    If that was your own build, this replaced it — which is what\n"
+                         "    `upgrade` means. Rebuild it if you wanted it back.")
+        else:
+            notes.append("give the server a moment to come back")
+    elif after.get("digest"):
+        notes.append("server image already current")
+
+    # `up -d` recreates a container whose image changed, but "pulled" and "the
+    # container is now running it" are different claims and only the second is
+    # what anybody wanted. So check, rather than assume.
+    container = find_mode_container(mode)
+    if container and not _same_image(container, mode_image(mode)):
+        notes.append(f"WARNING: {container} is NOT running the pulled image.\n"
+                     "    `embabel down` then `embabel up` will land it.")
+    return {"mode": mode, "notes": notes, "digest": after.get("digest")}
+
+
+def _same_image(container: str, image: str | None) -> bool:
+    """Is this container running THAT image, by local image id rather than by tag?
+    A tag is a moving name; two containers can both say `:0.2.0-SNAPSHOT` and be
+    different builds, which is the whole failure this check exists to catch."""
+    if not image:
+        return True
+    running = _docker("inspect", container, "--format", "{{.Image}}", timeout=15)
+    wanted = _docker("image", "inspect", image, "--format", "{{.Id}}", timeout=15)
+    if not running or not wanted or running.returncode != 0 or wanted.returncode != 0:
+        return True  # cannot tell; do not cry wolf
+    return running.stdout.strip() == wanted.stdout.strip()
+
+
 # ── what is on the host, and getting rid of what should not be ──────────────
 
 def appliance_containers() -> list[dict]:
@@ -759,7 +1099,7 @@ def appliance_containers() -> list[dict]:
     their containers as the appliance's is how `uninstall` once claimed to have
     failed — see take_everything_down for the same lesson learned the same way.
     """
-    run = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={COMPOSE_PROJECT}",
+    run = _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={compose_project()}",
                   "--format", "{{.Names}}\t{{.State}}\t{{.Status}}\t{{.Image}}", timeout=20)
     if not run or run.returncode != 0:
         return []
@@ -816,10 +1156,10 @@ def _redacted_env() -> str:
     A key with an empty value and a key that is absent are DIFFERENT bugs, and
     the whole point of this file is telling them apart, so both are reported.
     """
-    path = os.path.join(APPLIANCE_DIR, ENV_FILE)
+    path = env_path()
     if not os.path.exists(path):
-        return f"# no {ENV_FILE} — this appliance has not been set up here\n"
-    lines = [f"# {ENV_FILE}, VALUES REMOVED. Key, then whether it holds anything.\n"]
+        return f"# no {env_file()} — this appliance has not been set up here\n"
+    lines = [f"# {env_file()}, VALUES REMOVED. Key, then whether it holds anything.\n"]
     with open(path) as f:
         for raw in f:
             line = raw.strip()
@@ -856,7 +1196,7 @@ def bug_report(dest_dir: str, extra: dict, everything: bool = False) -> str:
     free to disagree with what the operator was just shown on screen.
     """
     dest = os.path.join(os.path.abspath(os.path.expanduser(dest_dir)),
-                        f"embabel-bugreport-{backup_timestamp()}")
+                        f"embabel-bugreport-{instance()}-{backup_timestamp()}")
     os.makedirs(dest, exist_ok=True)
 
     def write(name: str, text: str) -> None:
@@ -874,8 +1214,8 @@ def bug_report(dest_dir: str, extra: dict, everything: bool = False) -> str:
         f"{c['name']:<38} {c['state']:<10} {c['status']:<28} {c['image']}\n" for c in containers)
         or "(no containers belonging to this appliance)\n")
 
-    strays = stray_sandbox_containers()
-    write("sandboxes.txt", "".join(f"{n}\n" for n in strays) or "(none)\n")
+    write("sandboxes.txt", "".join(f"{n}\n" for n in stray_sandbox_containers(mine_only=False))
+          or "(none)\n")
 
     for section, argv in (("docker-info.txt", ("info",)),
                           ("docker-disk.txt", ("system", "df", "-v")),
@@ -1164,7 +1504,10 @@ BACKUP_VOLUMES = (
 # it lives here. secrets.env holds the realm API credentials the compose files
 # load by `env_file:`; a restore without it comes back with every authenticating
 # realm silently dead, which is a worse outcome than a refusal.
-BACKUP_CONFIG_FILES = (ENV_FILE, OVERRIDE_FILE, "secrets.env")
+def backup_config_files() -> tuple[str, ...]:
+    """A function, not a constant: which settings file belongs to this appliance
+    depends on which instance it is."""
+    return (env_file(), OVERRIDE_FILE, "secrets.env")
 # The Me app writes the override and stamps it (mounts.ts). A file WITHOUT the
 # stamp was written by a person, and a restore does not eat their work.
 OVERRIDE_MARKER = "# Written by Embabel Me"
@@ -1185,7 +1528,7 @@ APPLIANCE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def volume_name(key: str) -> str:
     """The real Docker volume name — compose prefixes every volume with the project."""
-    return f"{COMPOSE_PROJECT}_{key}"
+    return f"{compose_project()}_{key}"
 
 
 def volume_exists(key: str) -> bool:
@@ -1290,6 +1633,7 @@ def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
     """
     manifest = {
         "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "instance": instance(),
         "mode": mode,
         "files": saved,
         "versions": appliance_versions(mode),
@@ -1302,7 +1646,7 @@ def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
             f"Embabel appliance backup — {time.strftime('%c')}\n\n"
             "Everything this appliance knew, at rest: the knowledge graph, worlds,\n"
             "documents, and the settings that shaped them. Restore it with:\n\n"
-            f"    embabel restore {os.path.abspath(dest)}\n\n"
+            f"    embabel --instance {instance()} restore {os.path.abspath(dest)}\n\n"
             "manifest.json records the exact images and commit that wrote these bytes.\n\n"
             "The .env and secrets.env here carry credentials — the database password,\n"
             "API keys, realm tokens. Treat this folder like the keys it holds.\n"
@@ -1325,7 +1669,7 @@ def _copy_out(dest: str, mode: str) -> None:
         print(f"    {what}  {size:,.0f} MB")
         saved.append(filename)
 
-    for filename in BACKUP_CONFIG_FILES:
+    for filename in backup_config_files():
         if os.path.exists(os.path.join(APPLIANCE_DIR, filename)):
             shutil.copyfile(os.path.join(APPLIANCE_DIR, filename), os.path.join(dest, filename))
             saved.append(filename)
@@ -1340,7 +1684,8 @@ def back_up(dest_dir: str = DEFAULT_BACKUP_DIR) -> str:
     # deliberately stopped appliance must not be the thing that starts it.
     was_running = running_mode_names()
 
-    dest = os.path.join(os.path.abspath(os.path.expanduser(dest_dir)), f"embabel-backup-{backup_timestamp()}")
+    dest = os.path.join(os.path.abspath(os.path.expanduser(dest_dir)),
+                        f"embabel-backup-{instance()}-{backup_timestamp()}")
     os.makedirs(dest, exist_ok=True)
 
     if was_running:
@@ -1367,6 +1712,13 @@ def restore(backup_dir: str) -> str:
     """
     manifest = inspect_backup(backup_dir)
     require_docker()
+    came_from = manifest.get("instance")
+    if came_from and came_from != instance():
+        # Allowed, and useful — cloning one appliance into a scratch one is half
+        # the reason to have two. But it overwrites a DIFFERENT appliance than
+        # the backup came from, so it is said out loud rather than discovered.
+        print(f"  This backup was taken from '{came_from}'; restoring it into "
+              f"'{instance()}'.")
     mode = manifest.get("mode") or backup_mode()
     was_running = running_mode_names()
     for stopping in was_running or [mode]:
@@ -1378,7 +1730,7 @@ def restore(backup_dir: str) -> str:
     # ASIDE, not deleted — one .before-restore per file, kept until the next
     # restore overwrites it. Restoring means the backup's world, so a file the
     # backup does NOT have is set aside too.
-    for filename in BACKUP_CONFIG_FILES:
+    for filename in backup_config_files():
         current = os.path.join(APPLIANCE_DIR, filename)
         replacement = os.path.join(backup_dir, filename)
         if os.path.exists(current):
@@ -1416,8 +1768,21 @@ def restore(backup_dir: str) -> str:
     return manifest.get("createdAt", "an unknown time")
 
 
-def stray_sandbox_containers() -> list[str]:
+# The server stamps every sandbox with this (JvmInstance.INSTANCE_LABEL_KEY),
+# naming the appliance it belongs to. The jvm label beside it cannot serve: its
+# value is a per-process UUID, so a sandbox outlived by its JVM — the only kind
+# worth pruning — matches nothing the host can name.
+SANDBOX_INSTANCE_LABEL = "embabel-instance"
+
+
+def stray_sandbox_containers(mine_only: bool = True) -> list[str]:
     """Sandbox containers still on the host, by name.
+
+    THIS instance's, by the label the server stamps on them. Sandboxes carry no
+    compose project — they are siblings created through the docker socket, not
+    services — so without that label the only filter available was the bare
+    `embabel-jvm` key, which matches every appliance's and every IDE run's alike.
+    Pass mine_only=False to see all of them, which is what a bug report wants.
 
     The server sweeps these itself, but only two of the three cases: on shutdown it
     removes containers matching ITS OWN jvm id, and on startup it reaps EXITED ones
@@ -1425,7 +1790,10 @@ def stray_sandbox_containers() -> list[str]:
     kill -9, a crashed Docker VM, a `down` that timed out into SIGKILL — is caught
     by neither, and holds its memory until somebody notices.
     """
-    run = _docker("ps", "-a", "--filter", f"label={SANDBOX_LABEL}", "--format", "{{.Names}}")
+    argv = ["ps", "-a", "--filter", f"label={SANDBOX_LABEL}"]
+    if mine_only:
+        argv += ["--filter", f"label={SANDBOX_INSTANCE_LABEL}={instance()}"]
+    run = _docker(*argv, "--format", "{{.Names}}")
     if not run or run.returncode != 0:
         return []
     return [line.strip() for line in run.stdout.splitlines() if line.strip()]
@@ -1526,11 +1894,15 @@ def remove_codex_agents_block(target: str = CODEX_AGENTS_FILE) -> bool:
     return True
 
 
-def env_file_value(key: str) -> str | None:
-    """One value from .env, or None. The file may already be gone during teardown."""
-    if not os.path.exists(ENV_FILE):
+def env_file_value(key: str, name: str | None = None) -> str | None:
+    """One value from an instance's settings, or None. Defaults to the current
+    instance; `name` is for reading ANOTHER one, which is how the port allocator
+    finds out which blocks are already spoken for. The file may already be gone
+    during teardown."""
+    path = env_path(name)
+    if not os.path.exists(path):
         return None
-    with open(ENV_FILE) as f:
+    with open(path) as f:
         for line in f:
             stripped = line.strip()
             if stripped.startswith(f"{key}="):
@@ -1547,10 +1919,10 @@ def this_appliance_urls() -> set[str]:
     wired with.
     """
     bases = [
-        f"http://localhost:{env_file_value('ASSISTANT_PORT') or '4242'}",
-        f"http://localhost:{env_file_value('WORLDS_PORT') or '4342'}",
-        f"http://127.0.0.1:{env_file_value('ASSISTANT_PORT') or '4242'}",
-        f"http://127.0.0.1:{env_file_value('WORLDS_PORT') or '4342'}",
+        surface_urls()["me"],
+        surface_urls()["worlds"],
+        surface_urls()["me"].replace("localhost", "127.0.0.1"),
+        surface_urls()["worlds"].replace("localhost", "127.0.0.1"),
     ]
     for key in ("ASSISTANT_PUBLIC_BASE_URL", "WORLDS_PUBLIC_BASE_URL"):
         value = env_file_value(key)
@@ -1710,10 +2082,14 @@ def uninstall() -> None:
     directory it had just emptied. The installation DIRECTORY stays: this script is running
     from it, and `./worlds.py` sets up again from there.
     """
-    print("  --uninstall returns this checkout to the state a fresh clone is in.")
+    if len(installed_instances()) > 1:
+        print(f"  --uninstall removes the '{instance()}' appliance. Others here are untouched:")
+        print(f"    {', '.join(n for n in installed_instances() if n != instance())}")
+    else:
+        print("  --uninstall returns this checkout to the state a fresh clone is in.")
     print("\n  DELETED:")
     print("    the appliance's entire state — account, world, graph, documents, dashboards")
-    print(f"    {ENV_FILE} — your provider key, timezone, and realms directory")
+    print(f"    {env_file()} — your provider key, timezone, and realms directory")
     print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
     print(f"    the '{MCP_SERVER_NAME}' MCP registration — only where it points at THIS appliance")
     for path in cli_shim_paths():
@@ -1734,16 +2110,25 @@ def uninstall() -> None:
     # Before .env goes: unwiring verifies each registration's URL against this
     # install's ports, and those ports live in .env.
     unwire_coding_agents()
-    for name in (ENV_FILE, OVERRIDE_FILE):
+    for name in (env_file(), OVERRIDE_FILE):
         if os.path.exists(name):
             os.remove(name)
             print(f"  Removed {name}.")
         else:
             # Silence here made a re-run look like nothing happened at all.
             print(f"  No {name} to remove.")
-    remove_cli_shim()
-    print("\n  Done — this checkout is back to the state a fresh clone is in.")
-    print("  `embabel up` sets it up again from here.\n")
+
+    # The `embabel` command is one per MACHINE, not one per instance. Taking it
+    # away while another appliance is still installed would uninstall one thing
+    # and break a different one — so it goes only with the last of them.
+    remaining = [n for n in installed_instances() if n != instance()]
+    if remaining:
+        print(f"\n  Kept the 'embabel' command: {', '.join(remaining)} still installed here.")
+        print(f"  Done — instance '{instance()}' is gone.\n")
+    else:
+        remove_cli_shim()
+        print("\n  Done — this checkout is back to the state a fresh clone is in.")
+        print("  `embabel up` sets it up again from here.\n")
 
 
 def ensure_mode(mode: str) -> bool:
@@ -2368,7 +2753,7 @@ def main() -> int:
                         help="forgot the password: recreate the operator account "
                              "(asks for confirmation) and keep all data")
     parser.add_argument("--url", default=None,
-                        help=f"appliance base URL (default: detected from the running mode, else {DEFAULT_BASE})")
+                        help="appliance base URL (default: detected from the running mode, else this instance's Me port)")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
     parser.add_argument(
         "--world",
@@ -2395,6 +2780,15 @@ def main() -> int:
         help=f"always ask, even if {' or '.join(PROVIDER_ENV.values())} is set",
     )
     args = parser.parse_args()
+
+    # Which appliance this run is about, before anything reads a settings file or
+    # names a container. The CLI sets it for child processes; a direct ./me.py or
+    # ./worlds.py inherits whatever the shell exports, and the default otherwise.
+    use_instance(os.environ.get("EMBABEL_INSTANCE") or DEFAULT_INSTANCE)
+    # Before compose is invoked for anything: a new instance without a block
+    # would fall back to the default base and collide with the first appliance.
+    if not args.uninstall:
+        ensure_port_block()
 
     # Line-buffered even when stdout is a pipe. Subprocesses (compose, docker logs)
     # write to the same descriptor unbuffered, so Python's default block buffering
@@ -2433,7 +2827,7 @@ def main() -> int:
             started = ensure_mode(mode)
 
         container = find_mode_container(args.mode)
-        base = args.url or (container_base_url(container) if container else None) or DEFAULT_BASE
+        base = args.url or (container_base_url(container) if container else None) or default_base()
         if args.reset_password:
             if not container:
                 raise SetupError(
@@ -2486,7 +2880,7 @@ def main() -> int:
         username = done.get("signInAs")
         service = mode_service(container) if container else None
         # Worlds people go to the console; `base` is the server behind it.
-        where = f"http://localhost:{CONSOLE_PORT}" if service == "worlds" else base
+        where = console_url() if service == "worlds" else base
         print(f"\n  Done. Sign in at {where}" + (f" as {username}" if username else ""))
         print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
         warn_if_conversion_pending()

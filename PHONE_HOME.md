@@ -14,8 +14,8 @@ titles; how many realms are installed, not their names.
 You can verify this yourself at any time, from your own instance:
 
 ```bash
-curl -u <you> http://localhost:4242/api/v1/phone-home           # the exact JSON last sent
-curl -u <you> http://localhost:4242/api/v1/phone-home/preview   # what would be sent right now
+curl -u <you> http://localhost:11042/api/v1/phone-home           # the exact JSON last sent
+curl -u <you> http://localhost:11042/api/v1/phone-home/preview   # what would be sent right now
 ```
 
 The `json` field in that response is the literal request body, not a re-rendering of it —

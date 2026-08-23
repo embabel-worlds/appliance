@@ -16,23 +16,26 @@ services:
   # store IS the product's data plane, and the modes are two surfaces over it.
   neo4j:
     image: neo4j:2026.06-community
-    container_name: embabel-appliance-neo4j
+    # NO container_name — deliberately. A fixed name is global to the docker
+    # daemon, so a second instance could not start; compose names containers
+    # <project>-<service>-N, which is per-instance for free. Find a container by
+    # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${NEO4J_BROWSER_PORT:-4243}:7474"   # browser
-      - "127.0.0.1:${NEO4J_BOLT_PORT:-4244}:7687"      # bolt, for cypher-shell
+      - "127.0.0.1:${NEO4J_BROWSER_PORT:-11045}:7474"   # browser
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-11046}:7687"      # bolt, for cypher-shell
     environment:
       # Same zone as the modes (setup.py writes TZ to .env): cypher's datetime()
       # and the graph's logs should tell the same time the assistant does.
       - TZ=${TZ:-Etc/UTC}
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-embabel-assistant}
-      # Advertise the HOST-published Bolt port. The browser on 4243 runs in the
+      # Advertise the HOST-published Bolt port. The browser on the host port runs in the
       # user's browser and connects over Bolt from the host, and it pre-fills its
       # connect form from this value — without it the form offers the in-container
       # default :7687, which nothing on the host listens on, and the login fails
       # before credentials are even checked. The app services are unaffected: they
       # dial neo4j:7687 directly over the compose network.
-      - NEO4J_server_bolt_advertised__address=localhost:${NEO4J_BOLT_PORT:-4244}
+      - NEO4J_server_bolt_advertised__address=localhost:${NEO4J_BOLT_PORT:-11046}
       - NEO4J_PLUGINS=["apoc","graph-data-science"]
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
@@ -86,7 +89,6 @@ services:
     # makes — a new GHCR package is created private, and an authenticated check
     # passes happily against an image nobody else can fetch.
     image: ghcr.io/embabel-worlds/${DOCLING_IMAGE:-docling-serve-cpu}:${DOCLING_VERSION:-v1.29.0}
-    container_name: embabel-appliance-docling
     restart: unless-stopped
     # Conversion memory is bounded by the LARGEST single document, not corpus size:
     # one 10-K-sized PDF was measured pushing docling past 6GB (2026-08-13, dev).
@@ -110,14 +112,13 @@ services:
   # Docker Hub repository that was never public, so first pull failed for everyone.
   sandbox-image:
     image: ghcr.io/embabel/assistant-sandbox:latest
-    container_name: embabel-appliance-sandbox-image
     restart: "no"
     command: ["true"]
 
   # ── Metrics ─────────────────────────────────────────────────────────────────
   # Prometheus scrapes each mode's /actuator/prometheus; Grafana renders it.
   #
-  #   open http://localhost:4246        (no login, lands on Surface Health)
+  #   open http://localhost:11047       (no login, lands on Surface Health)
   #
   # NO PROFILE, deliberately. These once carried a `metrics` profile so they could be
   # switched off from `.env`, but a compose profile cannot be active by default: it is
@@ -130,10 +131,9 @@ services:
   # --scale prometheus=0` works for one run, but the next plain `up -d` brings them back.
   prometheus:
     image: prom/prometheus:v3.1.0
-    container_name: embabel-appliance-prometheus
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${PROMETHEUS_PORT:-4247}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-11048}:9090"
     configs:
       # Inline content, not a bind mount — see the pull-only note in
       # docker-compose.yml. There is no prometheus.yml on your disk to lose.
@@ -150,15 +150,14 @@ services:
     # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
     # the dashboards match the metrics the app of that version actually emits.
     image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
-    container_name: embabel-appliance-grafana
     restart: unless-stopped
     depends_on:
       - prometheus
     ports:
-      - "127.0.0.1:${GRAFANA_PORT:-4246}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-11047}:3000"
     environment:
       # No login wall. Consistent with the rest of the appliance, this is safe only
-      # because the port binds to 127.0.0.1 — anyone who can reach 4246 is admin.
+      # because the port binds to 127.0.0.1 — anyone who can reach it is admin.
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
@@ -187,13 +186,13 @@ configs:
         - job_name: embabel-assistant
           metrics_path: /actuator/prometheus
           static_configs:
-            - targets: ["assistant:${ASSISTANT_PORT:-4242}"]
+            - targets: ["assistant:${ASSISTANT_PORT:-11042}"]
               labels:
                 application: embabel-assistant
         - job_name: embabel-worlds
           metrics_path: /actuator/prometheus
           static_configs:
-            - targets: ["worlds:${WORLDS_PORT:-4342}"]
+            - targets: ["worlds:${WORLDS_PORT:-11043}"]
               labels:
                 application: embabel-worlds
 

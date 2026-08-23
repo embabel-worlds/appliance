@@ -37,8 +37,8 @@ what a fresh boot does.
 **L0 — containers.** Every service in the project is up and the app container reports
 healthy (`docker ps`, health column), not merely running.
 
-**L1 — surfaces serve.** The worlds API answers on its port (4342 unless `.env` says
-otherwise), the console serves on its (4343), Neo4j browser and bolt answer, and an MCP
+**L1 — surfaces serve.** The worlds API answers on its port (11043 unless `.env` says
+otherwise), the console serves on its (11044), Neo4j browser and bolt answer, and an MCP
 connection lists capabilities (`available_capabilities`). Use the admin credentials the
 wizard just printed — retyping stale ones tests your memory, not the install.
 

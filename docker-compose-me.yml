@@ -2,7 +2,7 @@
 #
 #   docker compose up -d              # plain `up` starts THIS mode (see docker-compose.yml)
 #   ./setup.py                        # account, model provider, Claude Code wiring
-#   open http://localhost:4242
+#   open http://localhost:11042
 #
 # The other mode is docker-compose-worlds.yml — the SAME image and the SAME data,
 # framed as a headless world runtime. See its header before running both at once.
@@ -21,7 +21,10 @@ services:
   # ── The assistant itself ────────────────────────────────────────────────────
   assistant:
     image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
-    container_name: embabel-assistant
+    # NO container_name — deliberately. A fixed name is global to the docker
+    # daemon, so a second instance could not start; compose names containers
+    # <project>-<service>-N, which is per-instance for free. Find a container by
+    # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
     depends_on:
       neo4j:
@@ -29,10 +32,10 @@ services:
     ports:
       # Published to the HOST, not merely exposed on the compose network: code-mode
       # sandbox containers are siblings on the host daemon (see the socket mount
-      # below) and reach the tool gateway back through host.docker.internal:4242.
+      # below) and reach the tool gateway back through host.docker.internal:<that port>.
       # Unpublishing this port silently breaks every sandbox tool call.
       # Same port on BOTH sides — see SERVER_PORT below.
-      - "127.0.0.1:${ASSISTANT_PORT:-4242}:${ASSISTANT_PORT:-4242}"
+      - "127.0.0.1:${ASSISTANT_PORT:-11042}:${ASSISTANT_PORT:-11042}"
     # Realm credentials, without a compose edit per realm: a realm names the key it
     # needs (`token-env:` in its apis.yml), the key goes in secrets.env beside this
     # file, and every line of it enters the container as-is. Optional and gitignored;
@@ -45,7 +48,7 @@ services:
       # handed a tool-gateway URL of host.docker.internal:${server.port}, so a
       # remapped port leaves every code-mode call dialling nothing. Moving the
       # appliance to another port therefore moves both sides together.
-      - SERVER_PORT=${ASSISTANT_PORT:-4242}
+      - SERVER_PORT=${ASSISTANT_PORT:-11042}
       # The image runs UTC unless told otherwise, and a wrong zone skews every
       # "now" the assistant utters and every schedule it keeps. setup.py detects
       # the host's zone and writes TZ into .env; the JVM honors the variable.
@@ -62,9 +65,16 @@ services:
       # unset, the app falls back to a workstation checkout's 8892/7891, and the
       # link in the appliance silently opens someone's dev graph instead of this
       # one. NEO4J_BROWSER_PORT stays for anything that reads it by that name.
-      - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
-      - NEO4J_HTTP_PORT=${NEO4J_BROWSER_PORT:-4243}
-      - NEO4J_BOLT_ADVERTISED_PORT=${NEO4J_BOLT_PORT:-4244}
+      - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-11045}
+      # Which appliance this server belongs to, stamped onto every code-sandbox
+      # container it creates (JvmInstance.INSTANCE_LABEL_KEY). Sandboxes are
+      # siblings created through the docker socket, not compose services, so
+      # this label is the ONLY thing that tells one appliance's sandboxes from
+      # another's — without it `embabel prune` on a machine with two appliances
+      # removes live sessions belonging to the other one.
+      - EMBABEL_INSTANCE=${EMBABEL_INSTANCE:-appliance}
+      - NEO4J_HTTP_PORT=${NEO4J_BROWSER_PORT:-11045}
+      - NEO4J_BOLT_ADVERTISED_PORT=${NEO4J_BOLT_PORT:-11046}
       # Models the user runs on their OWN machine, outside Docker. `localhost`
       # inside this container is the container, so an LM Studio server the user
       # can see in their browser is invisible here — it has to be addressed as
@@ -86,7 +96,7 @@ services:
       # a person would think to set.
       - EMBABEL_AGENT_PLATFORM_MODELS_LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
       - EMBABEL_AGENT_PLATFORM_MODELS_OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:4242}
+      - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:${ASSISTANT_PORT:-11042}}
       # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
       # (see application-appliance.yml) — the browser holds the encrypted blob and
       # nothing decryptable rests here — but WITHOUT this the server generates a key
@@ -218,18 +228,17 @@ services:
         endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
 
   # ── Open WebUI — chat front-end over the assistant's MCP surface ────────────
-  # Profile-gated: the assistant ships its own web UI on 4242, so this is for
+  # Profile-gated: the assistant ships its own web UI on 11042, so this is for
   # people who want their existing chat client. Turn it on WITHOUT editing this
   # file by putting COMPOSE_PROFILES=openwebui in .env.
   open-webui:
     profiles: ["openwebui"]
     image: ghcr.io/open-webui/open-webui:main
-    container_name: embabel-appliance-open-webui
     restart: unless-stopped
     depends_on:
       - assistant
     ports:
-      - "127.0.0.1:${OPEN_WEBUI_PORT:-4245}:8080"
+      - "127.0.0.1:${OPEN_WEBUI_PORT:-11049}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -246,7 +255,7 @@ services:
       # The assistant as a native (Streamable HTTP) MCP tool server. Reached over
       # the compose network by service name, authenticated with the same bearer
       # token the assistant is configured with above.
-      - 'TOOL_SERVER_CONNECTIONS=[{"url":"http://assistant:4242/mcp","path":"","type":"mcp","auth_type":"bearer","key":"${EMBABEL_MCP_API_TOKEN:-}","config":{"enable":true,"access_control":null},"info":{"id":"embabel_assistant","name":"embabel_assistant","description":"Embabel assistant tools"}}]'
+      - 'TOOL_SERVER_CONNECTIONS=[{"url":"http://assistant:${ASSISTANT_PORT:-11042}/mcp","path":"","type":"mcp","auth_type":"bearer","key":"${EMBABEL_MCP_API_TOKEN:-}","config":{"enable":true,"access_control":null},"info":{"id":"embabel_assistant","name":"embabel_assistant","description":"Embabel assistant tools"}}]'
     volumes:
       - embabel_appliance_open_webui_data:/app/backend/data
 

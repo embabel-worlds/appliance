@@ -9,7 +9,8 @@ Your data and your code stay on your machine. The assistant talks to the model p
 ## Quick start
 
 One line — it checks Docker, downloads the appliance into `~/embabel/worlds`, and hands
-straight off to setup:
+straight off to setup. It installs **Embabel Worlds**; `EMBABEL_MODE=me` before the
+pipe installs the personal assistant instead:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
@@ -25,8 +26,8 @@ Or clone it yourself:
 ```bash
 git clone https://github.com/embabel-worlds/appliance.git && cd appliance
 
-./me.py         # Embabel Me — the personal assistant   → http://localhost:4242
-./worlds.py     # Embabel Worlds — the world runtime     → http://localhost:4343
+./me.py         # Embabel Me — the personal assistant   → http://localhost:11042
+./worlds.py     # Embabel Worlds — the world runtime     → http://localhost:11044
 ```
 
 One command is the whole thing: it starts the mode (pulling images on first run),
@@ -79,10 +80,10 @@ same data**:
 
 | Mode | Start with | Open | What it is |
 |---|---|---|---|
-| **Me** | `./me.py` | **4242** | the personal assistant — web UI, chat, memory |
-| **Worlds** | `./worlds.py` | **4343** — the console | the world runtime — realms, documents, keys, views, chat, MCP, automations |
+| **Me** | `./me.py` | **11042** | the personal assistant — web UI, chat, memory |
+| **Worlds** | `./worlds.py` | **11044** — the console | the world runtime — realms, documents, keys, views, chat, MCP, automations |
 
-For Worlds, **4343 is where you go**: the console. The server itself is on 4342 —
+For Worlds, **11044 is where you go**: the console. The server itself is on 11043 —
 that is the API and MCP endpoint, not where you go to look at anything.
 
 `docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
@@ -162,7 +163,7 @@ cd me-app
 npm start          # "Me" appears in the menu bar; the first run fetches Electron itself
 ```
 
-Point it at your Me mode (`http://localhost:4242`) with your appliance login, and
+Point it at your Me mode (`http://localhost:11042`) with your appliance login, and
 it offers three things:
 
 **Scan → review → send.** Every fact is shown before anything leaves the machine
@@ -200,39 +201,60 @@ rather than "Embabel Me". See [me-app/README.md](me-app/README.md) for the
 platform seam (macOS is implemented; Windows and Linux are stubbed with their
 gaps named) and the design rules behind the permission tiers.
 
-## Ports — the 42 block
+## Ports — the 11042 block
 
-`4242` is the one to remember; the rest count up from it.
+**11042** is the one to remember; everything else counts up from it.
 
-| Service | Port | What it is |
-|---|---|---|
-| assistant | **4242** | the product: web UI, REST API, tool gateway, MCP endpoint |
-| neo4j | 4243 / 4244 | the knowledge graph — browser and Bolt |
-| docling | — | PDF/DOCX/PPTX/XLSX → structured markdown, internal only |
-| open-webui | 4245 | optional alternative chat front-end, off by default |
-| grafana | 4246 | dashboards over the assistant's metrics — on by default |
-| prometheus | 4247 | scrapes and stores those metrics, 15 days by default |
+The number is the product's name. Babel is Genesis **11** — the tower, the
+confounding of tongues. **42** is the Answer, and the Babel fish comes out of the
+same book. It is unassigned by IANA, absent from `/etc/services`, and sits below
+the Linux ephemeral floor of 32768 — which `0xBABE` (47806) does not, and which
+would have made it fail intermittently and inexplicably forever.
+
+An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
+
+| Offset | Port | Service | What it is |
+|---|---|---|---|
+| +0 | **11042** | assistant | **Me's front door** — web UI, REST API, tool gateway, MCP |
+| +1 | 11043 | worlds | the Worlds server: API and MCP, not a place to look |
+| +2 | **11044** | worlds-console | **Worlds' front door** |
+| +3 | 11045 | neo4j | the knowledge graph, browser |
+| +4 | 11046 | neo4j | the same, Bolt |
+| +5 | 11047 | grafana | dashboards over the metrics — on by default |
+| +6 | 11048 | prometheus | scrapes and stores them, 15 days by default |
+| +7 | 11049 | open-webui | optional alternative chat front-end, off by default |
+| +8…+15 | 11050–11057 | — | spare, so the next service does not need a new block |
+| — | — | docling | PDF/DOCX/PPTX/XLSX → structured markdown, internal only |
 
 Everything binds to `127.0.0.1` — reachable from your machine, not from the network.
-This leaves `8042` free, so a development checkout and an appliance can run side by side.
+
+**A second appliance takes the next block** (11058–11073), and a third the one
+after. See [Running more than one](#running-more-than-one). The ceiling is 24
+instances: the block after that would collide with Ollama on 11434, which the
+appliance talks to.
 
 ### Signing in to each
 
 | Service | How |
 |---|---|
 | assistant | the account you created during setup — see [Who can log in](#who-can-log-in) |
-| neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:4244` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:4243/browser/?dbms=neo4j://neo4j@localhost:4244&db=neo4j>** to force the right one, or run `:server disconnect` first |
+| neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:11046` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>** to force the right one, or run `:server disconnect` first |
 | open-webui | create an account on first visit; the first account is the admin |
-| grafana | no login — anyone who can reach 4246 is admin, which is safe only because it binds to `127.0.0.1` |
+| grafana | no login — anyone who can reach 11047 is admin, which is safe only because it binds to `127.0.0.1` |
 | prometheus | no login |
 
 For scripted graph queries, use the shell inside the container — nothing to install:
 
 ```bash
-docker exec -it embabel-appliance-neo4j cypher-shell -u neo4j -p embabel-assistant
+docker compose -f docker-compose-worlds.yml exec neo4j cypher-shell -u neo4j -p embabel-assistant
 ```
 
-If you move the assistant off 4242, set `ASSISTANT_PORT` and nothing else: the container
+Through compose, not `docker exec <name>`: no service declares a
+`container_name`, so that a second appliance can exist — compose names them
+`<project>-<service>-1` and you should not be memorising that. For another
+instance, add `-p embabel-<name>`.
+
+If you move the assistant off 11042, set `ASSISTANT_PORT` and nothing else: the container
 port moves with it deliberately. The code sandbox is handed a callback URL built from the
 server port, so a host port that differs from the container port would leave every
 code-execution call dialling a port nothing listens on.
@@ -321,7 +343,7 @@ token before first boot:
 To wire a client manually (Claude Code shown; the URL + header work for any client):
 
 ```bash
-claude mcp add --transport http --scope user embabel http://localhost:4242/mcp \
+claude mcp add --transport http --scope user embabel http://localhost:11042/mcp \
   --header "Authorization: Bearer <your token>"
 ```
 
@@ -351,12 +373,12 @@ world's `data/secrets.env`. Use `.env` for things the whole server needs.
 
 | Variable | Default |
 |---|---|
-| `ASSISTANT_PORT` | `4242` |
-| `NEO4J_BROWSER_PORT` | `4243` |
-| `NEO4J_BOLT_PORT` | `4244` |
-| `OPEN_WEBUI_PORT` | `4245` |
-| `GRAFANA_PORT` | `4246` |
-| `PROMETHEUS_PORT` | `4247` |
+| `ASSISTANT_PORT` | `11042` |
+| `NEO4J_BROWSER_PORT` | `11045` |
+| `NEO4J_BOLT_PORT` | `11046` |
+| `OPEN_WEBUI_PORT` | `11049` |
+| `GRAFANA_PORT` | `11047` |
+| `PROMETHEUS_PORT` | `11048` |
 
 All bind to `127.0.0.1`. Read [Who can log in](#who-can-log-in) before changing that.
 
@@ -367,7 +389,7 @@ reconciles the project to exactly those profiles on every `up`.
 
 | Profile | What it starts |
 |---|---|
-| `openwebui` | Open WebUI on 4245 with the assistant pre-wired as an MCP tool server. Create an account on first visit; the first account is the admin. |
+| `openwebui` | Open WebUI on 11049 with the assistant pre-wired as an MCP tool server. Create an account on first visit; the first account is the admin. |
 
 Grafana and Prometheus are **not** profile-gated — they are ordinary services and start
 with everything else. A compose profile can only ever be *off* by default, since compose
@@ -387,10 +409,10 @@ would silently stop anything started under an ad-hoc profile.
 
 ### Metrics
 
-Open <http://localhost:4246>. It lands on **Surface Health**; six more dashboards — LLM,
+Open <http://localhost:11047>. It lands on **Surface Health**; six more dashboards — LLM,
 MCP Surface, HTTP & JVM, Graph & Tenancy, Code Mode & Sandbox, Virtual Cypher — are in
 the dashboard list. There is no login: like every other port here it binds to
-`127.0.0.1`, so anyone who can reach 4246 is an admin.
+`127.0.0.1`, so anyone who can reach 11047 is an admin.
 
 The dashboards ship inside the Grafana image and move with `EMBABEL_VERSION`, so they
 always match the metrics the running assistant emits. That means they are read-only —
@@ -403,7 +425,7 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 |---|---|---|
 | `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. |
 | `ASSISTANT_DOC_CONVERTER` | `docling` | `none` uses plain text extraction and makes the multi-GB docling image unnecessary — faster to start, worse fidelity on tables and figures in PDFs. |
-| `ASSISTANT_PUBLIC_BASE_URL` | `http://localhost:4242` | The externally visible origin. OAuth callbacks, MCP resource indicators and app links compose from it. Set it when running behind a proxy or on another host. No trailing slash. |
+| `ASSISTANT_PUBLIC_BASE_URL` | `http://localhost:11042` | The externally visible origin. OAuth callbacks, MCP resource indicators and app links compose from it. Set it when running behind a proxy or on another host. No trailing slash. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | JVM memory. |
 | `NEO4J_PASSWORD` | `embabel-assistant` | Change before the appliance is anything but local. |
 | `NEO4J_HEAP` | `2G` | Raise for a large knowledge graph. |
@@ -493,8 +515,8 @@ in particular are counted but never sent.
 on trust — ask your own instance:
 
 ```bash
-curl -u <you> http://localhost:4242/api/v1/phone-home           # exactly what was last sent
-curl -u <you> http://localhost:4242/api/v1/phone-home/preview   # what would be sent now
+curl -u <you> http://localhost:11042/api/v1/phone-home           # exactly what was last sent
+curl -u <you> http://localhost:11042/api/v1/phone-home/preview   # what would be sent now
 ```
 
 The `json` field is the literal request body, so it matches a packet capture byte for byte.
@@ -537,13 +559,74 @@ Three more volumes hold state you can throw away — `embabel_appliance_open_web
 (Grafana's own database; the dashboards live in the image, not here). Losing them costs
 you chat history in Open WebUI and past metrics, nothing you authored.
 
+## Running more than one
+
+Two appliances on one machine — a stable one and one you are breaking, a
+personal world and a client's — is a supported thing, and **you will not meet any
+of it until you ask for it.** With one appliance there is no `--instance` flag in
+`embabel --help`, no name to invent, and no verb for managing a thing you have
+one of. The machinery appears the moment a second install makes it mean
+something.
+
+```bash
+embabel up                              # the one you already have
+embabel --instance client up            # a second, on the next port block
+embabel instances                       # both, and where each answers
+```
+
+Instances differ in exactly three things, and everything else follows:
+
+| | |
+|---|---|
+| **project** | `embabel-<instance>` — compose prefixes every container, volume and network with it, so two instances share nothing by accident |
+| **settings** | `.env` for the default, `.env.<instance>` beside it. One checkout, several settings files — rather than several checkouts each with a copy of `setup.py` free to drift |
+| **ports** | the next free sixteen, recorded as `EMBABEL_PORT_BASE` when the instance is created |
+
+Once a second exists, verbs that could act on either will **ask** rather than
+guess — picking one would be picking somebody's real graph as often as not:
+
+```
+$ embabel status
+  2 appliances are installed here: appliance, client
+  Say which one:  embabel --instance <name> status
+  Or set EMBABEL_INSTANCE in your shell.
+```
+
+**No service declares a `container_name`.** A fixed name is global to the Docker
+daemon, so the second install could not start; compose names containers
+`<project>-<service>-1`. Find one by its compose labels, never by a name you
+wrote down.
+
+**Naming.** You pick it: `--instance <name>`, lowercase letters, digits, `-` and
+`_`, starting with a letter or digit, up to 40 characters. The name becomes a
+Docker project (`embabel-<name>`) and a filename (`.env.<name>`), which is where
+the rule comes from and why anything else is refused. The default instance is
+called `appliance` and you never have to type it.
+
+**Code sandboxes separate too.** They are siblings created through the Docker
+socket rather than compose services, so the server stamps each one with the
+appliance that made it (`embabel-instance`). `embabel prune` acts only on the
+current instance's, and a server run from an IDE labels its own `standalone` —
+so it is never in the blast radius of an appliance's prune.
+
 ## Upgrading
 
 ```bash
-git pull                  # pick up any compose changes
-docker compose pull       # fetch the new images
-docker compose up -d
+embabel upgrade           # checkout, then images, then verify
 ```
+
+Both halves. The images are most of the appliance, but the checkout is the rest
+of it — the compose files, the Neo4j tag they pin, `setup.py`, the skills — and
+pulling one without the other runs new servers against old plumbing.
+
+The checkout pull is `--ff-only`, always: local changes are reported and left
+exactly as they are, and the images still move. Afterwards it checks the
+container's actual image id, because "pulled" and "the container is running it"
+are different claims and only the second is the one you wanted.
+
+Nothing is built. The compose files are pull-only by design, so `upgrade` lands
+on what the registry publishes — and says so if that turns out to be *older* than
+a locally-built image it just replaced.
 
 Your volumes survive. Pin `EMBABEL_VERSION` in `.env` if you'd rather control when you
 move between versions.
@@ -555,16 +638,16 @@ move between versions.
 | `setup.py` cannot find the token | It already waits out a booting app, so the running container's log truly lacks one. `docker compose restart assistant` (or `worlds`) — the token is printed afresh on every boot until setup completes |
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
-| Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:4244` (pre-filled; 7687 is not published to the host) |
-| Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:4244`, or open <http://localhost:4243/browser/?dbms=neo4j://neo4j@localhost:4244&db=neo4j>. Confirm with `docker exec embabel-appliance-neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |
+| Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:11046` (pre-filled; 7687 is not published to the host) |
+| Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:11046`, or open <http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>. Confirm with `docker exec embabel-appliance-neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |
 | Login page loads but chat never answers | No provider key took effect. The appliance restarts once at the end of setup for exactly this reason — check it came back with `docker compose ps` |
 | `docker compose up` fails on an image pull | Not authenticated to ghcr.io — see [Registry access](#registry-access) |
 | First code-execution turn hangs for minutes | The sandbox image is still downloading. `docker pull embabel/assistant-sandbox:latest` |
 | `assistant` restarts during boot | Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
 | An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
-| Nothing on 4246 | `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
-| Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:4247/api/v1/targets` — the `embabel-assistant` target should be `up` |
+| Nothing on 11047 | `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
+| Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:11048/api/v1/targets` — the `embabel-assistant` target should be `up` |
 | Port already in use | Change the port variables in `.env` |
 
 When reporting a problem, `docker compose logs assistant > assistant.log` captures what's

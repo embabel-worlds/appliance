@@ -40,7 +40,7 @@ let tray: Tray | null = null
 // macOS permissions the deeper reads need are still asked for by the OS, per app, the
 // first time they are used.
 const DEFAULTS = {
-  baseUrl: 'http://localhost:4242', username: '', password: '',
+  baseUrl: 'http://localhost:11042', username: '', password: '',
   verbs: { see: true, act: true },
 }
 

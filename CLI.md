@@ -49,11 +49,12 @@ a completed setup says so instead of asking again.
 | `--fresh` | **delete all data first** (asks), then start over |
 
 With neither flag it starts **the mode this machine is already running, or was last
-set up as** — recorded as `EMBABEL_MODE` in `.env` the first time. That matters
-because the installer's default door is Me and this command's own fallback is
-Worlds: without it, `embabel down` then `embabel up` handed an assistant user a
-world runtime on the same graph, and said nothing about it. Worlds is still the
-fallback for a machine that has set up neither.
+set up as** — recorded as `EMBABEL_MODE` in `.env` the first time. Without that
+record, `embabel down` then `embabel up` handed an assistant user a world runtime
+on the same graph and said nothing about it. The installer now opens the Worlds
+door too, which narrows the gap without closing it: `EMBABEL_MODE=me ... | sh`
+installs an assistant, and this has to come back to one. Worlds is the fallback
+for a machine that has set up neither.
 
 The first run pulls roughly 0.8 GB before handing the terminal back, then
 continues downloading the rest — the code sandbox, metrics, and structured
@@ -301,8 +302,51 @@ complete. Flags hidden from `--help` stay hidden here too.
 
 ### `embabel upgrade`
 
-Pull newer images and recreate the containers. **Your data is untouched** — this
-is the opposite of `up --fresh`.
+Onto the latest published build: **the checkout and the images**. Your data is
+untouched — this is the opposite of `up --fresh`.
+
+Both halves, because for a long time this moved only the images while the Me
+app's menu moved both, and the two doors meant different things by the same
+word. `setup.py` owns it now, so they cannot drift again.
+
+- **`--ff-only`, always.** A dirty or diverged checkout is reported and left
+  alone; the images still update. It names what changed, and tells you to run
+  `npm --prefix me-app run build` when the pull touched `me-app/`, since nothing
+  in the run path rebuilds `dist/`.
+- **It verifies.** The image digest is read before and after, then the
+  container's actual image id is checked — "pulled" and "the container is
+  running it" are different claims.
+- **It builds nothing.** The compose files are pull-only by design. If the
+  published image turns out to be *older* than a local build it just replaced,
+  it says so — that is what `upgrade` means, but a local build vanishing in
+  silence costs somebody an afternoon.
+
+### Working with more than one appliance
+
+**You will not meet this until you install a second one.** With one appliance
+there is no `--instance` in `embabel --help` and no `instances` verb — the flag
+exists and works, but it stays out of the help until it means something.
+
+```bash
+embabel --instance client up      # a second appliance, on the next port block
+embabel instances                 # every one installed here, and its ports
+EMBABEL_INSTANCE=client embabel logs -f
+```
+
+An instance is a compose project (`embabel-<name>`), a settings file (`.env` for
+the default, `.env.<name>` beside it), and a block of sixteen ports allocated
+when it is created. With two installed, any verb that could act on either
+**asks** instead of guessing.
+
+You choose the name: lowercase letters, digits, `-` and `_`, starting with a
+letter or digit. It becomes a Docker project name and a filename, so anything
+else is refused rather than mangled. The default is `appliance`.
+
+Everything scopes: `backup` writes `embabel-backup-<instance>-<timestamp>` and
+records the instance in its manifest, `restore` says so when a backup came from
+a different one, `uninstall` removes only the instance you name (and keeps the
+`embabel` command while any other remains), and `prune` touches only the current
+instance's sandboxes.
 
 ### `embabel down`
 
@@ -398,7 +442,7 @@ Two things that will bite otherwise:
   slower, and it costs most where it hurts most: realm checkouts, which a coding
   agent reads and rewrites in a tight loop. Clone your realms under your WSL home
   directory too, and point `embabel realms link` at that.
-- **`localhost` forwards through to Windows**, so `http://localhost:4343` opens
+- **`localhost` forwards through to Windows**, so `http://localhost:11044` opens
   the console in an ordinary Windows browser. `embabel open` tries `wslview` for
   exactly this.
 

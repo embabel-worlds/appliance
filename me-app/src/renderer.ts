@@ -30,7 +30,7 @@ let facts: Fact[] = []
 
 function currentSettings() {
   let baseUrl = baseUrlInput.value.trim().replace(/\/+$/, '')
-  // A URL without a scheme ("localhost:4242") makes fetch throw before any
+  // A URL without a scheme ("localhost:11042") makes fetch throw before any
   // connection attempt — normalize rather than error.
   if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`
   baseUrlInput.value = baseUrl

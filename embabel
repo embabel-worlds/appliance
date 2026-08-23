@@ -49,7 +49,13 @@ def run_setup(*argv: str) -> int:
     the terminal they expect. Calling main() in-process would mean rewriting argv
     underneath it and catching its SystemExit, for nothing.
     """
-    return subprocess.call([sys.executable, os.path.join(HERE, "setup.py"), *argv])
+    # THE INSTANCE HAS TO CROSS THE PROCESS BOUNDARY. A child that does not know
+    # which appliance it is about defaults to the first one — so `--instance green
+    # up` set up `appliance`, and `--instance green uninstall` offered to delete
+    # it. The environment carries it because setup.py is also run directly, by
+    # ./me.py and ./worlds.py, where there is no flag to pass.
+    env = dict(os.environ, EMBABEL_INSTANCE=s.instance())
+    return subprocess.call([sys.executable, os.path.join(HERE, "setup.py"), *argv], env=env)
 
 
 def current_mode() -> str | None:
@@ -63,12 +69,16 @@ def resolved_mode(requested: str | None) -> str:
     """What the user asked for, else what is running, else what was set up here,
     else worlds.
 
-    The .env step matters more than it looks. The installer's default door is Me
-    and this command's is Worlds, so before it, `embabel down` followed by
-    `embabel up` started the OTHER product on the same graph — somebody who
-    installed an assistant got a world runtime back, with nothing saying why.
-    Worlds remains the last resort, because this command is what
-    worlds.embabel.com hands a developer who has installed nothing yet.
+    The .env step matters more than it looks. It records the door this machine was
+    set up as, so `embabel down` followed by `embabel up` returns to the SAME
+    product — without it, somebody who installed an assistant got a world runtime
+    back on the same graph, with nothing saying why. That the installer now also
+    defaults to Worlds narrows the gap but does not close it: `EMBABEL_MODE=me`
+    installs an assistant, and this must still come back to one.
+
+    Worlds is the last resort because it is what worlds.embabel.com hands a
+    developer who has installed nothing yet — the same reason install.sh opens
+    that door.
     """
     return requested or current_mode() or s.configured_mode() or "worlds"
 
@@ -118,7 +128,7 @@ def cmd_status(args) -> int:
     if run and run.returncode == 0:
         running = {line.strip() for line in run.stdout.splitlines() if line.strip()}
 
-    core = [c for c in running if c.startswith(("embabel-worlds", "embabel-assistant", "embabel-appliance-neo4j"))]
+    core = [c["name"] for c in s.appliance_containers() if c["state"] == "running"]
     print(f"\n  Core            {len(core)} container(s) up")
 
     # Named individually because the interesting answer is WHICH one is missing.
@@ -174,11 +184,11 @@ def cmd_doctor(args) -> int:
     # NOT a check: a fresh checkout has no .env and is not broken. Flagging it with
     # a cross and then explaining that the cross does not mean anything is how a
     # doctor teaches people to ignore its crosses.
-    env_path = os.path.join(HERE, s.ENV_FILE)
+    env_path = s.env_path()
     if os.path.exists(env_path):
-        print(f"  ✓  {s.ENV_FILE} present")
+        print(f"  ✓  {s.env_file()} present")
     else:
-        print(f"  ·  no {s.ENV_FILE} yet — this appliance has not been set up here (`embabel up`)")
+        print(f"  ·  no {s.env_file()} yet — this appliance has not been set up here (`embabel up`)")
 
     realms = os.environ.get("EMBABEL_REALMS_DIR")
     if not realms and os.path.exists(env_path):
@@ -216,8 +226,7 @@ def cmd_open(args) -> int:
     """A surface, in a browser. With nothing named, the surface is THIS appliance's
     front door — the console for worlds, the assistant for me. Defaulting to the
     console regardless sent every Me user to a port with nothing behind it."""
-    urls = {"console": "http://localhost:4343", "graph": "http://localhost:4243",
-            "dashboards": "http://localhost:4246", "me": "http://localhost:4242"}
+    urls = s.surface_urls()
     what = args.what or ("me" if resolved_mode(None) == "me" else "console")
     url = urls[what]
     print(f"  {url}")
@@ -234,7 +243,7 @@ def cmd_realms(args) -> int:
         return run_setup("worlds", "--realms", args.directory)
     # list: what the appliance can actually see, which is the question worth asking.
     realms = os.environ.get("EMBABEL_REALMS_DIR")
-    env_path = os.path.join(HERE, s.ENV_FILE)
+    env_path = s.env_path()
     if not realms and os.path.exists(env_path):
         with open(env_path) as f:
             for line in f:
@@ -447,7 +456,12 @@ def cmd_prune(args) -> int:
     """
     strays = s.stray_sandbox_containers()
     if not strays:
-        print("  Nothing to prune — no code-sandbox containers on the host.")
+        elsewhere = s.stray_sandbox_containers(mine_only=False)
+        if elsewhere:
+            print(f"  Nothing to prune for '{s.instance()}'. "
+                  f"({len(elsewhere)} sandbox(es) here belong to another instance.)")
+        else:
+            print("  Nothing to prune — no code-sandbox containers on the host.")
         return 0
 
     print(f"\n  {len(strays)} code-sandbox container(s):")
@@ -457,8 +471,12 @@ def cmd_prune(args) -> int:
         print(f"    … and {len(strays) - 12} more")
     # The warning that makes this safe. These carry a label, not an owner, and
     # this command cannot tell an orphan from a live IDE session.
-    print("\n  If you are running an assistant from an IDE, ITS sandboxes are in this list")
-    print("  and removing them will break that session.")
+    others = len(s.stray_sandbox_containers(mine_only=False)) - len(strays)
+    print(f"\n  These belong to '{s.instance()}' — the server labels every sandbox with the")
+    print("  appliance that created it, so no other instance's sessions are listed here.")
+    if others:
+        print(f"  ({others} more on this host belong elsewhere and are left alone. A server run")
+        print("   from an IDE labels its own 'standalone' and is never in this list.)")
     if not args.yes and input("\n  Remove them? [y/N]: ").strip().lower() not in ("y", "yes"):
         print("  Left alone.")
         return 1
@@ -613,17 +631,61 @@ def _fish_quote(text: str) -> str:
 
 
 def cmd_upgrade(args) -> int:
-    """Newer images, same data. Deliberately not `up --fresh`, which is the opposite."""
+    """Onto the latest published build — checkout AND images. Your data is untouched;
+    deliberately not `up --fresh`, which is the opposite.
+
+    Both halves, because for a long time this moved only the images while the Me
+    app's menu moved both, and the two doors meant different things by the same
+    word. setup.py owns it now, so they cannot drift again.
+    """
     mode = resolved_mode(args.mode)
-    print(f"  Pulling newer images for the {mode} mode — your data is untouched.\n")
-    s._compose(mode, "pull")
-    s._compose(mode, "up", "-d")
-    print("\n  Upgraded. `embabel status` shows what is running.")
+    print(f"  Upgrading the {mode} mode to the latest build. Your data is untouched.\n")
+    try:
+        result = s.upgrade(mode)
+    except s.SetupError as e:
+        print(f"\n  {e}\n", file=sys.stderr)
+        return 1
+    print()
+    for note in result["notes"]:
+        print(f"  {note}")
+    print("\n  `embabel version` says exactly what you are on now.\n")
     return 0
 
 
 def cmd_uninstall(args) -> int:
     return run_setup("--uninstall")
+
+
+def cmd_instances(args) -> int:
+    """Every appliance installed in this checkout, and where each one answers.
+
+    Only interesting once there are two. With one, this prints the same thing
+    `status` already told you, which is why the verb is hidden until a second
+    instance exists.
+    """
+    names = s.installed_instances()
+    current = s.instance()
+    if args.json:
+        print(json.dumps([{"name": n, "project": s.compose_project(n),
+                           "settings": s.env_file(n), "portBase": s.port_base(n),
+                           "ports": s.ports_for(s.port_base(n))} for n in names], indent=2))
+        return 0
+    print()
+    for name in names:
+        s.use_instance(name)
+        running = sum(1 for c in s.appliance_containers() if c["state"] == "running")
+        chosen = bool(args.instance or os.environ.get("EMBABEL_INSTANCE")) or len(names) == 1
+        mark = "→" if chosen and name == current else " "
+        print(f"  {mark} {name:<16} ports {s.port_base(name)}-{s.port_base(name) + s.PORT_BLOCK - 1}"
+              f"   {s.env_file(name):<14} {running} container(s) up")
+    s.use_instance(current)
+    if len(names) > 1 and not (args.instance or os.environ.get("EMBABEL_INSTANCE")):
+        print("\n  No instance chosen — every other verb will ask for one.")
+        print("  embabel --instance <name> <command>, or set EMBABEL_INSTANCE.")
+    elif len(names) > 1:
+        print(f"\n  Verbs act on '{current}'. Use --instance <name> for another.")
+    print()
+    return 0
 
 
 def cmd_where(args) -> int:
@@ -633,7 +695,16 @@ def cmd_where(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """The parser, built where `completion` can also reach it. Every verb, flag and
-    choice a shell offers is read back out of this — one definition, not two."""
+    choice a shell offers is read back out of this — one definition, not two.
+
+    THE INSTANCE FLAG HIDES ITSELF. Somebody with one appliance — which is nearly
+    everybody — should never meet --instance, never invent a name, and never see a
+    verb for managing a thing they have one of. So the flag and the `instances`
+    verb are added always, because a hidden flag must still WORK, but they are
+    suppressed from --help until a second instance exists. The machinery arrives
+    the moment it means something and not before.
+    """
+    several = len(s.installed_instances()) > 1
     parser = argparse.ArgumentParser(
         prog="embabel",
         description="The Embabel appliance: a knowledge graph, an agent runtime, and the realms you install into it.",
@@ -642,6 +713,8 @@ def build_parser() -> argparse.ArgumentParser:
     # NOT required: `embabel` on its own is what someone types when they want to
     # know where things stand, and answering that with an argparse usage error is
     # a wasted first impression. It shows status and what to do next.
+    parser.add_argument("--instance", metavar="NAME",
+                        help="which appliance to act on" if several else argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command")
 
     def mode_flags(p):
@@ -729,6 +802,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("reset-password", help="forgot the password: recreate the account, keep all data")
     p.set_defaults(func=cmd_reset_password)
 
+    # argparse.SUPPRESS does NOT hide a subparser — it prints the literal
+    # "==SUPPRESS==" in the list. Omitting `help` entirely is what keeps a verb
+    # out of the help while leaving it callable.
+    p = sub.add_parser("instances", **({"help": "every appliance installed here"} if several else {}))
+    p.add_argument("--json", action="store_true", help="the same, as JSON")
+    p.set_defaults(func=cmd_instances)
+
     p = sub.add_parser("where", help="print the appliance directory")
     p.set_defaults(func=cmd_where)
 
@@ -736,12 +816,54 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("shell", choices=["bash", "zsh", "fish"])
     p.set_defaults(func=cmd_completion)
 
+    # A curated metavar rather than argparse's generated {up,status,ps,…}: with
+    # nineteen verbs that line is unreadable, and — the reason it matters here —
+    # a subparser suppressed from the help LIST still appears inside it.
+    sub.metavar = "<command>"
     return parser
+
+
+def resolve_instance(args) -> int:
+    """Decide which appliance every verb in this process is about.
+
+    The order is: what was asked for, what the environment says, THE ONLY ONE
+    THERE IS, else the default name. That third clause is the whole design — with
+    one appliance there is nothing to disambiguate and nothing to type, whatever
+    it happens to be called.
+
+    With several and no choice made, this refuses rather than guessing. Picking
+    one would be picking somebody's production graph as often as not.
+    """
+    asked = args.instance or os.environ.get("EMBABEL_INSTANCE") or ""
+    names = s.installed_instances()
+    if asked:
+        s.use_instance(asked)
+        return 0
+    if len(names) == 1:
+        s.use_instance(names[0])
+        return 0
+    if len(names) > 1 and args.command not in ("instances", "where", "completion", None):
+        print(f"\n  {len(names)} appliances are installed here: {', '.join(names)}", file=sys.stderr)
+        print("  Say which one:  embabel --instance <name> " + (args.command or ""), file=sys.stderr)
+        print("  Or set EMBABEL_INSTANCE in your shell.\n", file=sys.stderr)
+        return 2
+    s.use_instance(s.DEFAULT_INSTANCE)
+    return 0
 
 
 def main() -> int:
     args = build_parser().parse_args()
     os.chdir(HERE)  # compose files live here; every verb below assumes it
+    try:
+        refused = resolve_instance(args)
+    except s.SetupError as e:
+        # A bad --instance is a user error, not a crash. This runs BEFORE the
+        # try around the verb below, so without its own guard it escaped as a
+        # traceback.
+        print(f"\n  {e}\n", file=sys.stderr)
+        return 1
+    if refused:
+        return refused
 
     if not args.command:
         rc = cmd_status(args)

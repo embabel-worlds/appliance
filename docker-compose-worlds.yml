@@ -1,8 +1,8 @@
 # Embabel Worlds — the world-runtime mode of the appliance.
 #
 #   ./worlds.py                 # or: docker compose -f docker-compose-worlds.yml up -d
-#   open http://localhost:4343   # THE CONSOLE — start here.
-#                                # 4342 is the server: API and MCP, not a place to look.
+#   open http://localhost:11044  # THE CONSOLE — start here.
+#                                # 11043 is the server: API and MCP, not a place to look.
 #
 # THE SAME IMAGE, THE SAME DATA as the Me mode (docker-compose-me.yml) — this is
 # the superset design: the world runtime is always in the product, and this mode
@@ -27,7 +27,10 @@ services:
   # ── The world runtime ───────────────────────────────────────────────────────
   worlds:
     image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
-    container_name: embabel-worlds
+    # NO container_name — deliberately. A fixed name is global to the docker
+    # daemon, so a second instance could not start; compose names containers
+    # <project>-<service>-N, which is per-instance for free. Find a container by
+    # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
     depends_on:
       neo4j:
@@ -35,7 +38,7 @@ services:
     ports:
       # Same host-equals-container port rule as the Me mode: the code sandbox is
       # handed host.docker.internal:${server.port}, so the two move together.
-      - "127.0.0.1:${WORLDS_PORT:-4342}:${WORLDS_PORT:-4342}"
+      - "127.0.0.1:${WORLDS_PORT:-11043}:${WORLDS_PORT:-11043}"
     # Realm credentials, without a compose edit per realm. A realm names the key it
     # needs (`token-env:` in its apis.yml) and you put that key in secrets.env, beside
     # this file — every line of it enters the container as-is. The alternative was a
@@ -46,15 +49,22 @@ services:
       - path: secrets.env
         required: false
     environment:
-      - SERVER_PORT=${WORLDS_PORT:-4342}
+      - SERVER_PORT=${WORLDS_PORT:-11043}
       # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
       - TZ=${TZ:-Etc/UTC}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
-      - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-4243}
-      - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:4342}
+      - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-11045}
+      # Which appliance this server belongs to, stamped onto every code-sandbox
+      # container it creates (JvmInstance.INSTANCE_LABEL_KEY). Sandboxes are
+      # siblings created through the docker socket, not compose services, so
+      # this label is the ONLY thing that tells one appliance's sandboxes from
+      # another's — without it `embabel prune` on a machine with two appliances
+      # removes live sessions belonging to the other one.
+      - EMBABEL_INSTANCE=${EMBABEL_INSTANCE:-appliance}
+      - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:${WORLDS_PORT:-11043}}
       # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
       # (see application-appliance.yml) — the browser holds the encrypted blob and
       # nothing decryptable rests here — but WITHOUT this the server generates a key
@@ -174,18 +184,17 @@ services:
   # like everything else: no checkout, no Node, no dev server.
   worlds-console:
     image: ghcr.io/embabel/worlds-console:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
-    container_name: embabel-worlds-console
     restart: unless-stopped
     depends_on:
       - worlds
     ports:
-      - "127.0.0.1:${WORLDS_CONSOLE_PORT:-4343}:80"
+      - "127.0.0.1:${WORLDS_CONSOLE_PORT:-11044}:80"
     environment:
       # In-container address of the server: same compose network, container port.
-      - WORLDS_URL=http://worlds:${WORLDS_PORT:-4342}
+      - WORLDS_URL=http://worlds:${WORLDS_PORT:-11043}
       # OPTIONAL: skip the console's sign-in by having the proxy authenticate for
       # you. Convenient on your own laptop; understand what it means before setting
-      # it — ANYONE who can reach 4343 is then this user, and the console acts as
+      # it — ANYONE who can reach the console port is then this user, and it acts as
       # them (chat, memory, document ingest). Empty by default: the console asks.
       - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
       - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}

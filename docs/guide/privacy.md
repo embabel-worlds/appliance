@@ -45,8 +45,8 @@ the field in [PHONE_HOME.md](https://github.com/embabel-worlds/appliance/blob/ma
 and you can read the exact bytes from your own instance:
 
 ```bash
-curl -u <you> http://localhost:4242/api/v1/phone-home           # what was last sent
-curl -u <you> http://localhost:4242/api/v1/phone-home/preview   # what would be sent now
+curl -u <you> http://localhost:11042/api/v1/phone-home           # what was last sent
+curl -u <you> http://localhost:11042/api/v1/phone-home/preview   # what would be sent now
 ```
 
 The `json` field is the literal request body, not a re-rendering of it — compare it with
