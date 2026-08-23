@@ -39,6 +39,16 @@ from .dockerlib import _answers, _docker, find_graph_container, image_progress, 
 # It disables itself whenever colour does: piped output must stay clean, and a
 # progress animation in a CI log is thousands of lines of carriage returns.
 
+_ESCAPES = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _width() -> int:
+    """Usable columns. One short of the terminal so a full-width line cannot
+    wrap on the terminals that scroll at the last column rather than the first
+    character past it."""
+    return max(40, shutil.get_terminal_size((80, 24)).columns - 1)
+
+
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SPINNER_ASCII = "|/-\\"
 class StatusLine:
@@ -61,12 +71,24 @@ class StatusLine:
         elapsed = int(time.monotonic() - self.started)
         mark = accent(self._frames()[self.frame % len(self._frames())])
         clock = dim(f"{elapsed // 60}:{elapsed % 60:02d}")
-        return f"  {mark} {self.text}  {clock}"
+        line = f"  {mark} {self.text}  {clock}"
+        # Truncated on the VISIBLE length, which is not len(): the escape codes
+        # in a coloured line are bytes the terminal never draws, so measuring the
+        # raw string cuts a legible line short and lets a long one wrap anyway.
+        visible = len(_ESCAPES.sub("", line))
+        room = _width()
+        if visible <= room:
+            return line
+        # Cut the plain text and repaint, rather than slicing mid-escape.
+        return _ESCAPES.sub("", line)[:room - 1] + dim("…")
 
     def _erase(self) -> None:
         # Overwrite with spaces rather than an ANSI erase: \r plus blanks works
         # on every terminal this runs on, including the ones that ignore CSI K.
-        sys.stdout.write("\r" + " " * 78 + "\r")
+        # The TERMINAL'S width, not a guess. This was a fixed 78, and the moment
+        # the line grew past it — which naming an image pull does — the tail of
+        # the previous line survived every redraw as visible wreckage.
+        sys.stdout.write("\r" + " " * _width() + "\r")
 
     def _animate(self) -> None:
         while not self._stop.wait(0.12):

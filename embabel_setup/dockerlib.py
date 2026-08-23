@@ -307,8 +307,13 @@ def image_progress(mode: str) -> str:
         return ""
     waiting = sorted({purpose for image in missing
                       for fragment, purpose in IMAGE_PURPOSE.items() if fragment in image})
+    # At most two named. This shares one line with three lamps and a clock, and a
+    # status line that wraps leaves its first half on screen at every redraw.
+    shown = ", ".join(waiting[:2]) or "an image"
+    if len(waiting) > 2:
+        shown += f" +{len(waiting) - 2}"
     return (dim(f"images {len(needed) - len(missing)}/{len(needed)}")
-            + dim(" · pulling ") + ", ".join(waiting or ["an image"]))
+            + dim(" · pulling ") + shown)
 def mode_of(container: str | None) -> str:
     """Which mode a container belongs to, for looking up its image list."""
     service = mode_service(container) if container else None
