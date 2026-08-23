@@ -32,6 +32,7 @@ import secrets
 import shutil
 import struct
 import subprocess
+import textwrap
 import threading
 import sys
 import time
@@ -283,17 +284,20 @@ def print_worlds_surfaces(base: str) -> None:
     """Worlds onboarding ends at the way in, not at "done": every
     surface a worlds operator reaches next, in one block. The API/MCP lines use the
     mode's real detected port; the rest are the compose defaults (.env moves them)."""
-    print("  \u2500\u2500 Your Worlds surfaces " + "\u2500" * 38)
-    print(f"  Console        {surface_urls()['console']}   \u2190 START HERE")
+    print("  " + heading("Your Worlds surfaces", 58))
+    print(f"  {bold('Console')}        {url(surface_urls()['console'])}   "
+          + accent(f"{ARROW} START HERE"))
     print("                 The Worlds console: realms, documents, keys, views, chat.")
     print("                 Opens with the commissioning sequence.")
     print()
-    print(f"  API            {base}   (the server the console talks to)")
-    print(f"  MCP endpoint   {base}/mcp")
+    print(f"  API            {url(base)}   " + dim("(the server the console talks to)"))
+    print(f"  MCP endpoint   {url(base + '/mcp')}")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print(f"  Graph          {surface_urls()['graph']}  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
-    print(f"  Dashboards     {surface_urls()['dashboards']}   \u00b7   Metrics  {surface_urls()['metrics']}")
+    print(f"  Graph          {url(surface_urls()['graph'])}  "
+          + dim("(neo4j / NEO4J_PASSWORD, default embabel-assistant)"))
+    print(f"  Dashboards     {url(surface_urls()['dashboards'])}   {MIDDOT}   "
+          f"Metrics  {url(surface_urls()['metrics'])}")
     print()
 
 
@@ -311,7 +315,8 @@ def print_me_surfaces(base: str) -> None:
     print(f"  MCP endpoint   {base}/mcp")
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print(f"  Graph          {surface_urls()['graph']}  (neo4j / NEO4J_PASSWORD, default embabel-assistant)")
+    print(f"  Graph          {url(surface_urls()['graph'])}  "
+          + dim("(neo4j / NEO4J_PASSWORD, default embabel-assistant)"))
     print()
 
 
@@ -394,7 +399,7 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     if not os.path.isdir(ME_APP_DIR):
         return  # a checkout without the app (or a remote setup) — nothing to offer
     seed_me_app_settings(base, username)
-    print("\n  ── The Me app " + "─" * 47)
+    print("\n  " + heading("The Me app", 58))
     print("  Your appliance thinks; the Me app senses. It sits in your menu bar,")
     print(f"  reads local signals, and sends only what you approve to {base}.")
     # A packaged build wins when there is one: it carries the app's own identity,
@@ -801,6 +806,266 @@ def fresh_wipe() -> None:
         raise SetupError("Not wiped — nothing was touched.")
     take_everything_down()
     print()
+
+
+# ── copy ────────────────────────────────────────────────────────────────────
+#
+# THE WORDS LIVE IN copy/, NOT IN THE CODE. Everything a person reads while
+# setting the appliance up is prose, and prose has different editors, different
+# reviewers and a different review cadence from the logic around it. Buried in
+# print() calls it could only be changed by someone willing to touch setup.py,
+# hand-wrapped to the right column, and diffed against a wall of quoting — so it
+# drifted from worlds.embabel.com, which is the one place it must agree with.
+#
+# THE FILES HOLD WORDS ONLY. No colour, no indentation, no line breaks that
+# matter: write paragraphs, separate them with a blank line, and let [say] wrap
+# and indent them at render time. An editor who wants to change a sentence
+# should not have to think about the eightieth column, and a sentence that grows
+# by two words should not reflow four lines in the diff.
+#
+# Values are interpolated by name — {path}, {port} — so a copy file can name a
+# thing the program computes without knowing how.
+
+COPY_DIR = "copy"
+# The column prose wraps at. 76 plus a two-space indent keeps the whole thing
+# inside 80, which is still what a terminal opens at.
+COPY_WIDTH = 76
+
+
+def copy_text(name: str, **fields) -> str:
+    """One copy file, interpolated, wrapped and indented ready to print.
+
+    A missing file raises rather than printing nothing: copy ships with the
+    code, so its absence is a packaging bug, and silence is the one failure mode
+    nobody notices until a user reports an empty screen.
+    """
+    path = os.path.join(APPLIANCE_DIR, COPY_DIR, f"{name}.txt")
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError as e:
+        raise SetupError(f"Missing copy file {COPY_DIR}/{name}.txt — {e}")
+    return wrap_copy(raw.format(**fields) if fields else raw)
+
+
+def wrap_copy(raw: str, indent: str = "  ", width: int = COPY_WIDTH) -> str:
+    """Paragraphs wrapped and indented; blank lines kept; a line that begins with
+    whitespace in the FILE is left exactly as written.
+
+    That last rule is the escape hatch, and it is what makes a copy file able to
+    hold a command someone will retype:
+
+        embabel realms link ~/src
+
+    Wrapping that would break it, so anything already indented is passed
+    through — the same convention as markdown, which is what these files look
+    like anyway.
+    """
+    out = []
+    for block in raw.strip("\n").split("\n\n"):
+        if not block.strip():
+            continue
+        if block.startswith((" ", "\t")):
+            # dedent, not strip: the block's own INTERNAL alignment is the point
+            # of writing it verbatim. Stripping every line flattened the JSON
+            # shape below into a list of unaligned fragments.
+            body = textwrap.dedent(block).rstrip()
+            out.append("\n".join((indent + line) if line.strip() else ""
+                                  for line in body.splitlines()))
+        else:
+            flat = " ".join(line.strip() for line in block.splitlines())
+            out.append(textwrap.fill(flat, width=width,
+                                     initial_indent=indent, subsequent_indent=indent))
+    return "\n\n".join(out)
+
+
+def say(name: str, **fields) -> None:
+    """Print a copy block. The one call site style for prose, so a block can
+    never be half-wrapped or half-indented by whoever added it last."""
+    print(copy_text(name, **fields))
+
+
+# ── colour ──────────────────────────────────────────────────────────────────
+#
+# RESTRAINT IS THE POINT. This runs in terminals people screen-share, pipe into
+# files, and read over ssh on a bad connection. So: the SIXTEEN basic colours,
+# never 256 or truecolour; one accent, not a palette; and nothing carrying
+# meaning that the words do not already carry — a red line says "problem" twice
+# as fast, but a line that is ONLY red says nothing at all to the quarter of
+# readers who cannot see it, or to the log file it lands in tomorrow.
+#
+# OFF IS THE SAFE DEFAULT and it is checked in this order:
+#
+#   NO_COLOR         set to anything  -> off. The convention (no-color.org).
+#   FORCE_COLOR /    set              -> on, tty or not. For CI logs that render
+#   CLICOLOR_FORCE                       ANSI, and for testing this file.
+#   not a tty                        -> off. `embabel status > file` must be
+#                                       readable, and `| grep` must still match.
+#   TERM=dumb, TERM unset            -> off.
+#   Windows                          -> on ONLY if the console accepts VT, which
+#                                       is asked of the OS rather than assumed.
+#
+# Windows deserves the paragraph. Its console ignored ANSI for thirty years and
+# printed the escapes as literal garbage; Windows 10 added opt-in VT processing,
+# and Terminal enables it by default. ENABLE_VIRTUAL_TERMINAL_PROCESSING is the
+# flag, set through kernel32 — and if that call fails for any reason at all, the
+# answer is no colour rather than a screenful of `←[0m`.
+
+# THE EMBABEL PALETTE, from appliance-kit/css/palette.css — the same --sb-*
+# tokens the Worlds console, the Me app and every bundled theme read. The CLI
+# joining that contract rather than inventing a second one is the whole point:
+# "the schematic — light lines on black, indigo as the one signal".
+BRAND = {
+    "accent": "#625fff",    # --sb-accent, the one signal
+    "link": "#c7d2ff",      # --sb-link
+    "success": "#3ecf8e",   # --sb-success
+    "error": "#f87171",     # --sb-error
+    "warning": "#dcaa37",   # --sb-warning
+    "muted": "#6a7282",     # --sb-text-muted
+}
+
+# THREE TIERS, because a terminal that cannot render #625fff must not be handed
+# it. Truecolour gets the brand exactly; 256 gets the nearest cube entry,
+# computed rather than guessed; and everything else gets the basic sixteen.
+#
+# The basic tier is mapped BY MEANING, not by distance, and that is deliberate:
+# nearest-RGB puts --sb-error (#f87171, a soft red) on grey and --sb-success
+# (#3ecf8e) on cyan, because those are the closest of sixteen bad options. A
+# cross that is grey and a tick that is cyan are worse than no colour at all.
+BASIC_16 = {"accent": 94, "link": 36, "success": 92, "error": 91,
+            "warning": 33, "muted": 90}
+
+_CUBE_LEVELS = (0, 95, 135, 175, 215, 255)
+
+
+def _nearest_256(hex_colour: str) -> int:
+    """The closest xterm-256 index: the 6×6×6 colour cube, plus the 24 greys."""
+    want = tuple(int(hex_colour.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    best, best_distance = 16, None
+    for index in range(216):
+        r, g, b = index // 36, (index // 6) % 6, index % 6
+        candidate = (_CUBE_LEVELS[r], _CUBE_LEVELS[g], _CUBE_LEVELS[b])
+        distance = sum((a - b) ** 2 for a, b in zip(candidate, want))
+        if best_distance is None or distance < best_distance:
+            best, best_distance = 16 + index, distance
+    for index in range(24):
+        value = 8 + 10 * index
+        distance = sum((a - value) ** 2 for a in want)
+        if distance < best_distance:
+            best, best_distance = 232 + index, distance
+    return best
+
+
+def _depth() -> str:
+    """How much colour this terminal can actually take."""
+    if os.environ.get("COLORTERM", "") in ("truecolor", "24bit"):
+        return "true"
+    term = os.environ.get("TERM", "")
+    if "256color" in term or os.environ.get("COLORTERM"):
+        return "256"
+    return "basic"
+
+
+def _brand_codes(depth: str) -> dict:
+    if depth == "true":
+        return {name: "38;2;{};{};{}".format(
+            *(int(hexv.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)))
+            for name, hexv in BRAND.items()}
+    if depth == "256":
+        return {name: f"38;5;{_nearest_256(hexv)}" for name, hexv in BRAND.items()}
+    return {name: str(code) for name, code in BASIC_16.items()}
+
+
+_ANSI = {"reset": "\033[0m", "bold": "\033[1m", "dim": "\033[2m", "underline": "\033[4m"}
+
+
+def _windows_vt() -> bool:
+    """Ask the console to interpret ANSI, and report whether it agreed."""
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        # -11 is STD_OUTPUT_HANDLE; 0x0004 is ENABLE_VIRTUAL_TERMINAL_PROCESSING.
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))
+    except Exception:
+        return False
+
+
+def _colour_enabled() -> bool:
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("FORCE_COLOR") or os.environ.get("CLICOLOR_FORCE"):
+        return True
+    if not (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()):
+        return False
+    if os.environ.get("TERM", "") in ("", "dumb"):
+        return False
+    if sys.platform == "win32":
+        return bool(os.environ.get("WT_SESSION")) or _windows_vt()
+    return True
+
+
+COLOUR = _colour_enabled()
+DEPTH = _depth()
+for _name, _code in _brand_codes(DEPTH).items():
+    _ANSI[_name] = f"\033[{_code}m"
+
+
+def paint(text: str, *styles: str) -> str:
+    """Wrap text in styles, or return it untouched. Every colour in this file
+    goes through here, so turning colour off is one decision and not forty."""
+    if not COLOUR or not styles:
+        return text
+    return "".join(_ANSI[s] for s in styles if s in _ANSI) + text + _ANSI["reset"]
+
+
+# The vocabulary. Call sites say what a thing IS, never which colour it gets —
+# so the palette can change in one place, and a reader of the code can see the
+# intent rather than decode it.
+def bold(text: str) -> str: return paint(text, "bold")
+def dim(text: str) -> str: return paint(text, "muted")
+def accent(text: str) -> str: return paint(text, "accent")
+def good(text: str) -> str: return paint(text, "success")
+def warn(text: str) -> str: return paint(text, "warning")
+def bad(text: str) -> str: return paint(text, "error")
+def url(text: str) -> str: return paint(text, "link", "underline")
+
+
+# Marks, paired with their colour so a tick is never green in one place and
+# plain in another. ASCII fallbacks because a Windows console on an old code
+# page renders ✓ as a question mark, and a checklist of question marks is worse
+# than a checklist of plus signs.
+_UNICODE_OK = sys.stdout.encoding is None or "utf" in (sys.stdout.encoding or "").lower()
+TICK = good("✓" if _UNICODE_OK else "+")
+CROSS = bad("✗" if _UNICODE_OK else "x")
+BULLET = "•" if _UNICODE_OK else "*"
+MIDDOT = dim("·" if _UNICODE_OK else "-")
+ARROW = "←" if _UNICODE_OK else "<-"
+RULE_CHAR = "─" if _UNICODE_OK else "-"
+
+
+def banner(subtitle: str) -> str:
+    """The first two lines setup prints. A function so the preview script and the
+    program cannot drift — the whole reason the colour looked absent once already
+    was two copies of the same line, one of them stale."""
+    return ("\n  " + paint("Embabel appliance", "bold", "accent") + dim(" — ") + subtitle
+            + "\n  " + rule())
+
+
+def rule(width: int = 60) -> str:
+    return dim(RULE_CHAR * width)
+
+
+def heading(text: str, width: int = 60) -> str:
+    """A section title with a rule running to the margin — the shape the setup
+    wizard already used, now with the title carrying the emphasis instead of the
+    line. Trimmed to width so a long title never wraps the rule onto its own row."""
+    label = f"{RULE_CHAR}{RULE_CHAR} {text} "
+    tail = RULE_CHAR * max(0, width - len(label))
+    return dim(f"{RULE_CHAR}{RULE_CHAR} ") + paint(text, "bold", "accent") + " " + dim(tail)
 
 
 # ── instances ───────────────────────────────────────────────────────────────
@@ -2330,32 +2595,9 @@ def disclose_usage_reporting(base: str) -> None:
     this function is never reached again; an interrupted setup shows it again on resume,
     which is preferable to remembering an acknowledgement for an incomplete install.
     """
-    print("\n── Usage reporting " + "─" * 42)
-    print("  This appliance sends an installation usage report to Embabel 10 minutes")
-    print("  after startup, then every 24 hours. A random installation ID lets Embabel")
-    print("  distinguish this installation over time; it is not derived from you or")
-    print("  your machine.")
-    print(f"\n  Destination: {PHONE_HOME_ENDPOINT}")
-    print("\n  The complete JSON shape is:")
-    print("    installation: installationId, firstSeen, counter, sentAt")
-    print("    runtime:      version, packaging, uptimeSeconds")
-    print("    host:         os, arch, processors, totalMemoryMb, jvmMaxHeapMb")
-    print("    scale:        users, worlds, realms, nodes, relationships, labels,")
-    print("                  documents, chunks")
-    print("    activity:     http.server.requests, gen_ai.client.operation,")
-    print("                  codemode.script, sandbox.session, kg.ask.refusal,")
-    print("                  kg.query.warnings (numeric deltas only)")
-    print("    modelProviders: configured provider names only")
-    print("\n  It never sends content, prompts, responses, queries, names, email addresses,")
-    print("  credentials, file paths, model IDs, realm names, or document names. The")
-    print("  collector can observe the source IP of the HTTP connection, but the address")
-    print("  is not a field in the report.")
-    print(f"\n  Full field-by-field disclosure: {PHONE_HOME_DOC_URL}")
-    print("  After signing in, inspect your installation itself:")
-    print(f"    {base}/api/v1/phone-home/preview   what would be sent now")
-    print(f"    {base}/api/v1/phone-home           literal JSON last sent")
-    print("\n  Reporting has no configuration opt-out. If outbound telemetry is forbidden,")
-    print("  block the destination at your network.")
+    print("\n" + heading("Usage reporting"))
+    say("usage-reporting", endpoint=PHONE_HOME_ENDPOINT,
+        doc_url=PHONE_HOME_DOC_URL, base=base)
 
     answer = prompt("\n  Continue setup? [Y/n]: ").strip().lower()
     if answer not in ("", "y", "yes"):
@@ -2459,7 +2701,7 @@ def confirm_answers(step: dict, answers: dict) -> bool:
 
 
 def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> dict:
-    print(f"\n── {step['title']} " + "─" * max(0, 60 - len(step["title"])))
+    print("\n" + heading(step["title"]))
     if step.get("description"):
         print(f"   {step['description']}")
 
@@ -2526,7 +2768,9 @@ def wire_coding_agents(result: dict) -> None:
     if not token or not url:
         return
 
-    print("\n── Wire up coding agents " + "─" * 37)
+    print("\n" + heading("Wire up coding agents"))
+    say("coding-agents")
+    print()
     wired = False
     claude = shutil.which("claude")
     if claude:
@@ -2690,8 +2934,10 @@ def announce_realms(path: str, realms: list[str], notes: list[str]) -> None:
     else:
         print("  No realms there yet — clone one in and it is visible on the next start.")
     for note in notes:
-        print(f"  ! {note}")
-    print("  Load one with a path entry in a world's config/realms.yml:  path: /realms/<dir>\n")
+        print(f"  {warn('!')} {note}")
+    print()
+    say("realms-linked")
+    print()
 
 
 def ensure_realms_dir(mode: str, explicit: str | None) -> None:
@@ -2722,11 +2968,9 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
     if mode != "worlds" or not sys.stdin.isatty():
         return
 
-    print("\n── Working on realms " + "─" * 41)
-    print("  A realm is a set of capabilities that extends a world. If you are writing")
-    print("  one, the appliance can read it straight off this machine, with nothing")
-    print("  published anywhere first. Give the directory your realms live IN, so that")
-    print("  adding another is a copy rather than a change here.\n")
+    print("\n" + heading("Working on realms"))
+    say("realms")
+    print()
 
     default = os.path.realpath("realms")
     for _ in range(3):
@@ -2796,8 +3040,7 @@ def main() -> int:
     # it was meant to introduce.
     sys.stdout.reconfigure(line_buffering=True)
 
-    print("\n  Embabel appliance — " + ("uninstall" if args.uninstall else "first-run setup"))
-    print("  " + "─" * 60)
+    print(banner("uninstall" if args.uninstall else "first-run setup"))
 
     follower = None
     try:

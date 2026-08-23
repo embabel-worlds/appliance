@@ -32,3 +32,15 @@ you found it under.
 
 Contributions are accepted under the [Apache License 2.0](LICENSE), the same terms the
 project is released under.
+
+## Changing what the appliance says
+
+The setup wizard's prose lives in [`copy/`](copy/), one `.txt` file per block,
+not in `setup.py`. Write unwrapped paragraphs; `say()` wraps and indents them.
+See [copy/README.md](copy/README.md), and run `python3 scripts/check-copy.py`
+after editing — it catches a block with no file, a file nothing prints, and a
+`{placeholder}` the caller does not supply.
+
+Keep it consistent with [worlds.embabel.com](https://worlds.embabel.com); the
+site and the installer describing the product differently is the failure this
+directory exists to prevent.

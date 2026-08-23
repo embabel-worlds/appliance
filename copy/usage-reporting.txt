@@ -1,0 +1,32 @@
+This appliance sends an installation usage report to Embabel 10 minutes after
+startup, then every 24 hours. A random installation ID lets Embabel distinguish
+this installation over time; it is not derived from you or your machine.
+
+    Destination: {endpoint}
+
+The complete JSON shape is:
+
+    installation: installationId, firstSeen, counter, sentAt
+    runtime:      version, packaging, uptimeSeconds
+    host:         os, arch, processors, totalMemoryMb, jvmMaxHeapMb
+    scale:        users, worlds, realms, nodes, relationships, labels,
+                  documents, chunks
+    activity:     http.server.requests, gen_ai.client.operation,
+                  codemode.script, sandbox.session, kg.ask.refusal,
+                  kg.query.warnings (numeric deltas only)
+    modelProviders: configured provider names only
+
+It never sends content, prompts, responses, queries, names, email addresses,
+credentials, file paths, model IDs, realm names, or document names. The
+collector can observe the source IP of the HTTP connection, but the address is
+not a field in the report.
+
+Full field-by-field disclosure: {doc_url}
+
+After signing in, inspect your installation itself:
+
+    {base}/api/v1/phone-home/preview   what would be sent now
+    {base}/api/v1/phone-home           literal JSON last sent
+
+Reporting has no configuration opt-out. If outbound telemetry is forbidden,
+block the destination at your network.

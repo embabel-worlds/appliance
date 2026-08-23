@@ -1,0 +1,13 @@
+You extend a world by installing a realm: a folder of declarative YAML in git.
+Drop one in and the runtime wires up what it declares — types, actions, goals,
+APIs, MCP servers, scheduled work, saved queries, whole dashboards. Nothing to
+compile, and nothing you cannot read before you trust it.
+
+If you are writing one, the appliance can read it straight off this machine,
+with nothing published anywhere first. Give the directory your realms live IN,
+so that adding another is a copy rather than a change here.
+
+You do not have to write the YAML by hand. The appliance is an MCP server, so
+your coding agent can reach the live world — its types, its data, what is
+already installed — and author saved views, handlers and whole realms against
+it, then test them against real answers rather than guesses.

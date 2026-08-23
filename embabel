@@ -163,11 +163,11 @@ def cmd_doctor(args) -> int:
 
     def check(label: str, ok: bool, fix: str = "") -> None:
         nonlocal problems
-        print(f"  {'✓' if ok else '✗'}  {label}")
+        print(f"  {s.TICK if ok else s.CROSS}  {label}")
         if not ok:
             problems += 1
             if fix:
-                print(f"     {fix}")
+                print(f"     {s.dim(fix)}")
 
     check("docker installed", shutil.which("docker") is not None,
           "Install Docker Desktop: https://docs.docker.com/get-started/get-docker/")
@@ -186,9 +186,9 @@ def cmd_doctor(args) -> int:
     # doctor teaches people to ignore its crosses.
     env_path = s.env_path()
     if os.path.exists(env_path):
-        print(f"  ✓  {s.env_file()} present")
+        print(f"  {s.TICK}  {s.env_file()} present")
     else:
-        print(f"  ·  no {s.env_file()} yet — this appliance has not been set up here (`embabel up`)")
+        print(f"  {s.MIDDOT}  " + s.dim(f"no {s.env_file()} yet — this appliance has not been set up here (`embabel up`)"))
 
     realms = os.environ.get("EMBABEL_REALMS_DIR")
     if not realms and os.path.exists(env_path):
@@ -202,17 +202,18 @@ def cmd_doctor(args) -> int:
         if path:
             print(f"     {len(found)} realm(s) visible")
     else:
-        print("  ·  no realm checkouts linked   (embabel realms link <dir>)")
+        print(f"  {s.MIDDOT}  " + s.dim("no realm checkouts linked   (embabel realms link <dir>)"))
 
     strays = s.stray_sandbox_containers()
     if strays:
-        print(f"  ·  {len(strays)} stray code-sandbox container(s) — `embabel uninstall` offers to remove them")
+        print(f"  {s.MIDDOT}  " + s.dim(f"{len(strays)} stray code-sandbox container(s) — `embabel prune` removes them"))
 
     print()
     if not problems:
-        print("  All good.")
+        print("  " + s.good("All good."))
     else:
-        print(f"  {problems} problem{'s' if problems > 1 else ''} above — each line says what to do.")
+        print("  " + s.warn(f"{problems} problem{'s' if problems > 1 else ''} above")
+              + " — each line says what to do.")
     return 1 if problems else 0
 
 
@@ -358,7 +359,7 @@ def cmd_version(args) -> int:
         return 0
 
     src, app, neo, out = v["source"], v["appliance"], v["neo4j"], v["checkout"]
-    print(f"\n  Appliance   {v['mode']} mode\n")
+    print("\n  " + s.bold("Appliance") + f"   {s.accent(v['mode'])} mode\n")
 
     print(f"  Checkout    {(out.get('commit') or '?')[:12]} on {out.get('branch') or '?'}"
           + ("  (uncommitted changes)" if out.get("dirty") else ""))
@@ -377,13 +378,14 @@ def cmd_version(args) -> int:
         short = src["commit"] if len(src["commit"]) > 12 else f"{src['commit']} (abbreviated only)"
         print(f"\n  Built from  {short}")
         if src.get("branch"):
-            print(f"              on {src['branch']}" + ("  DIRTY TREE" if src.get("dirty") else ""))
+            print(f"              on {src['branch']}" + (s.warn("  DIRTY TREE") if src.get("dirty") else ""))
         if src.get("subject"):
             print(f"              \u201c{src['subject']}\u201d")
         if src.get("committed"):
             print(f"              committed {src['committed']}")
         if src.get("dirty"):
-            print("              The build carried uncommitted changes — this commit is")
+            print("              " + s.warn("The build carried uncommitted changes")
+                  + " — this commit is")
             print("              where it started, not what is in it.")
     else:
         print("\n  Built from  unknown — could not read the jar (is the image pulled?)")
@@ -425,8 +427,10 @@ def cmd_ps(args) -> int:
     print()
     width = max(len(c["name"]) for c in containers)
     for c in containers:
-        mark = "•" if c["state"] == "running" else "·"
-        print(f"  {mark} {c['name']:<{width}}  {c['status']}")
+        up = c["state"] == "running"
+        mark = s.good(s.BULLET) if up else s.MIDDOT
+        line = f"{c['name']:<{width}}  {c['status']}"
+        print(f"  {mark} " + (line if up else s.dim(line)))
 
     missing = [name for name in s.DEFERRED_WHY
                if not any(name in c["name"] for c in containers)]
@@ -676,8 +680,11 @@ def cmd_instances(args) -> int:
         running = sum(1 for c in s.appliance_containers() if c["state"] == "running")
         chosen = bool(args.instance or os.environ.get("EMBABEL_INSTANCE")) or len(names) == 1
         mark = "→" if chosen and name == current else " "
-        print(f"  {mark} {name:<16} ports {s.port_base(name)}-{s.port_base(name) + s.PORT_BLOCK - 1}"
-              f"   {s.env_file(name):<14} {running} container(s) up")
+        label = f"{name:<16}"
+        print(f"  {s.accent(mark)} " + (s.bold(label) if chosen and name == current else label)
+              + s.dim(f" ports {s.port_base(name)}-{s.port_base(name) + s.PORT_BLOCK - 1}")
+              + "   " + s.dim(f"{s.env_file(name):<14}") + " "
+              + (s.good(f"{running} up") if running else s.dim("stopped")))
     s.use_instance(current)
     if len(names) > 1 and not (args.instance or os.environ.get("EMBABEL_INSTANCE")):
         print("\n  No instance chosen — every other verb will ask for one.")
@@ -867,11 +874,15 @@ def main() -> int:
 
     if not args.command:
         rc = cmd_status(args)
-        print("  ── Next " + "─" * 52)
-        print("    embabel up        start it, or finish setting it up")
-        print("    embabel doctor    why it is not working")
-        print("    embabel open      this appliance's front door, in your browser")
-        print("    embabel --help    everything else\n")
+        print("  " + s.heading("Next", 58))
+        for verb, what in (("up", "start it, or finish setting it up"),
+                           ("doctor", "why it is not working"),
+                           ("open", "this appliance's front door, in your browser"),
+                           ("--help", "everything else")):
+            # ljust BEFORE accent(): padding a string that already carries escape
+            # codes counts them toward the width, and every row steps left.
+            print("    " + s.accent(f"embabel {verb}".ljust(16)) + "  " + s.dim(what))
+        print()
         return rc
     try:
         return args.func(args)

@@ -1,0 +1,7 @@
+This appliance is an MCP server. Point a coding agent at it and the agent gets
+the whole world — your graph, your documents, your installed realms — instead
+of another single-system connector.
+
+That is also how views get written: ask the agent for the question you want
+answered, and it can explore the world, save the query as a view, and check
+the answer before you keep it.

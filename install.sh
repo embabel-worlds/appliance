@@ -54,20 +54,52 @@ if [ -z "${EMBABEL_HOME:-}" ]; then
 fi
 HOME_DIR="${EMBABEL_HOME:-$DEFAULT_HOME}"
 
-say() { printf '  %s\n' "$*"; }
-die() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
+# Colour, in POSIX sh and with the same restraint as the rest of the appliance:
+# the sixteen basic codes, one accent, and OFF unless the terminal is really a
+# terminal. NO_COLOR is honoured (no-color.org); `curl ... | sh` still gets it,
+# because it is stdIN that is the pipe there, not stdout.
+#
+# The `-t 1` test is the whole guard. Without it, redirecting this script's
+# output to a file writes escape codes into it, and the log somebody attaches to
+# a bug report is unreadable.
+# FORCE_COLOR matches setup.py, and earns its place here: the only way to see
+# this script's output without a terminal — a preview, a CI log, a test — is to
+# ask for it, and a preview that silently renders plain is a preview of nothing.
+if [ -n "${NO_COLOR:-}" ]; then
+  _embabel_colour=no
+elif [ -n "${FORCE_COLOR:-}${CLICOLOR_FORCE:-}" ]; then
+  _embabel_colour=yes
+elif [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
+  _embabel_colour=yes
+else
+  _embabel_colour=no
+fi
+if [ "$_embabel_colour" = yes ]; then
+  C_RESET=$(printf '\033[0m'); C_BOLD=$(printf '\033[1m'); C_DIM=$(printf '\033[2m')
+  C_CYAN=$(printf '\033[36m'); C_GREEN=$(printf '\033[32m'); C_YELLOW=$(printf '\033[33m')
+else
+  C_RESET=; C_BOLD=; C_DIM=; C_CYAN=; C_GREEN=; C_YELLOW=
+fi
+
+say()  { printf '  %s\n' "$*"; }
+step() { printf '  %s%s%s %s\n' "$C_CYAN" "::" "$C_RESET" "$*"; }
+ok()   { printf '  %s%s%s %s\n' "$C_GREEN" "OK" "$C_RESET" "$*"; }
+note() { printf '  %s%s%s\n' "$C_DIM" "$*" "$C_RESET"; }
+die()  { printf '\n  %s%s%s %s\n\n' "$C_YELLOW" "!!" "$C_RESET" "$*" >&2; exit 1; }
 
 # The door you are actually installing, described in the SITE'S words —
 # worlds-site/src/pages/index.astro. Somebody arrives here straight off that
 # page, and an installer that pitches the product differently from the page
 # that sent them reads as a different product.
 if [ "$MODE" = "worlds" ]; then
-  printf '\n  Embabel Worlds — the world your AI acts in\n'
-  printf '  A governed, living knowledge graph of your business, derived from the\n'
+  printf '\n  %sEmbabel Worlds%s %s— the world your AI acts in%s\n' \
+    "$C_BOLD" "$C_RESET" "$C_DIM" "$C_RESET"
+  printf '  %sA governed, living knowledge graph of your business, derived from the\n' "$C_DIM"
   printf '  systems you already run and owned by you. Insight across the whole\n'
-  printf '  business, in days.\n\n'
+  printf '  business, in days.%s\n\n' "$C_RESET"
 else
-  printf '\n  Embabel Me — your own assistant, on your own machine\n\n'
+  printf '\n  %sEmbabel Me%s %s— your own assistant, on your own machine%s\n\n' \
+    "$C_BOLD" "$C_RESET" "$C_DIM" "$C_RESET"
 fi
 
 # --- 1. Docker ------------------------------------------------------------
@@ -81,8 +113,8 @@ docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start D
 # failure: setup says the same thing with more room, and being told to fix two
 # things at once by a script that then exits is a bad first minute.
 if ! docker model status >/dev/null 2>&1; then
-  say "Note: Docker Model Runner looks disabled — embeddings need it."
-  say "      Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner"
+  printf '  %s!!%s Docker Model Runner looks disabled — embeddings need it.\n' "$C_YELLOW" "$C_RESET"
+  note "     Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner"
   echo
 fi
 
@@ -92,9 +124,9 @@ if [ -e "$HOME_DIR" ] && [ ! -f "$HOME_DIR/setup.py" ] && [ -n "$(ls -A "$HOME_D
 fi
 
 if [ -f "$HOME_DIR/setup.py" ]; then
-  say "Updating ${HOME_DIR} (your .env and data are untouched)…"
+  step "Updating ${HOME_DIR} $(printf '%s' "$C_DIM")(your .env and data are untouched)$(printf '%s' "$C_RESET")…"
 else
-  say "Installing into ${HOME_DIR}…"
+  step "Installing into ${HOME_DIR}…"
 fi
 
 mkdir -p "$HOME_DIR"
@@ -153,10 +185,10 @@ SHIM
   # silently failed. Say so; guessing at somebody's PATH order is not ours to do.
   EXISTING="$(command -v embabel 2>/dev/null || true)"
   if [ -n "$EXISTING" ] && [ "$EXISTING" != "$BIN_DIR/embabel" ]; then
-    say "NOTE: another 'embabel' already comes first on your PATH:"
-    say "        $EXISTING"
-    say "      To use this one, put $BIN_DIR ahead of it,"
-    say "      or run it by path: $BIN_DIR/embabel"
+    printf '  %s!!%s another "embabel" already comes first on your PATH:\n' "$C_YELLOW" "$C_RESET"
+    note "        $EXISTING"
+    note "      To use this one, put $BIN_DIR ahead of it,"
+    note "      or run it by path: $BIN_DIR/embabel"
     echo
   fi
 
@@ -184,7 +216,7 @@ fi
 # is deliberately no second implementation of any of that here.
 command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with macOS; on Linux: apt install python3)."
 
-say "Done. Starting setup — after this, use the 'embabel' command."
+ok "Done. Starting setup — after this, use the 'embabel' command."
 echo
 cd "$HOME_DIR"
 

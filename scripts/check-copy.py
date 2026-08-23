@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Every say() has a file, and every file has a say().
+
+Copy is the one thing in this repo that CANNOT fail loudly at review time: a
+missing block raises only when a user reaches that step of the wizard, and an
+orphaned file is a paragraph somebody edited believing it was on screen. Both
+are cheap to catch here and expensive to notice in the field.
+
+    python3 scripts/check-copy.py
+"""
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+COPY = os.path.join(HERE, "copy")
+SOURCES = ("setup.py", "embabel")
+
+used, missing = set(), []
+for source in SOURCES:
+    with open(os.path.join(HERE, source), encoding="utf-8") as f:
+        text = f.read()
+    for name in re.findall(r'\bsay\(\s*"([a-z0-9-]+)"', text):
+        used.add(name)
+        if not os.path.exists(os.path.join(COPY, f"{name}.txt")):
+            missing.append(f"{source}: say(\"{name}\") has no copy/{name}.txt")
+
+on_disk = {f[:-4] for f in os.listdir(COPY) if f.endswith(".txt")}
+orphans = sorted(on_disk - used)
+
+# An interpolated field the caller never passes raises KeyError at the worst
+# possible moment, so the placeholders are checked too — against the arguments
+# actually written at the call site.
+bad_fields = []
+for source in SOURCES:
+    with open(os.path.join(HERE, source), encoding="utf-8") as f:
+        text = f.read()
+    for name, args in re.findall(r'\bsay\(\s*"([a-z0-9-]+)"((?:[^()]|\([^()]*\))*)\)', text):
+        path = os.path.join(COPY, f"{name}.txt")
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            wanted = set(re.findall(r"\{([a-z_]+)\}", f.read()))
+        given = set(re.findall(r"(\w+)\s*=", args))
+        if wanted - given:
+            bad_fields.append(f"copy/{name}.txt wants {sorted(wanted - given)}, "
+                              f"call site passes {sorted(given) or 'nothing'}")
+
+for problem in missing + bad_fields:
+    print(f"  ✗ {problem}")
+for orphan in orphans:
+    print(f"  · copy/{orphan}.txt is not used by any say()")
+
+if missing or bad_fields:
+    sys.exit(1)
+print(f"  ✓ {len(used)} copy block(s), all present and all fields supplied"
+      + (f"; {len(orphans)} unused" if orphans else ""))
