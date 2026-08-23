@@ -59,6 +59,22 @@ def phone_home_on() -> bool:
     """Whether this appliance reports usage. False unless .env says true."""
     value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()
     return value in ("1", "true", "yes", "on")
+def escape_for_env(value: str) -> str:
+    """Double every `$`, because compose interpolates values read from .env.
+
+    Measured: a file containing `OPENAI_API_KEY=sk-a$$$b_c` reaches the container
+    as `sk-a` — compose reads `$$` as an escaped dollar and then treats `$b_c` as
+    a variable reference, warns "The b_c variable is not set", and substitutes a
+    blank. A provider key with a dollar in it was therefore corrupted silently,
+    and the failure surfaces much later as an authentication error against the
+    provider rather than anything pointing here.
+
+    `$$` is compose's own escape for a literal dollar, so doubling is the fix
+    rather than quoting, which compose does not treat as significant.
+    """
+    return value.replace("$", "$$")
+
+
 def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
     """Write `key=value` into .env, preserving everything else there.
 
@@ -69,16 +85,22 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
     written above a line that is new.
     """
     lines: list[str] = []
-    if os.path.exists(env_file()):
-        with open(env_file()) as f:
+    # env_path(), not env_file(): the reader uses the absolute path and this used
+    # the bare filename, so the two agreed only while the process happened to be
+    # chdir'd into the appliance. The Me app and the CLI both call in from their
+    # own directories, where this would have written a stray .env beside whatever
+    # the user was standing in.
+    if os.path.exists(env_path()):
+        with open(env_path()) as f:
             lines = f.read().splitlines()
+    written = escape_for_env(value)
     for index, line in enumerate(lines):
         if line.startswith(f"{key}="):
-            lines[index] = f"{key}={value}"
+            lines[index] = f"{key}={written}"
             break
     else:
-        lines += ["", *why, f"{key}={value}"]
-    with open(env_file(), "w") as f:
+        lines += ["", *why, f"{key}={written}"]
+    with open(env_path(), "w") as f:
         f.write("\n".join(lines) + "\n")
 def configured_mode() -> str | None:
     """Which door this appliance was last set up as, from .env.
@@ -280,5 +302,8 @@ def env_file_value(key: str, name: str | None = None) -> str | None:
         for line in f:
             stripped = line.strip()
             if stripped.startswith(f"{key}="):
-                return stripped.split("=", 1)[1].strip() or None
+                # Unescaped on the way out: what was stored is a doubled-dollar
+                # form for compose's benefit, not the value itself.
+                raw = stripped.split("=", 1)[1].strip()
+                return raw.replace("$$", "$") or None
     return None
