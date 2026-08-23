@@ -13,10 +13,12 @@ step uses it instead of asking. `--ignore-env` always asks.
 Forgot the password? `--reset-password` recreates the operator account and keeps
 every piece of data — see reset_credentials for how and why that is sound.
 
-This client is deliberately thin. It does not know what the steps ARE — it asks the
-appliance (`GET /api/v1/setup`) and renders whatever it describes, so when the appliance
-gains a step this client picks it up without changing. If you would rather drive the API
-yourself, everything here is plain HTTP; see /swagger-ui on your instance.
+The questions live here, in embabel_setup/wizard.py, not in the appliance. The appliance
+reports facts — is there an account, which providers are connected, how long must a
+password be (`GET /api/v1/setup`) — and this installer decides from those what to ask, in
+what order, and in what words. Each answer posts to an endpoint that does something only
+the server can do. If you would rather drive the API yourself, everything here is plain
+HTTP; see /swagger-ui on your instance.
 """
 
 from __future__ import annotations
@@ -67,6 +69,10 @@ from embabel_setup.upgrade import *      # noqa: F403
 from embabel_setup.backup import *       # noqa: F403
 from embabel_setup.bugreport import *    # noqa: F403
 from embabel_setup.seed import *         # noqa: F403
+# Imported as a module, not starred: the wizard is a small named vocabulary
+# (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
+# into this file's namespace alongside forty other things.
+from embabel_setup import wizard
 
 # EXPLICITLY, because `import *` refuses names that begin with an underscore.
 # That rule broke this file on main: StatusLine's constructor read _UNICODE_OK,
@@ -116,10 +122,12 @@ PREFERRED_DEFAULTS = {"provider": "openai"}
 
 
 
-def call(base: str, path: str, token: str, payload: dict | None = None) -> dict:
+def call(base: str, path: str, token: str, payload: dict | None = None,
+         method: str | None = None) -> dict:
     url = f"{base}/api/v1/setup{path}"
     data = json.dumps(payload).encode() if payload is not None else None
-    request = urllib.request.Request(url, data=data, method="POST" if data else "GET")
+    request = urllib.request.Request(
+        url, data=data, method=method or ("POST" if data else "GET"))
     request.add_header(TOKEN_HEADER, token)
     if data:
         request.add_header("Content-Type", "application/json")
@@ -1197,6 +1205,23 @@ def probe(base: str) -> str:
         return "pending"  # 401: up, and wants the real token
 
 
+def remember_client_state(base: str, token: str, notes: dict) -> None:
+    """Leave a note for the next run of this installer, in the appliance's data volume.
+
+    The server stores these and hands them back without reading them, which is
+    what makes them ours: "we offered MCP and were told no" is a fact about a
+    conversation the server was not part of, and it must survive `--resume`
+    without the server growing an opinion about it.
+
+    Best effort on purpose. A note that fails to save costs one repeated
+    question; failing the install over it would cost the whole install.
+    """
+    try:
+        call(base, "/state", token, notes, method="PUT")
+    except SetupError:
+        pass
+
+
 def call_when_ready(base: str, token: str) -> dict:
     """The first real call, retried while the appliance finishes starting.
 
@@ -1353,14 +1378,13 @@ def from_environment(step: dict) -> dict:
     """Answers this step can take from the shell rather than from the operator.
 
     A developer who already has OPENAI_API_KEY exported should not be made to paste it
-    back in. This is the one place the client knows anything about a specific step — it
-    keys off the server's own field names (`provider`, `apiKey`) and does nothing at all
-    for a step that lacks them, so an unrelated step added server-side is unaffected.
+    back in. Keyed off the field names rather than the step id, so it does nothing at
+    all for a step that lacks them.
 
     Note this reads the environment of the shell running THIS script, which is not the
-    container's. A key set only in `.env` reaches the appliance but not here, and is still
-    asked for; that is a server-side question about when the provider step counts as
-    satisfied, not something a client can see.
+    container's. A key set only in `.env` reaches the appliance but not here, and is
+    still asked for: the appliance reports a provider as connected once it holds the
+    key itself, and an env var it was handed at boot is not that.
     """
     names = {field["name"] for field in step["fields"]}
     if not {"provider", "apiKey"} <= names:
@@ -1433,8 +1457,9 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
     # seen the product work is the commonest way a good tool loses an evaluator,
     # and it is unnecessary here: embeddings are local and always have been, so
     # documents, search, memory, realms, views and handlers all work with no key
-    # at all. The step stays unsatisfied, truthfully, and re-running setup — or
-    # the Models tab — picks it up later.
+    # at all. The step stays unsatisfied, truthfully — the server reports that as
+    # a fact and closes setup anyway; re-running setup, or the Models tab, picks
+    # it up later.
     if deferrable_provider_step(step):
         say("provider-choice")
         answer = prompt(f"\n  Connect a provider now? [Y/n]: ").strip().lower()
@@ -1476,6 +1501,17 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
         # value only the user can judge is the one nothing else can catch.
         if not prefilled and confirm_answers(step, answers) is False:
             continue
+
+        # DECLINING IS NOT A SERVER CALL. There is no "no" endpoint any more: the
+        # appliance mints a token when asked and knows nothing about having been
+        # offered. So we record our own note and never post.
+        if step["id"] == wizard.MCP:
+            if (answers.get("enable") or "yes").strip().lower() not in ("y", "yes"):
+                remember_client_state(base, token, {wizard.MCP_DECLINED: "yes"})
+                print(f"\n  {TICK} MCP left off. "
+                      + dim("Re-run setup if you want it later."))
+                return {}
+            answers = {}
 
         print("\n  Working…", end=" ", flush=True)
         try:
@@ -1866,15 +1902,27 @@ def main() -> int:
         # following. A detached `docker compose up` cannot make a README visible.
         disclose_usage_reporting(base)
 
-        pending = [step for step in status["steps"] if not step["satisfied"]]
+        pending = wizard.pending(status)
         if not pending:
             print("  Everything is already configured.")
         deferred = []
         api_token = None
+        seeded = False
         for step in pending:
             result = run_step(base, token, step, use_environment=not args.ignore_env)
             if not result and deferrable_provider_step(step):
                 deferred.append(step)
+            # SEED HERE, NOT AT THE END. The only credential that can index anything
+            # is the one the account step just took, and it exists only in the run
+            # that creates the account. Waiting until after /complete meant a setup
+            # resumed from a half-finished first pass reached the upload with nothing
+            # to authenticate as, and printed "no credential" instead of the docs.
+            # Nothing here needs a provider: embeddings are local.
+            if step["id"] == "account" and (result or {}).get("ok"):
+                credential = seed_credential(None)
+                if credential:
+                    seed_documentation(base, credential)
+                    seeded = True
             # Kept as it goes past: the server never returns this token again, and
             # seeding below needs a credential that is not the user's password.
             api_token = (result or {}).get("token") or api_token
@@ -1923,12 +1971,17 @@ def main() -> int:
         if deferred:
             say("no-provider-next")
 
-        credential = seed_credential(api_token)
-        if credential:
-            seed_documentation(base, credential)
-        else:
-            print(f"  {MIDDOT} " + dim("No credential to index the documentation with — "
-                                       "add it from Documents if you want it searchable."))
+        if not seeded:
+            # Either the account already existed (so an earlier run did this) or the
+            # upload had no credential. Neither is a failure worth alarming anybody
+            # about at the end of a successful install — the Documents page is the
+            # answer in both cases.
+            credential = seed_credential(api_token)
+            if credential:
+                seed_documentation(base, credential)
+            else:
+                print(f"  {MIDDOT} " + dim("Documentation not re-indexed this run — "
+                                           "add or refresh it from Documents."))
         warn_if_conversion_pending()
         if service == "worlds":
             print_worlds_surfaces(base)
