@@ -181,6 +181,21 @@ def cmd_doctor(args) -> int:
     check("Docker Model Runner (embeddings run locally)", bool(runner and runner.returncode == 0),
           "Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner")
 
+    # THE EMBEDDING MODEL IS A HARD REQUIREMENT, not a nicety: the server builds
+    # its embedding bean at startup and refuses to start without one, which
+    # surfaces as an UnsatisfiedDependencyException and a stack trace naming
+    # Spring rather than a missing download. Checked by name, because the tag
+    # matters — `latest` on that repository is the 4B variant with different
+    # dimensions, and embeddings are sticky once written.
+    if runner and runner.returncode == 0:
+        listed = s._docker("model", "list")
+        have = listed.stdout if listed and listed.returncode == 0 else ""
+        wanted = s.EMBEDDING_MODEL
+        check(f"embedding model {wanted}", wanted.split("/")[-1].split(":")[0] in have
+              and wanted.split(":")[-1] in have,
+              f"Not pulled yet. The appliance cannot start without it:\n"
+              f"       docker model pull {wanted}")
+
     # NOT a check: a fresh checkout has no .env and is not broken. Flagging it with
     # a cross and then explaining that the cross does not mean anything is how a
     # doctor teaches people to ignore its crosses.

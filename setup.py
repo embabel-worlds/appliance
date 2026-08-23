@@ -52,7 +52,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # every name this file used to define has to remain reachable here. Star imports
 # are the honest way to say that: the modules own the code, this file owns the
 # contract.
-from embabel_setup.core import APPLIANCE_DIR, AlreadySetUp, SetupError, TokenRejected, Unreachable
+from embabel_setup.core import (  # noqa: F401 — the facade's contract
+    APPLIANCE_DIR, BOOT_WAIT_SECONDS, EMBEDDING_MODEL, ME_APP_DIR, MODE_COMPOSE, MODE_CORE,
+    MODE_SERVICE, MODE_SERVICES, OVERRIDE_FILE, AlreadySetUp, SetupError, TokenRejected,
+    Unreachable, prompt,
+)
 from embabel_setup.colour import *      # noqa: F403 — palette and marks
 from embabel_setup.words import *        # noqa: F403 — copy loader
 from embabel_setup.settings import *     # noqa: F403 — which appliance, and its ports
@@ -1239,6 +1243,16 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
             # The API answers but the current container log has no token — a remote
             # appliance with no local docker, or a log that lost it. Ask below.
             break
+        # A death ends the wait immediately. Spinning out the full two minutes and
+        # then blaming the token is the worst of both: slow AND wrong.
+        died = boot_failure(container)
+        if died:
+            STATUS.stop()
+            raise SetupError(
+                f"The appliance failed to start.\n  {died}\n\n"
+                f"  Full log:  docker logs {container}\n"
+                f"  Then:      embabel doctor"
+            )
         if container is None or time.monotonic() >= deadline:
             break
         if not announced:
@@ -1446,6 +1460,12 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
             # depend on the MCP step's minted token, which is not always minted —
             # so seeding silently did nothing, which is how it shipped broken.
             remember_account(answers["username"], answers["password"])
+        if {"provider", "apiKey"} <= set(answers) and answers.get("apiKey"):
+            # Persisted only once the SERVER has accepted it, further down — a
+            # rejected key written to .env would be handed to every later boot.
+            pending_key = (answers.get("provider") or "openai", answers["apiKey"])
+        else:
+            pending_key = None
 
         # A LAST LOOK BEFORE IT IS PERMANENT. The server accepts a step once and
         # refuses to reopen setup afterwards (410, by design), so a username typed
@@ -1473,6 +1493,8 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
             print(f"\n  {e}\n  Let's try that step again.")
             continue
         if result.get("ok"):
+            if pending_key:
+                remember_provider_key(*pending_key)
             print(result.get("detail", "done"))
             models = result.get("models")
             if models:
@@ -1797,6 +1819,11 @@ def main() -> int:
             fresh_wipe()
         started = False
         if args.mode or args.fresh:
+            # BEFORE the containers, not alongside them. The server dies without
+            # this model, and dying forty seconds into a boot with a Spring
+            # stack trace is a much worse way to learn that a 1.1GB file is
+            # missing than being told up front that it is downloading.
+            ensure_embedding_model()
             started = ensure_mode(mode)
 
         container = find_mode_container(args.mode)

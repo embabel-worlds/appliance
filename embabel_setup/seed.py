@@ -70,6 +70,36 @@ SPEC_DOCS = ("VIRTUAL_CYPHER.md", "VIRTUAL_CYPHER_GUIDE.md", "README.md",
 # Big enough for the guides, small enough that a stray file cannot become an
 # ingestion job somebody did not ask for.
 SEED_MAX_BYTES = 512 * 1024
+def remember_provider_key(provider: str, api_key: str) -> None:
+    """Write the provider key setup just collected into .env.
+
+    THIS IS WHAT MAKES THE ${VAR:-} FORM SAFE. The compose files hand the server
+    an empty OPENAI_API_KEY when nothing supplies one, because an absent key
+    throws in OpenAiModelsConfig's constructor and crash-loops a server that has
+    not been asked for a key yet. An empty value would then shadow the key
+    first-run setup writes into the data volume — env beats config files in
+    Spring — so the variable has to stop being empty the moment a key is known.
+
+    Writing it here means the next boot passes the real key, and every boot
+    after that, without depending on the operator having exported anything.
+    """
+    if not api_key.strip():
+        return
+    from .settings import set_env_var
+    variable = PROVIDER_KEY_VARS.get(provider)
+    if not variable:
+        return
+    set_env_var(variable, api_key.strip(), (
+        f"# The {provider} key you gave at setup. Kept here so the container is",
+        "# handed a real key rather than an empty one — see the OPENAI_API_KEY",
+        "# note in the compose files for why an empty value is not harmless.",
+    ))
+
+
+# Provider name as the server calls it -> the variable its config reads.
+PROVIDER_KEY_VARS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
+
+
 def remember_account(username: str, password: str) -> None:
     """Hold the account setup just created, for the upload below and nothing else.
 

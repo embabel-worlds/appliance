@@ -88,3 +88,10 @@ def prompt(text: str) -> str:
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
 # build step). Me onboarding ends by offering to start it.
 ME_APP_DIR = "me-app"
+
+
+# The embedding model this appliance requires, by exact tag. Stated here as well
+# as in infra.yml because doctor has to check for it before compose is involved,
+# and because the tag is load-bearing: `latest` on that repository is the 4B
+# variant with different dimensions, and embeddings are sticky once written.
+EMBEDDING_MODEL = "ai/qwen3-embedding:0.6B-F16"

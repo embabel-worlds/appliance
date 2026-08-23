@@ -15,7 +15,7 @@ import subprocess
 
 from .colour import BULLET, MIDDOT, dim, good, warn
 from .core import (
-    APPLIANCE_DIR, MODE_COMPOSE, MODE_CORE, MODE_SERVICE, MODE_SERVICES, OVERRIDE_FILE,
+    APPLIANCE_DIR, EMBEDDING_MODEL, MODE_COMPOSE, MODE_CORE, MODE_SERVICE, MODE_SERVICES, OVERRIDE_FILE,
     SetupError, prompt,
 )
 from .settings import (
@@ -384,6 +384,121 @@ def other_running_appliances() -> list[str]:
             if os.path.exists(os.path.join(path, "setup.py")):
                 found.add(path)
     return sorted(found)
+
+
+def embedding_model_present() -> bool:
+    """Is the pinned embedding model actually on this machine?
+
+    By exact tag. `latest` on that repository is the 4B variant with different
+    dimensions, so "a qwen3-embedding is present" is not the question.
+    """
+    run = _docker("model", "list", timeout=30)
+    if not run or run.returncode != 0:
+        return False
+    name, _, tag = EMBEDDING_MODEL.partition(":")
+    short = name.split("/")[-1]
+    return any(short in line and tag in line for line in run.stdout.splitlines())
+
+
+def ensure_embedding_model() -> None:
+    """Pull the embedding model before anything needs it, and say so while it happens.
+
+    NOT LEFT TO COMPOSE. infra.yml declares it as a `models:` element, which is
+    the right declaration and not a guarantee: that element is a recent Compose
+    feature, and where it is not honoured — or where the provisioning quietly
+    fails — the model never arrives. The server then cannot build its embedding
+    bean and dies with an UnsatisfiedDependencyException naming Spring, forty
+    seconds into a boot, having said nothing about a download.
+
+    So it is pulled here, explicitly, before a container starts. Doing it twice
+    costs nothing: `docker model pull` on a model already present returns
+    immediately.
+
+    Embeddings are the appliance's one capability that needs no key and no
+    account, which makes this the difference between an appliance that works out
+    of the box and one that will not start at all.
+    """
+    if embedding_model_present():
+        return
+    runner = _docker("model", "status", timeout=20)
+    if not runner or runner.returncode != 0:
+        raise SetupError(
+            "Docker Model Runner is not available, and the appliance cannot start without it —\n"
+            "  it is what turns your documents into vectors, on this machine.\n"
+            "  Enable it in Docker Desktop (Settings → AI), or:  docker desktop enable model-runner"
+        )
+    print(f"  Downloading the embedding model {dim('(' + EMBEDDING_MODEL + ', about 1.1GB)')}.")
+    print("  " + dim("Required: it turns your documents into vectors, here, with no key and no"))
+    print("  " + dim("account. Docker's own progress follows."))
+    # Output inherited on purpose: this is the one download whose progress bar is
+    # worth the terminal, because nothing can start until it finishes.
+    try:
+        subprocess.run(["docker", "model", "pull", EMBEDDING_MODEL], timeout=3600)
+    except (subprocess.SubprocessError, OSError) as e:
+        raise SetupError(f"Could not pull the embedding model: {e}")
+    if not embedding_model_present():
+        raise SetupError(
+            f"The embedding model {EMBEDDING_MODEL} did not arrive, and the appliance\n"
+            "  cannot start without it. Try it by hand to see why:\n"
+            f"    docker model pull {EMBEDDING_MODEL}"
+        )
+    print(f"  {good('Embedding model ready.')}\n")
+
+
+def boot_failure(container: str | None) -> str | None:
+    """Why the server is not coming up, if it is not coming up.
+
+    A WAIT MUST NOTICE A DEATH. The boot wait polled for a token until its
+    two-minute deadline and reported nothing else, so a server whose Spring
+    context failed on the first second produced two minutes of a cheerful
+    spinner and then "could not find the setup token automatically" — which
+    blames the token for an application that never started.
+
+    Two signals, both cheap. A container that has exited or is restarting is
+    dead by definition. And a context that failed says so in its own log, in a
+    line that names the cause far better than anything this script could infer.
+    """
+    if not container:
+        return None
+    run = _docker("inspect", "-f", "{{.State.Status}}|{{.State.ExitCode}}", container, timeout=10)
+    if not run or run.returncode != 0:
+        return None
+    status, _, code = run.stdout.strip().partition("|")
+    if status in ("exited", "dead") or (status == "restarting" and code not in ("", "0")):
+        return last_startup_error(container) or f"the server container {status} (exit {code})"
+    # Still "running", but Spring may have given up inside it — the JVM lingers.
+    log = _docker("logs", "--tail", "80", container, timeout=20)
+    text = (log.stdout + log.stderr) if log else ""
+    if "Application run failed" in text or "APPLICATION FAILED TO START" in text:
+        return last_startup_error(container) or "the application failed to start"
+    return None
+
+
+def last_startup_error(container: str) -> str | None:
+    """The most useful line from a failed boot: the Spring cause if there is one,
+    else the last ERROR. Trimmed, because these run to several hundred characters
+    of package names before they say anything."""
+    log = _docker("logs", "--tail", "200", container, timeout=20)
+    if not log:
+        return None
+    text = (log.stdout or "") + (log.stderr or "")
+    for line in reversed(text.splitlines()):
+        if "UnsatisfiedDependencyException" in line or "BeanCreationException" in line:
+            return _first_cause(line)
+    for line in reversed(text.splitlines()):
+        if " ERROR " in line and "Application run failed" not in line:
+            return _first_cause(line)
+    return None
+
+
+def _first_cause(line: str) -> str:
+    """The clause that names the problem, not the chain that led to it."""
+    for marker in ("Cannot resolve reference to bean", "nested exception is",
+                   "Caused by:", "Error creating bean with name"):
+        if marker in line:
+            line = line.split(marker, 1)[1]
+    line = line.strip(" :;")
+    return (line[:220] + "…") if len(line) > 220 else line
 
 
 def running_mode_names() -> list[str]:

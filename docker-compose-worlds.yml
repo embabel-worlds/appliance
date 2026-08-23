@@ -72,17 +72,28 @@ services:
       # today and the wallet reports itself EMPTY rather than erroring. Every OAuth
       # app and API key silently needed re-entering after each restart.
       #
-      # BARE FORM, like OPENAI_API_KEY below and for the same reason: `${VAR:-}`
-      # would hand the container an empty key, which is worse than none. setup.py
-      # generates one into .env on first run and never regenerates it.
+      # BARE FORM, and unlike OPENAI_API_KEY below: `${VAR:-}` would hand the
+      # container an empty wallet key, which is worse than none — an empty key
+      # decrypts nothing and silently loses every stored credential, where an
+      # absent one makes setup.py generate a real one into .env on first run.
+      # OpenAI takes the opposite treatment because its config THROWS on an
+      # absent key and merely constructs on an empty one.
       - EMBABEL_KEY_SECRET
-      # BARE FORM, NOT ${VAR:-} — load-bearing. `${VAR:-}` sets the variable to the
-      # EMPTY STRING when it is unset, and an empty env var SHADOWS the key that
-      # first-run setup wrote into the data volume (env beats config files in
-      # Spring), so chat failed with "this request requires an apiKey" for anyone
-      # who did not happen to have the key exported in their shell. The bare form
-      # omits the variable entirely when unset, letting providers.env through.
-      - OPENAI_API_KEY
+      # ${VAR:-}, LIKE ANTHROPIC BELOW, and for the same reason — which cost a
+      # developer a broken fresh install to learn. OpenAiModelsConfig reads
+      # `envApiKey ?: properties.apiKey ?: error(...)`: an UNSET variable is null
+      # and throws in the constructor, crash-looping the whole app, while an
+      # EMPTY one is a value and constructs. A server that cannot boot without a
+      # key cannot be asked for one — setup drives the server's own /setup steps
+      # over HTTP — so the bare form made a genuinely fresh machine unsetuppable.
+      #
+      # The bare form was there to stop an empty variable SHADOWING the key
+      # first-run setup writes into the data volume (env beats config files in
+      # Spring). That is still true, and is now handled where it belongs: setup
+      # writes the key it collects into .env, so this variable carries a real
+      # value from the first boot after setup rather than an empty one. See
+      # remember_provider_key in setup.py.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # ANTHROPIC keeps the ${VAR:-} form ON PURPOSE, unlike OPENAI above: the
       # Anthropic auto-config THROWS in its constructor when no key is present
       # ("Anthropic API key required"), which crash-loops the whole app for anyone
