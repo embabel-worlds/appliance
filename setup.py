@@ -1410,14 +1410,20 @@ SEED_MAX_BYTES = 512 * 1024
 def seed_credential(api_token: str | None) -> str | None:
     """An Authorization header for the seed upload, or None if there is nothing.
 
-    Prefers the minted bearer token when the MCP step produced one; falls back to
-    the account just created, which always exists. Returning None is a real
-    answer and the caller says so — silence was the original bug.
+    THE ACCOUNT, NOT THE MCP TOKEN — and the reverse of what this function did
+    first. The token the MCP step mints authorizes `/mcp`; the REST surface does
+    not accept it, and answers 401 to `POST /api/v1/documents/upload`. Measured
+    against a live appliance: bearer 401, Basic 200 `{"status":"ingested"}`.
+    Preferring the token therefore guaranteed the seed failed on exactly the
+    installs where the MCP step HAD run, which is most of them.
+
+    `api_token` is still taken when there is no account — a run driven with
+    --token against an already-provisioned appliance has one and not the other.
     """
-    if api_token:
-        return f"Bearer {api_token}"
     if _ACCOUNT:
         return "Basic " + base64.b64encode(f"{_ACCOUNT[0]}:{_ACCOUNT[1]}".encode()).decode()
+    if api_token:
+        return f"Bearer {api_token}"
     return None
 
 
