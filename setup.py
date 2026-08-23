@@ -140,6 +140,15 @@ PROVIDER_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
 }
 
+# WHAT THIS APPLIANCE PREFERS where the server offers a choice and has no opinion
+# worth imposing. The step definitions come from the server, which serves more
+# than this deployment, so the default it ships is a general one; this is the
+# appliance's own answer, applied only when the value is genuinely on offer.
+#
+# Pressing Enter is the commonest thing anybody does at a prompt, so the default
+# is not a cosmetic detail — it is the answer most installs will actually give.
+PREFERRED_DEFAULTS = {"provider": "openai"}
+
 # The GitHub token names the assistant itself checks, in its order
 # (WorldBootstrap.resolveGitHubToken). A private realm or world template is cloned over HTTPS with
 # this as the username, so without one the clone 404s and the realm is quietly absent.
@@ -1100,12 +1109,40 @@ ARROW = "←" if _UNICODE_OK else "<-"
 RULE_CHAR = "─" if _UNICODE_OK else "-"
 
 
+# The wordmark, for a terminal too narrow for the art — which is most of them,
+# since the art is 100 columns and a terminal opens at 80.
+WORDMARK = "<<  E M B A B E L  >>"
+
+
+def banner_art() -> str:
+    """The Embabel banner, in the brand's own indigo, when it fits.
+
+    The art is the SERVER'S — embabel-agent's banner.txt, the same one the JVM
+    prints on boot — so the terminal and the server show one mark rather than
+    two interpretations of one. It lives in copy/ like every other thing this
+    program says, and install.sh carries its own copy because it runs before
+    there is a checkout to read; scripts/check-copy.py fails if the two drift.
+
+    Width decides. Wrapped ASCII art is not a logo, it is a mess, and a first
+    impression that arrives broken is worse than one that arrives small.
+    """
+    try:
+        with open(os.path.join(APPLIANCE_DIR, COPY_DIR, "banner.txt"), encoding="utf-8") as f:
+            art = f.read().rstrip("\n")
+    except OSError:
+        return "  " + paint(WORDMARK, "bold", "accent")
+    widest = max((len(line) for line in art.splitlines()), default=0)
+    if not _UNICODE_OK or shutil.get_terminal_size((80, 24)).columns < widest + 2:
+        return "  " + paint(WORDMARK, "bold", "accent")
+    return "\n".join(paint(line, "accent") for line in art.splitlines())
+
+
 def banner(subtitle: str) -> str:
     """The first two lines setup prints. A function so the preview script and the
     program cannot drift — the whole reason the colour looked absent once already
     was two copies of the same line, one of them stale."""
-    return ("\n  " + paint("Embabel appliance", "bold", "accent") + dim(" — ") + subtitle
-            + "\n  " + rule())
+    return ("\n" + banner_art() + "\n\n  " + paint("Embabel appliance", "bold", "accent")
+            + dim(" — ") + subtitle + "\n  " + rule())
 
 
 def rule(width: int = 60) -> str:
@@ -2874,6 +2911,13 @@ def ask(field: dict) -> str:
     options = field.get("options") or []
     required = field.get("required", True)
 
+    # This appliance's preference wins, but only over a choice that is actually
+    # offered — a preference for something the server does not list would make
+    # Enter do nothing, which is worse than any default.
+    preferred = PREFERRED_DEFAULTS.get(field["name"])
+    if preferred and (not options or preferred in options):
+        default = preferred
+
     if field["type"] == "CHOICE" and options:
         print(f"\n  {label}:")
         for index, option in enumerate(options, 1):
@@ -2931,6 +2975,7 @@ def from_environment(step: dict) -> dict:
         # Both are set, and which one to connect first is a real choice — ask that much,
         # then still skip the key.
         print("\n  Found keys for both providers in your environment.")
+        print(f"  {dim('Enter takes the default.')}")
         provider = ask(next(f for f in step["fields"] if f["name"] == "provider"))
         if provider not in available:
             return {}

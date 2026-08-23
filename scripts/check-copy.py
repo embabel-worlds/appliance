@@ -26,7 +26,9 @@ for source in SOURCES:
             missing.append(f"{source}: say(\"{name}\") has no copy/{name}.txt")
 
 on_disk = {f[:-4] for f in os.listdir(COPY) if f.endswith(".txt")}
-orphans = sorted(on_disk - used)
+# banner.txt is art, not a say() block: banner_art() reads it directly and
+# install.sh carries a copy, both checked below. Not an orphan.
+orphans = sorted(on_disk - used - {"banner"})
 
 # An interpolated field the caller never passes raises KeyError at the worst
 # possible moment, so the placeholders are checked too — against the arguments
@@ -45,6 +47,23 @@ for source in SOURCES:
         if wanted - given:
             bad_fields.append(f"copy/{name}.txt wants {sorted(wanted - given)}, "
                               f"call site passes {sorted(given) or 'nothing'}")
+
+# The banner is duplicated into install.sh, which runs before there is a
+# checkout to read copy/ from. Duplication is the right call there and a drift
+# risk everywhere, so the two are compared byte for byte.
+banner = os.path.join(COPY, "banner.txt")
+if os.path.exists(banner):
+    with open(os.path.join(HERE, "install.sh"), encoding="utf-8") as f:
+        installer = f.read()
+    marker = "    cat <<'ART'\n"
+    if marker not in installer:
+        bad_fields.append("install.sh no longer carries the banner heredoc")
+    else:
+        start = installer.index(marker) + len(marker)
+        inline = installer[start:installer.index("\nART\n", start)]
+        with open(banner, encoding="utf-8") as f:
+            if inline != f.read().rstrip("\n"):
+                bad_fields.append("install.sh's banner has drifted from copy/banner.txt")
 
 for problem in missing + bad_fields:
     print(f"  ✗ {problem}")

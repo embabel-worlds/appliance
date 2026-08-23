@@ -92,6 +92,26 @@ die()  { printf '\n  %s%s%s %s\n\n' "$C_YELLOW" "!!" "$C_RESET" "$*" >&2; exit 1
 # page, and an installer that pitches the product differently from the page
 # that sent them reads as a different product.
 if [ "$MODE" = "worlds" ]; then
+  # The banner, when the terminal is wide enough for it — 100 columns of ASCII
+  # art wrapped at 80 is not a logo, it is a mess. This is embabel-agent's
+  # banner.txt, the same mark the server prints on boot; copy/banner.txt in the
+  # appliance holds the original and scripts/check-copy.py fails if they drift.
+  # It is duplicated here for one reason: this script runs BEFORE there is a
+  # checkout to read it from.
+  if [ "${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}" -ge 102 ] 2>/dev/null; then
+    printf '%s\n' "$C_CYAN"
+    cat <<'ART'
+   ___  ___    _______ .___  ___. .______        ___      .______    _______  __         ___  ___
+  /  / /  /   |   ____||   \/   | |   _  \      /   \     |   _  \  |   ____||  |        \  \ \  \
+ /  / /  /    |  |__   |  \  /  | |  |_)  |    /  ^  \    |  |_)  | |  |__   |  |         \  \ \  \
+<  < <  <     |   __|  |  |\/|  | |   _  <    /  /_\  \   |   _  <  |   __|  |  |          >  > >  >
+ \  \ \  \    |  |____ |  |  |  | |  |_)  |  /  _____  \  |  |_)  | |  |____ |  `----.    /  / /  /
+  \__\ \__\   |_______||__|  |__| |______/  /__/     \__\ |______/  |_______||_______|   /__/ /__/
+ART
+    printf '%s' "$C_RESET"
+  else
+    printf '\n  %s<<  E M B A B E L  >>%s\n' "$C_BOLD$C_CYAN" "$C_RESET"
+  fi
   printf '\n  %sEmbabel Worlds%s %s— the world your AI acts in%s\n' \
     "$C_BOLD" "$C_RESET" "$C_DIM" "$C_RESET"
   printf '  %sA governed, living knowledge graph of your business, derived from the\n' "$C_DIM"
