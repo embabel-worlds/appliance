@@ -1325,12 +1325,30 @@ def _answers(base: str) -> bool:
 # no documentation in it is a smaller problem than an installer that fails at
 # the finish line, so every failure here is reported and swallowed.
 
+# The operator account, as it is created. Process memory only: never written,
+# never logged, and used solely to authenticate the documentation upload below.
+_ACCOUNT: tuple[str, str] | None = None
+
 SEED_DOCS = ("README.md", "CLI.md", "PHONE_HOME.md", "WORLD_TEMPLATES.md",
              "AGENT_GUIDE.md", "DISCOVERY.md")
 SEED_DOC_DIRS = ("docs/guide",)
 # Big enough for the guides, small enough that a stray file cannot become an
 # ingestion job somebody did not ask for.
 SEED_MAX_BYTES = 512 * 1024
+
+
+def seed_credential(api_token: str | None) -> str | None:
+    """An Authorization header for the seed upload, or None if there is nothing.
+
+    Prefers the minted bearer token when the MCP step produced one; falls back to
+    the account just created, which always exists. Returning None is a real
+    answer and the caller says so — silence was the original bug.
+    """
+    if api_token:
+        return f"Bearer {api_token}"
+    if _ACCOUNT:
+        return "Basic " + base64.b64encode(f"{_ACCOUNT[0]}:{_ACCOUNT[1]}".encode()).decode()
+    return None
 
 
 def documentation_files() -> list[str]:
@@ -1353,8 +1371,12 @@ def documentation_files() -> list[str]:
     return found
 
 
-def _upload_document(base: str, token: str, path: str) -> bool:
-    """One multipart POST, by hand — stdlib only, like everything else here."""
+def _upload_document(base: str, auth: str, path: str) -> bool:
+    """One multipart POST, by hand — stdlib only, like everything else here.
+
+    `auth` is a complete Authorization header value, Bearer or Basic, because
+    which credential is available depends on which steps the wizard ran.
+    """
     boundary = "----embabel" + secrets.token_hex(8)
     with open(path, "rb") as f:
         content = f.read()
@@ -1368,7 +1390,7 @@ def _upload_document(base: str, token: str, path: str) -> bool:
     request = urllib.request.Request(
         f"{base}/api/v1/documents/upload", data=body, method="POST",
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}",
-                 "Authorization": f"Bearer {token}"},
+                 "Authorization": auth},
     )
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
@@ -1377,7 +1399,7 @@ def _upload_document(base: str, token: str, path: str) -> bool:
         return False
 
 
-def seed_documentation(base: str, token: str) -> None:
+def seed_documentation(base: str, auth: str) -> None:
     """Put the appliance's own guides into the world. Never raises."""
     files = documentation_files()
     if not files:
@@ -1388,7 +1410,7 @@ def seed_documentation(base: str, token: str) -> None:
         for index, path in enumerate(files, 1):
             STATUS.set(f"Indexing the documentation   {dim(f'{index} of {len(files)}')}  "
                        + dim(os.path.basename(path)))
-            if _upload_document(base, token, path):
+            if _upload_document(base, auth, path):
                 done += 1
     except Exception:
         pass  # best effort; setup has already succeeded
@@ -3149,6 +3171,13 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
             field["name"]: prefilled.get(field["name"]) or ask(field)
             for field in step["fields"]
         }
+        if {"username", "password"} <= set(answers):
+            # Held for the length of this process only, and used for exactly one
+            # thing: the documentation upload after setup. The alternative was to
+            # depend on the MCP step's minted token, which is not always minted —
+            # so seeding silently did nothing, which is how it shipped broken.
+            global _ACCOUNT
+            _ACCOUNT = (answers["username"], answers["password"])
 
         # A LAST LOOK BEFORE IT IS PERMANENT. The server accepts a step once and
         # refuses to reopen setup afterwards (410, by design), so a username typed
@@ -3579,21 +3608,30 @@ def main() -> int:
         service = mode_service(container) if container else None
         # Worlds people go to the console; `base` is the server behind it.
         where = console_url() if service == "worlds" else base
-        print(f"\n  Done. Sign in at {url(where)}" + (f" as {bold(username)}" if username else ""))
+
+        # WAIT BEFORE INVITING. /complete restarts the appliance so the model beans
+        # are rebuilt with the key, and the old order printed "Sign in at …" into
+        # that gap — measured at 21 seconds on this machine, during which the door
+        # is shut and nothing says when it reopens. Somebody clicking immediately
+        # met a dead port and concluded the install had failed.
+        if not deferred:
+            STATUS.start("Restarting to pick up your provider key")
+        try:
+            call_when_ready(base, token)
+        except SetupError:
+            pass
+        STATUS.stop()
+        print(f"\n  {TICK} Done. Sign in at {url(where)}"
+              + (f" as {bold(username)}" if username else ""))
         if deferred:
             say("no-provider-next")
+
+        credential = seed_credential(api_token)
+        if credential:
+            seed_documentation(base, credential)
         else:
-            print("  The appliance is restarting to pick up your provider key — give it a moment.\n")
-        if api_token:
-            # The token goes live on the restart /complete triggers, so wait for
-            # the door to answer again before using it. call_when_ready already
-            # knows how to do that and how long to try.
-            try:
-                call_when_ready(base, token)
-            except SetupError:
-                api_token = None
-        if api_token:
-            seed_documentation(base, api_token)
+            print(f"  {MIDDOT} " + dim("No credential to index the documentation with — "
+                                       "add it from Documents if you want it searchable."))
         warn_if_conversion_pending()
         if service == "worlds":
             print_worlds_surfaces(base)
