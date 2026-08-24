@@ -20,10 +20,21 @@ why the realm-odoo battery still has a source system to reconcile against afterw
 
 ## Install
 
+- `python3 scripts/drive-install.py --fresh` runs it under a PTY, answers the questions,
+  saves the transcript, and asserts on what a person actually saw — raw log lines, an
+  echoed password length, a stale org reference, both MCP doors, and that it finished.
+  Prefer it: every check is a regression somebody hit, and `--check <transcript>` re-runs
+  the assertions against a saved run without reinstalling. Drive it by hand when the point
+  IS the hand-driving (a new question, a prompt's wording, the Tab completion on the realm
+  directory — a harness that always presses Enter never sees those).
 - `./worlds.py --fresh` for the worlds door, `./me.py --fresh` for me — ask which door the
   change under test affects; worlds is the default here.
 - Watch the first-boot log it streams. A stack trace swallowed by a healthy-looking wizard
   is exactly what this skill exists to catch.
+- **A pipe is not a terminal.** `printf '...' | ./worlds.py` tests a different program:
+  `isatty()` is false, so the realm-directory question is never asked at all, getpass warns
+  it cannot control echo, and colour switches off. That is why the harness uses a PTY, and
+  why a "it installed fine" from a piped run proves less than it looks.
 - To test the real new-user path — the `curl | sh` installer — run `install.sh` with
   `EMBABEL_REPO`/`EMBABEL_REF` pointed at the branch under test and `EMBABEL_HOME` at a
   scratch directory. Same single-instance constraint: down the checkout instance first.
@@ -37,10 +48,27 @@ what a fresh boot does.
 **L0 — containers.** Every service in the project is up and the app container reports
 healthy (`docker ps`, health column), not merely running.
 
+**L0.5 — the install READS right.** What a first-timer saw, not just what happened.
+`scripts/drive-install.py` asserts most of it; the judgement calls are yours. No raw
+` WARN `/stack-trace lines — the follower streams the designed operator block and ERROR,
+and counts warnings into one line, because a JVM's warnings are ours and not the
+operator's. No secret measured back at them (a password confirms `OK`; an API key still
+shows a count, since a truncated paste is its failure mode). Every repo named in the
+correct org — a GitHub rename redirect keeps a stale reference working until the day the
+old name is reused. And the closing block ends on the two MCP doors, which is what anything
+agentic connects to.
+
 **L1 — surfaces serve.** The worlds API answers on its port (11043 unless `.env` says
 otherwise), the console serves on its (11044), Neo4j browser and bolt answer, and an MCP
 connection lists capabilities (`available_capabilities`). Use the admin credentials the
 wizard just printed — retyping stale ones tests your memory, not the install.
+
+**L1.5 — both doors, and they differ.** `/mcp` is the assistant surface (`embabel-me`);
+`/mcp/dev` is the developer door (`embabel-worlds`). Handshake each, diff their
+`tools/list` — `learn_*` on the door only, `personality`/`memory_*` on the primary only —
+and CALL a door-only tool, because the tool LIST and the tool DISPATCH have been wrong
+independently of each other. Both doors carry the world's persona: a coding agent without
+it falls back to its own voice, which is what the persona exists to replace.
 
 **L2 — the empty world is honest.** Before any realm: ask the world a question
 (`kg_ask`). The pass is an honest empty — a stated absence, never invented rows, never an
