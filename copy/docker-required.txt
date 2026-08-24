@@ -1,0 +1,22 @@
+Embabel needs Docker, and it is the only thing you have to install yourself.
+
+The appliance is not one program. It is a knowledge graph, a server, a
+console, a document converter, a metrics stack and a sandbox that runs code
+your agents write — six or seven pieces that have to find each other, come up
+in the right order and agree on their versions. Docker is how they arrive
+together, already wired, in about a command.
+
+It is also what keeps your world YOURS. Every one of those pieces runs on this
+machine: your documents are converted here, turned into vectors here by a model
+that runs here, and stored in a graph here. Nothing is uploaded to us, and
+there is no account to make. The only traffic that leaves is the model
+provider's, when you ask a question and your own key pays for the answer.
+
+And it is what makes this reversible. There is no installer scattering files
+across your system, no Java, no Node, no database to configure and no service
+left running when you are done. `embabel down` stops it; `embabel uninstall`
+removes it. What is left behind is the directory you chose.
+
+Install Docker Desktop, start it, and run this again:
+
+    https://docs.docker.com/get-started/get-docker/

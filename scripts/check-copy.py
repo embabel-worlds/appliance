@@ -33,10 +33,18 @@ for source in SOURCES:
         if not os.path.exists(os.path.join(COPY, f"{name}.txt")):
             missing.append(f"{source}: say(\"{name}\") has no copy/{name}.txt")
 
+# Copy that install.sh carries inline, because it runs before there is a
+# checkout to read copy/ from — file name to heredoc delimiter. Checked byte for
+# byte below, and never orphans: they are read by the shell script, and
+# banner.txt additionally by banner_art().
+DUPLICATED = {
+    "banner": "ART",
+    "docker-required": "DOCKER_REQUIRED",
+    "docker-model-runner": "DOCKER_MODEL_RUNNER",
+}
+
 on_disk = {f[:-4] for f in os.listdir(COPY) if f.endswith(".txt")}
-# banner.txt is art, not a say() block: banner_art() reads it directly and
-# install.sh carries a copy, both checked below. Not an orphan.
-orphans = sorted(on_disk - used - {"banner"})
+orphans = sorted(on_disk - used - set(DUPLICATED))
 
 # An interpolated field the caller never passes raises KeyError at the worst
 # possible moment, so the placeholders are checked too — against the arguments
@@ -56,22 +64,33 @@ for source in SOURCES:
             bad_fields.append(f"copy/{name}.txt wants {sorted(wanted - given)}, "
                               f"call site passes {sorted(given) or 'nothing'}")
 
-# The banner is duplicated into install.sh, which runs before there is a
-# checkout to read copy/ from. Duplication is the right call there and a drift
-# risk everywhere, so the two are compared byte for byte.
-banner = os.path.join(COPY, "banner.txt")
-if os.path.exists(banner):
-    with open(os.path.join(HERE, "install.sh"), encoding="utf-8") as f:
-        installer = f.read()
-    marker = "    cat <<'ART'\n"
+# Some copy is duplicated into install.sh, which runs before there is a checkout
+# to read copy/ from. Duplication is the right call there and a drift risk
+# everywhere, so each one is compared byte for byte against its file. The
+# heredoc delimiter is the link between the two.
+#
+# copy/ IS CANONICAL. When these disagree the fix is to carry the file's words
+# into install.sh, never to edit install.sh and call it done — an editor works
+# in copy/ and would never see the shell script.
+with open(os.path.join(HERE, "install.sh"), encoding="utf-8") as f:
+    installer = f.read()
+for name, delimiter in sorted(DUPLICATED.items()):
+    path = os.path.join(COPY, f"{name}.txt")
+    if not os.path.exists(path):
+        bad_fields.append(f"copy/{name}.txt is missing; install.sh carries a copy of it")
+        continue
+    # The delimiter, not the whole line: a heredoc may be piped (`| sed …` to
+    # indent at render time), and matching the line verbatim made a formatting
+    # change look like the copy had vanished.
+    marker = f"<<'{delimiter}'"
     if marker not in installer:
-        bad_fields.append("install.sh no longer carries the banner heredoc")
-    else:
-        start = installer.index(marker) + len(marker)
-        inline = installer[start:installer.index("\nART\n", start)]
-        with open(banner, encoding="utf-8") as f:
-            if inline != f.read().rstrip("\n"):
-                bad_fields.append("install.sh's banner has drifted from copy/banner.txt")
+        bad_fields.append(f"install.sh no longer carries the {name} heredoc")
+        continue
+    start = installer.index("\n", installer.index(marker)) + 1
+    inline = installer[start:installer.index(f"\n{delimiter}\n", start)]
+    with open(path, encoding="utf-8") as f:
+        if inline != f.read().rstrip("\n"):
+            bad_fields.append(f"install.sh's {name} has drifted from copy/{name}.txt")
 
 for problem in missing + bad_fields:
     print(f"  ✗ {problem}")

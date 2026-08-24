@@ -422,11 +422,12 @@ def ensure_embedding_model() -> None:
         return
     runner = _docker("model", "status", timeout=20)
     if not runner or runner.returncode != 0:
-        raise SetupError(
-            "Docker Model Runner is not available, and the appliance cannot start without it —\n"
-            "  it is what turns your documents into vectors, on this machine.\n"
-            "  Enable it in Docker Desktop (Settings → AI), or:  docker desktop enable model-runner"
-        )
+        # THE SAME WORDS install.sh USES, from the same file: a person can meet
+        # this either in the installer or here, and two hand-written variants of
+        # one explanation are two things to keep true. Imported inside the
+        # function because words imports core, which imports this module.
+        from .words import copy_text
+        raise SetupError(copy_text("docker-model-runner").strip())
     print(f"  Downloading the embedding model {dim('(' + EMBEDDING_MODEL + ', about 1.1GB)')}.")
     print("  " + dim("Required: it turns your documents into vectors, here, with no key and no"))
     print("  " + dim("account. Docker's own progress follows."))

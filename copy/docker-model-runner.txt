@@ -1,0 +1,10 @@
+Docker Model Runner looks disabled, and the appliance needs it.
+
+It runs the embedding model — the one that turns your documents into vectors so
+the world can search and reason over them. That model runs HERE, on this
+machine, with no key and no account, which is why document search costs you
+nothing and why nothing you feed the appliance has to leave it.
+
+Enable it in Docker Desktop (Settings → AI), or run:
+
+    docker desktop enable model-runner

@@ -125,16 +125,81 @@ fi
 # --- 1. Docker ------------------------------------------------------------
 # The one prerequisite we cannot install for you, and the one worth failing
 # early and clearly on: everything below is pointless without it.
-command -v docker >/dev/null 2>&1 || die "Docker is required: https://docs.docker.com/get-started/get-docker/"
+#
+# WITH THE REASON, NOT JUST THE VERDICT. "Docker is required" is true and
+# useless: it reads as one more dependency somebody's tool wants, at the exact
+# moment a stranger decides whether this product is worth the trouble. Docker is
+# not incidental here — it is how the appliance stays local, arrives whole, and
+# leaves cleanly — so the refusal says that, and the person choosing has what
+# they need to choose.
+#
+# THE COPY IS DUPLICATED FROM copy/, like the banner above and for the same
+# reason: this script runs BEFORE there is a checkout to read it from.
+# copy/docker-required.txt is canonical, scripts/check-copy.py compares the two
+# byte for byte, and prose edited in one place fails the build if it is not
+# carried to the other.
+docker_required() {
+  printf '\n'
+  # Indented HERE, not in the file: everything this installer prints sits two
+  # spaces in, and copy/ holds words with no layout — the same division of
+  # labour as wrap_copy() on the Python side. Blank lines are left blank rather
+  # than becoming two spaces of trailing whitespace.
+  cat <<'DOCKER_REQUIRED' | sed 's/^./  &/'
+Embabel needs Docker, and it is the only thing you have to install yourself.
+
+The appliance is not one program. It is a knowledge graph, a server, a
+console, a document converter, a metrics stack and a sandbox that runs code
+your agents write — six or seven pieces that have to find each other, come up
+in the right order and agree on their versions. Docker is how they arrive
+together, already wired, in about a command.
+
+It is also what keeps your world YOURS. Every one of those pieces runs on this
+machine: your documents are converted here, turned into vectors here by a model
+that runs here, and stored in a graph here. Nothing is uploaded to us, and
+there is no account to make. The only traffic that leaves is the model
+provider's, when you ask a question and your own key pays for the answer.
+
+And it is what makes this reversible. There is no installer scattering files
+across your system, no Java, no Node, no database to configure and no service
+left running when you are done. `embabel down` stops it; `embabel uninstall`
+removes it. What is left behind is the directory you chose.
+
+Install Docker Desktop, start it, and run this again:
+
+    https://docs.docker.com/get-started/get-docker/
+DOCKER_REQUIRED
+}
+
+if ! command -v docker >/dev/null 2>&1; then
+  docker_required
+  # die() adds the one line this case needs on top of the explanation: what
+  # exactly was looked for and not found.
+  die "No 'docker' on your PATH."
+fi
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required — update Docker Desktop, or install the compose plugin."
+# Installed but not started is a DIFFERENT problem from missing, and the long
+# explanation above would be condescending here: this person already chose
+# Docker. One line, one action.
 docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start Docker Desktop, then run this again."
 
 # Embeddings run locally, so the appliance needs Model Runner. A warning, not a
 # failure: setup says the same thing with more room, and being told to fix two
-# things at once by a script that then exits is a bad first minute.
+# things at once by a script that then exits is a bad first minute. Same
+# duplication rule as above — copy/docker-model-runner.txt is canonical.
 if ! docker model status >/dev/null 2>&1; then
-  printf '  %s!!%s Docker Model Runner looks disabled — embeddings need it.\n' "$C_YELLOW" "$C_RESET"
-  note "     Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner"
+  printf '  %s!!%s\n' "$C_YELLOW" "$C_RESET"
+  cat <<'DOCKER_MODEL_RUNNER' | sed 's/^./  &/'
+Docker Model Runner looks disabled, and the appliance needs it.
+
+It runs the embedding model — the one that turns your documents into vectors so
+the world can search and reason over them. That model runs HERE, on this
+machine, with no key and no account, which is why document search costs you
+nothing and why nothing you feed the appliance has to leave it.
+
+Enable it in Docker Desktop (Settings → AI), or run:
+
+    docker desktop enable model-runner
+DOCKER_MODEL_RUNNER
   echo
 fi
 
