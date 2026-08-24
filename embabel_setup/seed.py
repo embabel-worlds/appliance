@@ -10,6 +10,7 @@ import secrets
 import shutil
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 
 from .colour import MIDDOT, TICK, dim
@@ -242,9 +243,20 @@ class Seeding:
     def _run(self, base: str, auth: str) -> None:
         try:
             self._files = documentation_files() + fetch_spec_documents(self._workspace)
-            for path in self._files:
-                if _upload_document(base, auth, path):
-                    self._done += 1
+            # SIX AT A TIME, because one at a time was the whole delay. 26 uploads of
+            # roughly a second each is half a minute of somebody watching a spinner,
+            # and none of them depends on another. Overlapping the wizard's questions
+            # only helped when there were questions left to answer — with a provider
+            # key already in the environment there are almost none, so the wait simply
+            # moved to the end. This removes it rather than relocating it.
+            #
+            # Six rather than twenty-six: each upload makes the appliance chunk and
+            # embed a document, so the far end is real work on one machine, and
+            # burying it does not get the guides in any sooner.
+            with ThreadPoolExecutor(max_workers=6, thread_name_prefix="seed") as pool:
+                for ok in pool.map(lambda path: _upload_document(base, auth, path), self._files):
+                    if ok:
+                        self._done += 1
         except Exception:
             pass  # best effort; the appliance is already set up and working
 
