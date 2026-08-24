@@ -21,12 +21,14 @@ which is the same argument scripts/check-copy.py makes for copy.
 Exit code is 0 when every check passes, 1 otherwise, so CI can run it.
 """
 import argparse
+import fcntl
 import os
 import pty
 import re
 import select
 import subprocess
 import sys
+import termios
 import time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -71,12 +73,30 @@ def drive(command: list[str], fields: dict, transcript: str, timeout: int) -> st
     answers = [(re.compile(pattern), reply) for pattern, reply in ANSWERS]
     answered: set[int] = set()
     parent, child = pty.openpty()
+
+    def own_the_terminal() -> None:
+        """Make the pty the child's CONTROLLING terminal, not merely its stdin.
+
+        Handing a process a pty on fd 0 is not the same as giving it a terminal:
+        `/dev/tty` resolves through the session's CONTROLLING terminal, and a
+        child that only inherited the fd has none — so opening /dev/tty fails
+        with ENXIO. install.sh hands over to the wizard with `< /dev/tty`
+        precisely because `curl | sh` has spent stdin, so without this the one
+        entry point real users take could not be driven at all.
+
+        setsid() makes the child a session leader with no terminal; the ioctl
+        then claims fd 0 — already the slave, because subprocess does its
+        redirection before this runs — as the controlling one.
+        """
+        os.setsid()
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
     # A terminal wide enough that the appliance's own 80-column layout is not
     # re-wrapped by the pty, which would make the assertions test the wrap.
     os.environ["COLUMNS"] = "100"
     proc = subprocess.Popen(
         command, cwd=HERE, stdin=child, stdout=child, stderr=child,
         close_fds=True, env={**os.environ, "EMBABEL_NO_BROWSER": "1", "TERM": "xterm"},
+        preexec_fn=own_the_terminal,
     )
     os.close(child)
 
@@ -292,6 +312,9 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--fresh", action="store_true",
                         help="WIPE all appliance state first, then install")
+    parser.add_argument("--installer", action="store_true",
+                        help="drive install.sh — the DOWNLOAD and hand-off a real user takes, "
+                             "not just the wizard. Honours EMBABEL_REF / EMBABEL_HOME")
     parser.add_argument("--mode", default="worlds", choices=("worlds", "me"))
     parser.add_argument("--username", default="rod")
     parser.add_argument("--display", default="Rod Johnson")
@@ -307,7 +330,12 @@ def main() -> int:
         with open(args.check, encoding="utf8") as f:
             return report(f.read())
 
-    command = ["python3", f"./{args.mode}.py"] + (["--fresh"] if args.fresh else [])
+    # THE REAL ENTRY POINT, when asked for it. `curl | sh` runs install.sh, which
+    # downloads the checkout (from EMBABEL_REF) and hands over to the wizard with
+    # `< /dev/tty` — a hand-off that had never been driven here, and which broke
+    # in exactly the environment this harness creates.
+    command = (["sh", "./install.sh"] if args.installer
+               else ["python3", f"./{args.mode}.py"] + (["--fresh"] if args.fresh else []))
     print(f"  Driving: {' '.join(command)}   (transcript: {args.transcript})\n")
     text = drive(command, vars(args), args.transcript, args.timeout)
     print()
