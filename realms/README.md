@@ -5,7 +5,7 @@ here and the appliance can load it in place — no push, no clone by the server,
 no cache to defeat:
 
 ```bash
-git clone https://github.com/embabel/realm-esg.git realms/realm-esg
+git clone https://github.com/embabel-worlds/realm-esg.git realms/realm-esg
 ```
 
 Then, in a world's `config/realms.yml`:

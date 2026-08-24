@@ -24,7 +24,7 @@ world is **first created** — an existing world is never reshaped.
 
 Every world resolves through a tier cascade — its own config, then declared
 parent templates, then the installation's org config, then the shared
-[default-world](https://github.com/embabel/default-world), then the product's
+[default-world](https://github.com/embabel-worlds/default-world), then the product's
 baked-in defaults. First hit wins; anything a tier omits **falls through**. So
 a template carries only its *delta*, and improvements to the tiers below reach
 its worlds without the template changing.
@@ -50,7 +50,7 @@ tools can never change it.
 ## Minting a profile template
 
 Three files is a complete template.
-[arts-world](https://github.com/embabel/arts-world) is the reference:
+[arts-world](https://github.com/embabel-worlds/arts-world) is the reference:
 
 ```
 README.md            what this world is, and the install one-liner
@@ -65,7 +65,7 @@ mkdir legal-world && cd legal-world
 mkdir -p config data
 cat > config/realms.yml <<'YAML'
 - name: legal
-  repo: https://github.com/embabel/realm-legal.git
+  repo: https://github.com/embabel-worlds/realm-legal.git
   version: "main"
 YAML
 echo "The world's starting content." > data/README.md

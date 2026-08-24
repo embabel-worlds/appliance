@@ -44,6 +44,11 @@ BOOT_AWAITING_KEY = re.compile(
 # message, short enough that a thirty-model inventory does not arrive twice.
 BOOT_LINE_MAX = 200
 
+# What the boot warned about, collected by the follower and reported as one line
+# by [report_boot_warnings]. A plain list: appended from the pump thread and read
+# once it has stopped, and list.append is atomic under the GIL.
+warnings: list[str] = []
+
 
 def follow_boot_log(container: str) -> subprocess.Popen | None:
     """Stream the app's OPERATOR CONSOLE during first boot, and nothing else.
@@ -98,13 +103,44 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
             if not inside and BOOT_AWAITING_KEY.search(line):
                 awaiting_key += 1
                 continue
-            if inside or " WARN " in line or " ERROR " in line:
+            if inside or " ERROR " in line:
                 STATUS.log(line if len(line) <= BOOT_LINE_MAX
                            else line[:BOOT_LINE_MAX] + dim(" …"))
+                continue
+            # A WARN IS COUNTED, NOT PRINTED. Streaming them was whack-a-mole:
+            # each one that turned out to be ours rather than the operator's got
+            # demoted at the source, and the next boot found another — a repo
+            # naming nag, a token that 403s and falls back cleanly. None of them
+            # were things the person installing could act on, and all of them
+            # arrived as raw log lines in the middle of a first run, which reads
+            # as the product having gone wrong.
+            #
+            # ERROR still prints verbatim, because a boot that fails must say so.
+            # The count and the command to read them keep the ones that matter
+            # reachable without putting a JVM's inner monologue on screen.
+            if " WARN " in line:
+                warnings.append(line)
 
     thread = threading.Thread(target=pump, daemon=True)
     thread.start()
     return proc
+
+
+def report_boot_warnings(container: str) -> None:
+    """One line for whatever the boot warned about, after the log stops.
+
+    Reported at the END rather than as they arrive: during boot the person is
+    watching for the setup token, and a running tally competes with the one
+    thing they are waiting for. Silent when nothing warned, which is the case
+    this is meant to become.
+    """
+    if not warnings:
+        return
+    count = len(warnings)
+    STATUS.log(f"  {MIDDOT} " + dim(
+        f"{count} warning{'s' if count != 1 else ''} during boot, none fatal — "
+        f"read them with:  docker logs {container} 2>&1 | grep WARN"))
+    warnings.clear()
 
 
 def start_deferred(mode: str) -> subprocess.Popen | None:

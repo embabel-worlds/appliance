@@ -195,7 +195,7 @@ services:
       # The world template NEW worlds are cloned from — how a preconfigured
       # appliance ships (`./me.py --world <repo>` writes this into .env). BARE
       # form on purpose: unset must fall through to the code default
-      # (embabel/default-world), never bind an empty string. First-boot only by
+      # (embabel-worlds/default-world), never bind an empty string. First-boot only by
       # nature — an existing world is the user's and is never reshaped.
       - ASSISTANT_BOOTSTRAP_WORLD
       # Optional integration credentials, passed through only if set in .env. Each

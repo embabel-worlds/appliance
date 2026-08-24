@@ -210,6 +210,9 @@ def main() -> int:
         if follower:
             follower.terminate()
             follower = None
+            # After the stream stops, so the summary is the last word on the boot
+            # rather than a line the token block scrolls past.
+            report_boot_warnings(container)
             print()
         status = call_when_ready(base, token)
 
