@@ -165,6 +165,32 @@ def remember_source(ref: str | None = None, repo: str | None = None) -> None:
         set_env_var("EMBABEL_REPO", repo, (
             "# The repository this install follows — a fork or an internal mirror.",
         ))
+def version_pin_conflict(mode: str) -> tuple[str, str] | None:
+    """`.env` pinning a DIFFERENT image tag from the one this checkout expects.
+
+    The compose files are part of the checkout, so a branch is a whole appliance:
+    its plumbing and the server tag it was written against move together, as
+    `${EMBABEL_VERSION:-<tag>}`. An EMBABEL_VERSION line in .env overrides that —
+    correctly, since an explicit pin should beat a default — but silently, which
+    is the problem. Somebody testing a branch would be running its compose files
+    against a server image the branch never expected, and nothing on screen would
+    say which half was which.
+
+    Returns (pinned, expected) when they disagree; None when there is no pin, or
+    it agrees, or the file cannot be read (a missing default is not a conflict).
+    """
+    pinned = (env_file_value("EMBABEL_VERSION") or "").strip()
+    if not pinned:
+        return None
+    try:
+        with open(os.path.join(APPLIANCE_DIR, MODE_COMPOSE[mode])) as f:
+            found = re.search(r"\$\{EMBABEL_VERSION:-([^}]+)\}", f.read())
+    except (OSError, KeyError):
+        return None
+    expected = (found.group(1).strip() if found else "")
+    return (pinned, expected) if expected and expected != pinned else None
+
+
 # ── instances ───────────────────────────────────────────────────────────────
 #
 # ONE APPLIANCE IS THE NORMAL CASE, and nothing about this section should be

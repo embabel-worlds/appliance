@@ -29,7 +29,7 @@ from .dockerlib import (DEFERRED_SERVICES, DEFERRED_WHY, _compose, _docker,
                         find_mode_container, running_modes, stray_sandbox_containers,
                         other_running_appliances, take_everything_down)
 from .settings import (console_url, env_file, instance, installed_instances,
-                       remember_mode, resume_command)
+                       remember_mode, resume_command, version_pin_conflict)
 from .status import STATUS
 from .steps import probe
 
@@ -141,6 +141,28 @@ def report_boot_warnings(container: str) -> None:
         f"{count} warning{'s' if count != 1 else ''} during boot, none fatal — "
         f"read them with:  docker logs {container} 2>&1 | grep WARN"))
     warnings.clear()
+
+
+def announce_version_pin(mode: str) -> None:
+    """Say when .env's image pin overrides the tag this checkout was written against.
+
+    Silent unless they actually disagree, which is the only case worth a line — and
+    the case that costs an afternoon: a branch carries its own compose files AND the
+    server tag they expect, so an EMBABEL_VERSION left in .env from some earlier
+    experiment quietly runs the branch's plumbing against a different server. Both
+    halves are legitimate, which is exactly why nobody suspects either.
+
+    A NOTE, not a refusal. The pin is the operator's own and wins on purpose; this
+    only makes sure they meant it.
+    """
+    conflict = version_pin_conflict(mode)
+    if not conflict:
+        return
+    pinned, expected = conflict
+    print(f"  {warn('!')} .env pins EMBABEL_VERSION={pinned}, and this checkout expects {expected}.")
+    print("  " + dim(f"    Your pin wins. Remove that line from .env to run the {expected} "
+                     "this checkout was written against."))
+    print()
 
 
 def start_deferred(mode: str) -> subprocess.Popen | None:
@@ -482,6 +504,7 @@ def ensure_mode(mode: str) -> bool:
     ensure_wallet_key()
     remember_mode(mode)
     announce_github_token()
+    announce_version_pin(mode)
     modes = running_modes()
     other = next(((svc, name) for svc, name in modes.items() if svc != MODE_SERVICE[mode]), None)
     if other:

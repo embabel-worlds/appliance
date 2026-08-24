@@ -434,6 +434,13 @@ def cmd_version(args) -> int:
               + (f"   {s.dim('follows ' + out['ref'])}" if out.get("ref") and out.get("ref") != "main" else ""))
     print(f"              {s.APPLIANCE_DIR}")
 
+    # The pin that outranks the checkout, where somebody comparing two machines
+    # would look for it. Silent unless they disagree — see announce_version_pin.
+    conflict = s.version_pin_conflict(v["mode"])
+    if conflict:
+        pinned, expected = conflict
+        print(f"              {s.warn('!')} .env pins {pinned}; this checkout expects {expected}")
+
     if app:
         print(f"\n  Server      {src.get('version') or app.get('image', '').rpartition(':')[2] or '?'}")
         print(f"              {app.get('image')}")
