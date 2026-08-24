@@ -13,6 +13,7 @@ import urllib.request
 
 from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
+from .settings import source_ref, source_repo
 
 from .dockerlib import _compose, _docker, find_mode_container
 from .versions import image_identity, mode_image
@@ -22,9 +23,11 @@ def _head() -> str | None:
                          capture_output=True, text=True)
     return run.stdout.strip() if run.returncode == 0 else None
 # What `curl … | sh` installs from, and what an upgrade of that install re-reads.
-# Overridable for a fork or an internal mirror, the same two names install.sh honours.
-TARBALL_REPO = os.environ.get("EMBABEL_REPO", "embabel-worlds/appliance")
-TARBALL_REF = os.environ.get("EMBABEL_REF", "main")
+#
+# READ PER CALL, not once at import: the ref lives in .env for an install that was made
+# from a branch, and a module constant captured whatever the shell happened to export —
+# so an upgrade run without that variable quietly pulled main over somebody's branch.
+# [source_ref] and [source_repo] look at the environment first, then .env, then the default.
 
 # What "the CLI" is, for deciding whether a refresh actually changed anything the
 # operator would notice. Not the whole tree: docs and copy move constantly and
@@ -65,7 +68,8 @@ def refresh_from_tarball() -> tuple[bool, str]:
     Extraction only ever writes files the tarball contains, so `.env`, realms/ and
     anything else local survives untouched — none of them are in it.
     """
-    url = f"https://codeload.github.com/{TARBALL_REPO}/tar.gz/{TARBALL_REF}"
+    repo, ref = source_repo(), source_ref()
+    url = f"https://codeload.github.com/{repo}/tar.gz/{ref}"
     before = _cli_fingerprint()
     workspace = tempfile.mkdtemp(prefix="embabel-upgrade-")
     tarball = os.path.join(workspace, "appliance.tar.gz")
@@ -89,8 +93,8 @@ def refresh_from_tarball() -> tuple[bool, str]:
         shutil.rmtree(workspace, ignore_errors=True)
 
     if _cli_fingerprint() == before:
-        return False, f"checkout already current ({TARBALL_REPO}@{TARBALL_REF})"
-    return True, (f"checkout refreshed from {TARBALL_REPO}@{TARBALL_REF}"
+        return False, f"checkout already current ({repo}@{ref})"
+    return True, (f"checkout refreshed from {repo}@{ref}"
                   "\n    the `embabel` command itself changed — this run is still the old one")
 
 

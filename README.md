@@ -16,6 +16,18 @@ pipe installs the personal assistant instead:
 curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
 ```
 
+To install a BRANCH rather than main — testing a change the way a user meets it —
+name it with `EMBABEL_REF`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh \
+  | EMBABEL_REF=my-branch sh
+```
+
+The install remembers it (in `.env`), so `embabel upgrade` follows that branch instead
+of replacing it with main. Delete the line to go back. `EMBABEL_REPO` pins a fork the
+same way.
+
 No account, no token, no GitHub login: this repo is public and the installer fetches
 it anonymously. It installs nothing globally and needs no root. Read it first if you
 like — [install.sh](install.sh) is deliberately short, and piping a remote script into

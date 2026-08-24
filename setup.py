@@ -165,6 +165,11 @@ def main() -> int:
         mode = args.mode or configured_mode() or "me"
         if args.world:
             set_bootstrap_world(args.world)
+        # BEFORE anything reads it back. An install made from a branch (EMBABEL_REF, which
+        # install.sh passes straight through) records that branch here, so `embabel upgrade`
+        # follows it instead of replacing it with main — testing a branch is the whole reason
+        # the variable exists, and an upgrade that silently undid it made it a trap.
+        remember_source()
         ensure_realms_dir(mode, args.realms)
 
         if args.fresh:

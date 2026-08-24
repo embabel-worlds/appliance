@@ -129,6 +129,42 @@ def remember_mode(mode: str) -> None:
         "# The door this appliance was last started as. `embabel up` returns to it",
         "# instead of its own default; starting the other mode rewrites this line.",
     ))
+def source_ref() -> str:
+    """Which branch or tag this install FOLLOWS — the environment, then .env, then main.
+
+    An install pinned to a branch has to STAY on it. `embabel upgrade` re-downloads the
+    checkout, so a ref that lived only in the shell that ran the installer meant the first
+    upgrade silently replaced somebody's branch with main — the exact thing they were
+    testing, gone, and no line anywhere saying it happened.
+    """
+    return (os.environ.get("EMBABEL_REF") or env_file_value("EMBABEL_REF") or "main").strip() or "main"
+
+
+def source_repo() -> str:
+    """Which repository this install follows. See [source_ref]; a fork is pinned the same way."""
+    return (os.environ.get("EMBABEL_REPO") or env_file_value("EMBABEL_REPO")
+            or "embabel-worlds/appliance").strip()
+
+
+def remember_source(ref: str | None = None, repo: str | None = None) -> None:
+    """Record a NON-DEFAULT branch or fork, so upgrades follow it instead of main.
+
+    Only when it is not the default: writing `EMBABEL_REF=main` into every .env would turn
+    the ordinary install into one that is pinned, and a pin nobody chose is worse than none —
+    it survives the day main is what they wanted.
+    """
+    ref = (ref or os.environ.get("EMBABEL_REF") or "").strip()
+    if ref and ref != "main" and env_file_value("EMBABEL_REF") != ref:
+        set_env_var("EMBABEL_REF", ref, (
+            "# The branch or tag this install follows. Written because it was installed from",
+            "# one — `embabel upgrade` re-reads it, so the checkout stays on that branch.",
+            "# Delete this line to go back to main on the next upgrade.",
+        ))
+    repo = (repo or os.environ.get("EMBABEL_REPO") or "").strip()
+    if repo and repo != "embabel-worlds/appliance" and env_file_value("EMBABEL_REPO") != repo:
+        set_env_var("EMBABEL_REPO", repo, (
+            "# The repository this install follows — a fork or an internal mirror.",
+        ))
 # ── instances ───────────────────────────────────────────────────────────────
 #
 # ONE APPLIANCE IS THE NORMAL CASE, and nothing about this section should be
