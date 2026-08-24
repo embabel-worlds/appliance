@@ -423,8 +423,15 @@ def cmd_version(args) -> int:
     src, app, neo, out = v["source"], v["appliance"], v["neo4j"], v["checkout"]
     print("\n  " + s.bold("Appliance") + f"   {s.accent(v['mode'])} mode\n")
 
-    print(f"  Checkout    {(out.get('commit') or '?')[:12]} on {out.get('branch') or '?'}"
-          + ("  (uncommitted changes)" if out.get("dirty") else ""))
+    # A DOWNLOADED checkout has no commit to name, and "? on ?" told the one person
+    # who most needs to know — somebody testing a branch — the least. It does know
+    # which repo and ref it followed, because the install records them.
+    if out.get("tarball"):
+        print(f"  Checkout    downloaded from {out.get('repo')}@{s.accent(out.get('ref') or 'main')}")
+    else:
+        print(f"  Checkout    {(out.get('commit') or '?')[:12]} on {out.get('branch') or '?'}"
+              + ("  (uncommitted changes)" if out.get("dirty") else "")
+              + (f"   {s.dim('follows ' + out['ref'])}" if out.get("ref") and out.get("ref") != "main" else ""))
     print(f"              {s.APPLIANCE_DIR}")
 
     if app:

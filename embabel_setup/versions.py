@@ -13,7 +13,7 @@ import zlib
 
 from .core import APPLIANCE_DIR
 from .dockerlib import MODE_SERVICE, _compose, _docker, backup_mode, find_mode_container
-from .settings import compose_project
+from .settings import compose_project, source_ref, source_repo
 
 # ── what is actually running ────────────────────────────────────────────────
 #
@@ -180,16 +180,31 @@ def mode_image(mode: str) -> str | None:
         return None
 def checkout_identity() -> dict:
     """This repo — the pin for everything that is NOT in an image: the compose
-    files, the Neo4j tag they name, setup.py, the skills."""
+    files, the Neo4j tag they name, setup.py, the skills.
+
+    A CURL INSTALL HAS NO `.git`, and said so as "? on ?" — which is the answer
+    for the majority of installs, and useless to exactly the person testing a
+    branch. install.sh extracts a tarball, so there is no commit to read; what
+    there IS, since the ref became something the install remembers, is the repo
+    and branch it was downloaded from. Reported as [ref]/[repo] with [tarball]
+    true, so a caller can say "from embabel-worlds/appliance@my-branch" rather
+    than a pair of question marks.
+    """
     def git(*args: str) -> str | None:
         run = subprocess.run(["git", "-C", APPLIANCE_DIR, *args], capture_output=True, text=True)
         return run.stdout.strip() if run.returncode == 0 else None
 
     dirty = git("status", "--porcelain")
+    commit = git("rev-parse", "HEAD")
     return {
-        "commit": git("rev-parse", "HEAD"),
+        "commit": commit,
         "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
         "dirty": bool(dirty),
+        # What the download followed. Meaningful for a tarball install and true
+        # of a git one too — a checkout can still be pinned to a branch by .env.
+        "ref": source_ref(),
+        "repo": source_repo(),
+        "tarball": commit is None,
     }
 def appliance_versions(mode: str | None = None) -> dict:
     """Every layer that can differ between two installs, in one dict. Shared by
