@@ -4,8 +4,12 @@ Nothing here builds. The compose files are pull-only by design, so this verb
 lands on what the registry publishes and says so when that turns out to be older
 than a local build it replaced.
 """
+import hashlib
 import os
+import shutil
 import subprocess
+import tempfile
+import urllib.request
 
 from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
@@ -17,10 +21,83 @@ def _head() -> str | None:
     run = subprocess.run(["git", "-C", APPLIANCE_DIR, "rev-parse", "HEAD"],
                          capture_output=True, text=True)
     return run.stdout.strip() if run.returncode == 0 else None
+# What `curl … | sh` installs from, and what an upgrade of that install re-reads.
+# Overridable for a fork or an internal mirror, the same two names install.sh honours.
+TARBALL_REPO = os.environ.get("EMBABEL_REPO", "embabel-worlds/appliance")
+TARBALL_REF = os.environ.get("EMBABEL_REF", "main")
+
+# What "the CLI" is, for deciding whether a refresh actually changed anything the
+# operator would notice. Not the whole tree: docs and copy move constantly and
+# saying "42 files" tells nobody whether the command they just ran is different.
+CLI_PATHS = ("setup.py", "embabel", "embabel_setup", "install.sh")
+
+
+def _cli_fingerprint() -> str:
+    """One hash over the files that make up the command, so a refresh can say
+    whether it moved rather than claiming it did."""
+    digest = hashlib.sha256()
+    for name in CLI_PATHS:
+        path = os.path.join(APPLIANCE_DIR, name)
+        files = []
+        if os.path.isdir(path):
+            for root, _dirs, entries in os.walk(path):
+                files += [os.path.join(root, e) for e in sorted(entries) if e.endswith(".py")]
+        elif os.path.exists(path):
+            files = [path]
+        for f in sorted(files):
+            try:
+                with open(f, "rb") as fh:
+                    digest.update(fh.read())
+            except OSError:
+                continue
+    return digest.hexdigest()
+
+
+def refresh_from_tarball() -> tuple[bool, str]:
+    """Re-download the appliance over itself, for an install that came from curl.
+
+    A CURL INSTALL HAD NO WAY TO UPDATE ITS OWN CLI. install.sh extracts a tarball,
+    so there is no `.git` to fast-forward, and upgrade said "images only" and moved
+    on — which meant every fix to setup.py or the `embabel` command was unreachable
+    to exactly the people who installed the recommended way. They got new images
+    driven by an old installer, indefinitely.
+
+    Extraction only ever writes files the tarball contains, so `.env`, realms/ and
+    anything else local survives untouched — none of them are in it.
+    """
+    url = f"https://codeload.github.com/{TARBALL_REPO}/tar.gz/{TARBALL_REF}"
+    before = _cli_fingerprint()
+    workspace = tempfile.mkdtemp(prefix="embabel-upgrade-")
+    tarball = os.path.join(workspace, "appliance.tar.gz")
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response:
+            if response.status != 200:
+                return False, f"checkout NOT updated (GitHub answered {response.status})"
+            with open(tarball, "wb") as f:
+                shutil.copyfileobj(response, f)
+        run = subprocess.run(
+            ["tar", "xzf", tarball, "-C", APPLIANCE_DIR, "--strip-components=1"],
+            capture_output=True, text=True, timeout=180,
+        )
+        if run.returncode != 0:
+            return False, f"checkout NOT updated ({(run.stderr or '').strip()[:120]})"
+    except Exception as e:
+        # Never fatal: the images below are the bigger half of an upgrade, and a
+        # network that failed here will have failed there too, more loudly.
+        return False, f"checkout NOT updated ({e})"
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+    if _cli_fingerprint() == before:
+        return False, f"checkout already current ({TARBALL_REPO}@{TARBALL_REF})"
+    return True, (f"checkout refreshed from {TARBALL_REPO}@{TARBALL_REF}"
+                  "\n    the `embabel` command itself changed — this run is still the old one")
+
+
 def pull_checkout() -> tuple[bool, str]:
     """Fast-forward the checkout. Returns (moved, what to tell the operator)."""
     if not os.path.isdir(os.path.join(APPLIANCE_DIR, ".git")):
-        return False, "not a git checkout — images only"
+        return refresh_from_tarball()
     before = _head()
     run = subprocess.run(["git", "-C", APPLIANCE_DIR, "pull", "--ff-only"],
                          capture_output=True, text=True, timeout=180)
