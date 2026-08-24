@@ -1912,26 +1912,33 @@ def main() -> int:
             print("  Everything is already configured.")
         deferred = []
         api_token = None
-        seeded = False
+        seeding = None
         for step in pending:
             result = run_step(base, token, step, use_environment=not args.ignore_env)
             if not result and deferrable_provider_step(step):
                 deferred.append(step)
-            # SEED HERE, NOT AT THE END. The only credential that can index anything
-            # is the one the account step just took, and it exists only in the run
-            # that creates the account. Waiting until after /complete meant a setup
-            # resumed from a half-finished first pass reached the upload with nothing
-            # to authenticate as, and printed "no credential" instead of the docs.
-            # Nothing here needs a provider: embeddings are local.
+            # START HERE, FINISH BEFORE /complete. The only credential that can
+            # index anything is the one the account step just took, and it exists
+            # only in the run that creates the account — waiting until after
+            # /complete meant a resumed setup reached the upload with nothing to
+            # authenticate as, and printed "no credential" instead of the guides.
+            # Running it here in the foreground was half a minute of nothing
+            # between two questions, so it runs alongside them instead.
+            # Nothing about it needs a provider: embeddings are local.
             if step["id"] == "account" and (result or {}).get("ok"):
                 credential = seed_credential(None)
                 if credential:
-                    seed_documentation(base, credential)
-                    seeded = True
+                    seeding = Seeding(base, credential)
             # Kept as it goes past: the server never returns this token again, and
             # seeding below needs a credential that is not the user's password.
             api_token = (result or {}).get("token") or api_token
             wire_coding_agents(result or {})
+
+        # BEFORE /complete, WITHOUT FAIL. Completing restarts the appliance, and an
+        # upload still in flight when the server goes down is a document this
+        # installer counted and the world does not have.
+        if seeding:
+            seeding.finish()
 
         print("\n  Finishing…", end=" ", flush=True)
         started_before = container_started_at(container) if container else ""
@@ -1976,11 +1983,10 @@ def main() -> int:
         if deferred:
             say("no-provider-next")
 
-        if not seeded:
-            # Either the account already existed (so an earlier run did this) or the
-            # upload had no credential. Neither is a failure worth alarming anybody
-            # about at the end of a successful install — the Documents page is the
-            # answer in both cases.
+        if not seeding:
+            # The account already existed, so an earlier run did this. Not a failure
+            # worth alarming anybody about at the end of a successful install — the
+            # Documents page is the answer either way.
             credential = seed_credential(api_token)
             if credential:
                 seed_documentation(base, credential)

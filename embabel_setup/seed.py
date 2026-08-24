@@ -9,6 +9,7 @@ import os
 import secrets
 import shutil
 import tempfile
+import threading
 import urllib.request
 
 from .colour import MIDDOT, TICK, dim
@@ -213,29 +214,68 @@ def _upload_document(base: str, auth: str, path: str) -> bool:
             return 200 <= response.status < 300
     except Exception:
         return False
+class Seeding:
+    """Documentation uploading in the background, so the wizard is not stuck behind it.
+
+    IT CANNOT SIMPLY RUN AT THE END. The only credential that can index anything
+    is the one the account step took, so the upload has to start there — but
+    starting there put a half-minute wall between "account created" and the next
+    question, which is a poor place to make somebody wait.
+
+    It cannot run past the end either: completing setup RESTARTS the appliance,
+    and an upload in flight when the server goes down is a document that was
+    reported as indexed and is not there. So [finish] is called before /complete
+    and blocks until every file has landed. What overlaps is the questions, which
+    is exactly the part that was dead time.
+
+    Nothing here writes to the terminal while it runs: the foreground is asking
+    for a password, and a spinner arriving mid-prompt is worse than silence.
+    """
+
+    def __init__(self, base: str, auth: str):
+        self._files: list[str] = []
+        self._done = 0
+        self._workspace = tempfile.mkdtemp(prefix="embabel-spec-")
+        self._thread = threading.Thread(target=self._run, args=(base, auth), daemon=True)
+        self._thread.start()
+
+    def _run(self, base: str, auth: str) -> None:
+        try:
+            self._files = documentation_files() + fetch_spec_documents(self._workspace)
+            for path in self._files:
+                if _upload_document(base, auth, path):
+                    self._done += 1
+        except Exception:
+            pass  # best effort; the appliance is already set up and working
+
+    @property
+    def running(self) -> bool:
+        return self._thread.is_alive()
+
+    def finish(self) -> None:
+        """Block until every upload has landed, then say what happened."""
+        if self.running:
+            # Only now is there anything to look at — and only if the questions
+            # did not already outlast it, which on a slow read they usually do.
+            STATUS.start("Indexing the documentation")
+            while self.running:
+                total = len(self._files)
+                STATUS.set("Indexing the documentation   "
+                           + dim(f"{self._done} of {total}" if total else "reading the guides"))
+                self._thread.join(0.2)
+            STATUS.stop("")
+        shutil.rmtree(self._workspace, ignore_errors=True)
+        if self._done:
+            print(f"  {TICK} Indexed {self._done} guide(s) — ask the world about itself, "
+                  + dim("no key needed."))
+        elif self._files:
+            # Silent failure would be worse than none: somebody would search for a
+            # thing the product implied was there.
+            print(f"  {MIDDOT} " + dim("Could not index the documentation — "
+                                       "the appliance is fine; add it later from Documents."))
+
+
 def seed_documentation(base: str, auth: str) -> None:
-    """Put the appliance's own guides into the world. Never raises."""
-    files = documentation_files()
-    workspace = tempfile.mkdtemp(prefix="embabel-spec-")
-    files += fetch_spec_documents(workspace)
-    if not files:
-        return
-    STATUS.start(f"Indexing the documentation   {dim('0 of ' + str(len(files)))}")
-    done = 0
-    try:
-        for index, path in enumerate(files, 1):
-            STATUS.set(f"Indexing the documentation   {dim(f'{index} of {len(files)}')}  "
-                       + dim(upload_name(path)))
-            if _upload_document(base, auth, path):
-                done += 1
-    except Exception:
-        pass  # best effort; setup has already succeeded
-    shutil.rmtree(workspace, ignore_errors=True)
-    if done:
-        STATUS.stop(f"  {TICK} Indexed {done} guide(s) — ask the world about itself, "
-                    + dim("no key needed."))
-    else:
-        # Silent failure would be worse than none: somebody would search for a
-        # thing the product implied was there.
-        STATUS.stop(f"  {MIDDOT} " + dim("Could not index the documentation — "
-                                         "the appliance is fine; add it later from Documents."))
+    """Upload the guides and wait for them. The blocking form, for callers with
+    nothing else to be getting on with."""
+    Seeding(base, auth).finish()
