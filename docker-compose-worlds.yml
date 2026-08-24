@@ -26,7 +26,7 @@ services:
 
   # ── The world runtime ───────────────────────────────────────────────────────
   worlds:
-    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-latest}
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers
     # <project>-<service>-N, which is per-instance for free. Find a container by
@@ -211,7 +211,7 @@ services:
   # browser's login applies with no CORS and no token plumbing. Ships as an image
   # like everything else: no checkout, no Node, no dev server.
   worlds-console:
-    image: ghcr.io/embabel/worlds-console:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    image: ghcr.io/embabel/worlds-console:${EMBABEL_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - worlds

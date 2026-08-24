@@ -86,7 +86,7 @@ def upgrade(mode: str) -> dict:
     return {"mode": mode, "notes": notes, "digest": after.get("digest")}
 def _same_image(container: str, image: str | None) -> bool:
     """Is this container running THAT image, by local image id rather than by tag?
-    A tag is a moving name; two containers can both say `:0.2.0-SNAPSHOT` and be
+    A tag is a moving name; two containers can both say `:latest` and be
     different builds, which is the whole failure this check exists to catch."""
     if not image:
         return True

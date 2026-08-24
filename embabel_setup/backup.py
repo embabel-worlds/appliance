@@ -138,7 +138,7 @@ def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
     """Enough to answer, a year from now, "what is this and can I restore it here".
 
     The identity recorded is the one `embabel version` prints, and for the same
-    reason: the TAG is a name that moves, so a manifest saying "0.2.0-SNAPSHOT"
+    reason: the TAG is a name that moves, so a manifest saying "latest"
     dates a backup to nothing. The image digest and the commit the jar was built
     from do not move, and between them they say exactly what wrote these bytes.
     """

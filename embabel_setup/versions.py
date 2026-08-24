@@ -18,8 +18,8 @@ from .settings import compose_project
 # ── what is actually running ────────────────────────────────────────────────
 #
 # FOUR LAYERS DIFFER, and only one of them is the thing people say out loud.
-# EMBABEL_VERSION defaults to a SNAPSHOT tag, which is a name rather than an
-# identity — two machines both "on 0.2.0-SNAPSHOT" can be weeks apart. What
+# EMBABEL_VERSION defaults to `latest`, which is a name rather than an
+# identity — two machines both "on latest" can be weeks apart. What
 # pins an install is the image DIGEST, and what pins the code inside it is the
 # commit the jar was built from.
 #

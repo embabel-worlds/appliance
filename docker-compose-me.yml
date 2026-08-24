@@ -20,7 +20,7 @@ services:
 
   # ── The assistant itself ────────────────────────────────────────────────────
   assistant:
-    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-latest}
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers
     # <project>-<service>-N, which is per-instance for free. Find a container by

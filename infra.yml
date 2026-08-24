@@ -149,7 +149,7 @@ services:
     # Stock Grafana with the Embabel dashboards baked in, because a pull-only
     # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
     # the dashboards match the metrics the app of that version actually emits.
-    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-0.2.0-SNAPSHOT}
+    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - prometheus
