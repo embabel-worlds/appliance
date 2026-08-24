@@ -167,12 +167,49 @@ trap 'rm -f "$TARBALL"' EXIT INT TERM
 AUTH=""
 [ -n "${EMBABEL_TOKEN:-}" ] && AUTH="Authorization: Bearer ${EMBABEL_TOKEN}"
 
-if [ -n "$AUTH" ]; then
-  curl -fsSL -H "$AUTH" -o "$TARBALL" "https://api.github.com/repos/$REPO/tarball/$REF" \
-    || die "Download failed. Check EMBABEL_TOKEN, your connection, and that '$REF' exists in $REPO."
-else
-  curl -fsSL -o "$TARBALL" "https://api.github.com/repos/$REPO/tarball/$REF" \
-    || die "Download failed. Check your connection, and that '$REF' exists in $REPO."
+# One attempt. No -f, because we want the STATUS rather than a bare non-zero:
+# "it failed" and "it failed with a 404" call for different advice.
+attempt() {
+  if [ -n "$AUTH" ]; then
+    curl -sSL -H "$AUTH" -o "$TARBALL" -w '%{http_code}' "$1" 2>/dev/null
+  else
+    curl -sSL -o "$TARBALL" -w '%{http_code}' "$1" 2>/dev/null
+  fi
+}
+
+# TWO SOURCES FOR THE SAME BYTES, and the order matters. api.github.com/tarball
+# only redirects to codeload anyway, so it is a hop that can fail on its own —
+# and does: measured from Australia, the API answered 504 in 40ms, three times
+# running, while codeload served the identical tarball with a 200. Going
+# straight to codeload removes a dependency that buys nothing.
+#
+# The API form stays as the fallback, and goes FIRST when a token is set: it is
+# the documented way to reach a private repo, which is the only reason
+# EMBABEL_TOKEN exists.
+CODELOAD="https://codeload.github.com/$REPO/tar.gz/$REF"
+API="https://api.github.com/repos/$REPO/tarball/$REF"
+if [ -n "$AUTH" ]; then SOURCES="$API $CODELOAD"; else SOURCES="$CODELOAD $API"; fi
+
+CODE=""
+for url in $SOURCES; do
+  tries=0
+  while [ "$tries" -lt 3 ]; do
+    CODE="$(attempt "$url")"
+    [ "$CODE" = "200" ] && break 2
+    # A missing ref is not a blip; retrying it just makes the person wait.
+    [ "$CODE" = "404" ] && break
+    tries=$((tries + 1))
+    [ "$tries" -lt 3 ] && sleep 2
+  done
+done
+
+if [ "$CODE" != "200" ]; then
+  case "$CODE" in
+    404) die "No '$REF' in $REPO — check EMBABEL_REF, or EMBABEL_REPO if you are using a fork." ;;
+    401|403) die "GitHub refused the download ($CODE). Check EMBABEL_TOKEN if $REPO is private, or wait out a rate limit." ;;
+    000) die "Could not reach GitHub. Check your connection or proxy." ;;
+    *) die "GitHub could not serve the download ($CODE) — its problem, not yours. Try again in a minute." ;;
+  esac
 fi
 
 tar xzf "$TARBALL" -C "$HOME_DIR" --strip-components=1 || die "Could not unpack the download."
