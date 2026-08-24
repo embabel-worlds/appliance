@@ -1,9 +1,9 @@
-Docker Model Runner looks disabled, and the appliance needs it.
+Docker Model Runner looks disabled, and Embabel needs it to start.
 
 It runs the embedding model — the one that turns your documents into vectors so
-the world can search and reason over them. That model runs HERE, on this
+your world can search and reason over them. That model runs HERE, on this
 machine, with no key and no account, which is why document search costs you
-nothing and why nothing you feed the appliance has to leave it.
+nothing and why nothing you feed it has to leave your machine.
 
 Enable it in Docker Desktop (Settings → AI), or run:
 

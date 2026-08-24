@@ -20,7 +20,7 @@ from .core import (
 )
 from .settings import (
     compose_project, configured_mode, env_path, instance, phone_home_on, port_base, ports_for,
-    PHONE_HOME_ENDPOINT,
+    resume_command, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
@@ -427,7 +427,17 @@ def ensure_embedding_model() -> None:
         # one explanation are two things to keep true. Imported inside the
         # function because words imports core, which imports this module.
         from .words import copy_text
-        raise SetupError(copy_text("docker-model-runner").strip())
+        # AND WHAT TO TYPE NEXT. This message ends the run, so leaving somebody
+        # with a fix and no way back means the last thing they read is a dead
+        # end — they enable Model Runner and then have to remember, or find,
+        # the command that got them here. Not in the copy file: install.sh
+        # shares that text and only WARNS, so a "run it again" line would be
+        # wrong there, and only this side knows how they invoked it anyway.
+        return_here = resume_command()
+        raise SetupError(
+            copy_text("docker-model-runner").strip()
+            + f"\n\n  Then pick up where you left off:  {return_here}"
+        )
     print(f"  Downloading the embedding model {dim('(' + EMBEDDING_MODEL + ', about 1.1GB)')}.")
     print("  " + dim("Required: it turns your documents into vectors, here, with no key and no"))
     print("  " + dim("account. Docker's own progress follows."))

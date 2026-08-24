@@ -147,16 +147,16 @@ docker_required() {
   cat <<'DOCKER_REQUIRED' | sed 's/^./  &/'
 Embabel needs Docker, and it is the only thing you have to install yourself.
 
-The appliance is not one program. It is a knowledge graph, a server, a
-console, a document converter, a metrics stack and a sandbox that runs code
-your agents write — six or seven pieces that have to find each other, come up
-in the right order and agree on their versions. Docker is how they arrive
-together, already wired, in about a command.
+Embabel is not one program. It is a knowledge graph, a server, a console, a
+document converter, a metrics stack and a sandbox that runs code your agents
+write — six or seven pieces that have to find each other, come up in the right
+order and agree on their versions. Docker is how they arrive together, already
+wired, in about a command.
 
 It is also what keeps your world YOURS. Every one of those pieces runs on this
 machine: your documents are converted here, turned into vectors here by a model
 that runs here, and stored in a graph here. Nothing is uploaded to us, and
-there is no account to make. The only traffic that leaves is the model
+there is no account to make. The only traffic that leaves is your model
 provider's, when you ask a question and your own key pays for the answer.
 
 And it is what makes this reversible. There is no installer scattering files
@@ -189,12 +189,12 @@ docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start D
 if ! docker model status >/dev/null 2>&1; then
   printf '  %s!!%s\n' "$C_YELLOW" "$C_RESET"
   cat <<'DOCKER_MODEL_RUNNER' | sed 's/^./  &/'
-Docker Model Runner looks disabled, and the appliance needs it.
+Docker Model Runner looks disabled, and Embabel needs it to start.
 
 It runs the embedding model — the one that turns your documents into vectors so
-the world can search and reason over them. That model runs HERE, on this
+your world can search and reason over them. That model runs HERE, on this
 machine, with no key and no account, which is why document search costs you
-nothing and why nothing you feed the appliance has to leave it.
+nothing and why nothing you feed it has to leave your machine.
 
 Enable it in Docker Desktop (Settings → AI), or run:
 

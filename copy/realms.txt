@@ -2,3 +2,10 @@ Extend your world by installing realms.
 Realms extend your knowledge graph and add agents.
 Typically, they bring in external systems, data sources and applications.
 You can install realms from our realm store or author them yourself.
+
+If you are writing your own, they live in a directory on this machine, which
+your world reads live so an edit shows up without reinstalling anything.
+
+Press Enter to take the default below. To keep them somewhere else, type that
+path instead — Tab completes it as you go. It has to be a directory that
+already exists, and it is the one your realms sit IN, not a realm itself.

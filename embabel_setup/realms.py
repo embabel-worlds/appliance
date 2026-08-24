@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 from .colour import MIDDOT, TICK, bold, dim, url, warn
-from .core import APPLIANCE_DIR, SetupError, prompt
+from .core import APPLIANCE_DIR, SetupError, prompt_path
 from .settings import env_file_value, set_env_var
 from .colour import heading
 from .words import say
@@ -147,7 +147,12 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
 
     default = os.path.realpath("realms")
     for _ in range(3):
-        answer = prompt(f"  Realm checkouts directory [{default}]: ").strip()
+        # prompt_path, not prompt: this is the one question in setup that wants a
+        # path typed from memory, and Tab completing it is the difference between
+        # a guess and a choice. The bracketed default is what Enter takes — said
+        # in words above too, because a `[default]` convention is only obvious to
+        # people who already know it.
+        answer = prompt_path(f"  Realm checkouts directory [{default}]: ").strip()
         path, realms, notes = inspect_realms_dir(answer or default)
         if path:
             set_realms_dir(path)

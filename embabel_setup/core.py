@@ -1,5 +1,6 @@
 """The two things every other module needs: where the appliance is, and how it
 fails. Kept apart so nothing has to import a large module to raise an error."""
+import glob
 import os
 import sys
 
@@ -83,6 +84,57 @@ def prompt(text: str) -> str:
             "No terminal to ask on — setup needs to ask you a few questions.\n"
             "Run it directly:  cd ~/embabel/worlds && ./worlds.py   (or ./me.py)"
         )
+
+
+def prompt_path(text: str) -> str:
+    """[prompt], with Tab completing directory names.
+
+    A QUESTION THAT WANTS A PATH SHOULD COMPLETE ONE. Typing an absolute path
+    from memory, blind, into a wizard is the moment people paste something with
+    a typo in it and get told their directory does not exist — when the shell
+    they came from would have completed it for them.
+
+    `readline` is stdlib and `input()` picks it up merely by its being imported,
+    so this costs no dependency, which matters: the appliance installs through
+    `curl … | sh` with nothing but a system python3, and a real TUI file browser
+    would mean shipping a package to ask one question.
+
+    Restores whatever completer was installed before, because this is a shared,
+    process-global hook and the next question is not about paths.
+    """
+    try:
+        import readline
+    except ImportError:
+        return prompt(text)  # Windows, or a python built without it
+
+    def complete(partial: str, state: int) -> str | None:
+        # Directories only, with a trailing separator so a second Tab descends.
+        expanded = os.path.expanduser(partial)
+        found = [p + os.sep for p in glob.glob(expanded + "*") if os.path.isdir(p)]
+        # Give back the ~ they typed rather than the expansion: rewriting the
+        # line under someone mid-type reads as the prompt fighting them.
+        if partial.startswith("~"):
+            home = os.path.expanduser("~")
+            found = [("~" + p[len(home):]) if p.startswith(home) else p for p in found]
+        return found[state] if state < len(found) else None
+
+    previous, delims = readline.get_completer(), readline.get_completer_delims()
+    readline.set_completer(complete)
+    # Only whitespace splits a word here. The default delimiters include `/` and
+    # `-`, which is right for identifiers and wrong for every path ever typed:
+    # completion would restart at each slash and offer the wrong directory.
+    readline.set_completer_delims(" \t\n")
+    # macOS ships a libedit-backed readline that does not speak this config
+    # syntax — the same two lines every stdlib-only CLI carries.
+    if "libedit" in (readline.__doc__ or ""):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+    try:
+        return prompt(text)
+    finally:
+        readline.set_completer(previous)
+        readline.set_completer_delims(delims)
 
 
 # The Me app — the native menu-bar sensor (plain JavaScript on Electron, no
