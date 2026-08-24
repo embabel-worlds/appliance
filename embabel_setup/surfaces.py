@@ -30,14 +30,18 @@ def print_worlds_surfaces(base: str) -> None:
     print("                 Opens with the commissioning sequence.")
     print()
     print(f"  API            {url(base)}   " + dim("(the server the console talks to)"))
-    print(f"  MCP            {url(base + '/mcp')}   " + dim("(chat clients \u2014 the assistant surface)"))
-    print(f"  MCP (dev)      {url(base + '/mcp/dev')}   " + dim("(coding agents \u2014 realms, authoring)"))
-    print("                 Authorization: Bearer \u2014 the token this setup just minted,")
-    print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print(f"  Graph          {url(surface_urls()['graph'])}  "
-          + dim("(neo4j / NEO4J_PASSWORD, default embabel-assistant)"))
     print(f"  Dashboards     {url(surface_urls()['dashboards'])}   {MIDDOT}   "
           f"Metrics  {url(surface_urls()['metrics'])}")
+    print()
+    # LAST, because they are the takeaway: the two MCP servers are how anything
+    # agentic reaches this world, and the last lines of a wizard are the ones
+    # that survive in the terminal when everything above has scrolled away.
+    # (The graph link is gone on purpose \u2014 the browser and bolt ports are an
+    # implementation detail; the console and MCP are the product's doors.)
+    print(f"  MCP servers    {url(base + '/mcp')}       {dim('embabel-me \u2014 chat clients, the assistant surface')}")
+    print(f"                 {url(base + '/mcp/dev')}   {dim('embabel-worlds \u2014 coding agents: realms, authoring')}")
+    print("                 Authorization: Bearer \u2014 the token this setup just minted,")
+    print("                 stored at /data/embabel/assistant/admin/providers.env")
     print()
 
 
@@ -52,12 +56,12 @@ def print_me_surfaces(base: str) -> None:
     print(f"  Assistant      {base}   \u2190 START HERE")
     print("                 Chat, documents and memories, in the browser.")
     print()
-    print(f"  MCP            {base}/mcp      " + dim("(chat clients \u2014 the assistant surface)"))
-    print(f"  MCP (dev)      {base}/mcp/dev  " + dim("(coding agents \u2014 realms, authoring)"))
+    # The two MCP servers close the block \u2014 see print_worlds_surfaces for why
+    # they come last and the graph link is gone.
+    print(f"  MCP servers    {base}/mcp      " + dim("embabel-me \u2014 chat clients, the assistant surface"))
+    print(f"                 {base}/mcp/dev  " + dim("embabel-worlds \u2014 coding agents: realms, authoring"))
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
-    print(f"  Graph          {url(surface_urls()['graph'])}  "
-          + dim("(neo4j / NEO4J_PASSWORD, default embabel-assistant)"))
     print()
 
 
