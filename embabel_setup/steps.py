@@ -339,9 +339,15 @@ def from_environment(step: dict) -> dict:
 def confirm_answers(step: dict, answers: dict) -> bool:
     """Echo what is about to be submitted; True to go ahead, False to redo the step.
 
-    Secrets are shown as their length, not their value: this runs in terminals
-    people screen-share, and "48 characters" is enough to catch the paste that
-    picked up half a line.
+    Secrets are never shown as their value: this runs in terminals people
+    screen-share.
+
+    A KEY AND A PASSWORD ARE NOT THE SAME SECRET. A pasted key fails in one
+    characteristic way — the copy picked up half a line — and its length is what
+    catches that, so a key still says "48 characters". A password was TYPED, by
+    the person reading the screen, who already knows how long it is; printing the
+    count tells them nothing they need and tells anyone watching the search space.
+    So a password confirms only that it arrived.
     """
     shown = []
     for field in step["fields"]:
@@ -349,7 +355,10 @@ def confirm_answers(step: dict, answers: dict) -> bool:
         if value in (None, ""):
             continue
         label = field.get("label") or field["name"]
-        if field.get("secret") or "password" in field["name"].lower() or "key" in field["name"].lower():
+        name = field["name"].lower()
+        if "password" in name:
+            shown.append(f"    {label}: OK")
+        elif field.get("secret") or "key" in name:
             shown.append(f"    {label}: ({len(value)} characters)")
         else:
             shown.append(f"    {label}: {value}")
