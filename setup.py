@@ -1026,7 +1026,7 @@ def uninstall() -> None:
     The `embabel` COMMAND does go, though — see [remove_cli_shim]. install.sh puts a
     launcher on PATH, so an uninstall that left it there left a live command pointing at a
     directory it had just emptied. The installation DIRECTORY stays: this script is running
-    from it, and `./worlds.py` sets up again from there.
+    from it, and `./setup.py` sets up again from there.
     """
     if len(installed_instances()) > 1:
         print(f"  --uninstall removes the '{instance()}' appliance. Others here are untouched:")
@@ -1083,7 +1083,12 @@ def uninstall() -> None:
     else:
         remove_cli_shim()
         print("\n  Done — this checkout is back to the state a fresh clone is in.")
-        print("  `embabel up` sets it up again from here.\n")
+        # NOT `embabel up`: remove_cli_shim() just deleted that command, three
+        # lines above. Naming it here sent people to a command this branch had
+        # personally removed. ./setup.py is what survives in the checkout, and
+        # it is the same entry for either door — which is right, because .env
+        # is gone too, so there is no longer a mode to resume.
+        print("  `./setup.py` sets it up again from here.\n")
 
 
 def ensure_mode(mode: str) -> bool:
