@@ -214,8 +214,12 @@ services:
   # Static app + nginx proxying /api to the server on the SAME ORIGIN, so the
   # browser's login applies with no CORS and no token plumbing. Ships as an image
   # like everything else: no checkout, no Node, no dev server.
+  # PUBLISHED FROM embabel-worlds, unlike the assistant images: the console's repo
+  # lives in that org, and GITHUB_TOKEN can only push to packages linked to its own
+  # repository — the same lesson mirror-docling records, which is why docling sits
+  # in that namespace too. Its CI could not publish at all until this moved.
   worlds-console:
-    image: ghcr.io/embabel/worlds-console:${EMBABEL_VERSION:-latest}
+    image: ghcr.io/embabel-worlds/worlds-console:${EMBABEL_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - worlds
