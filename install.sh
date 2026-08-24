@@ -357,7 +357,12 @@ cd "$HOME_DIR"
 #
 # No terminal (CI, a container, nohup) means no redirect, and setup.py says which
 # command to run by hand instead of crashing.
-if [ -r /dev/tty ]; then
+# OPENING it, not `-r`. The device node is readable by permission even when the
+# process has no CONTROLLING terminal — a pty without a session leader, a CI
+# runner, some containers — so `-r` passed and the redirect then died with
+# "/dev/tty: Device not configured", which is the raw failure this branch exists
+# to prevent. Actually opening it is the only test that means anything.
+if { : < /dev/tty; } 2>/dev/null; then
   if [ "$MODE" = "worlds" ]; then
     exec python3 ./worlds.py "$@" < /dev/tty
   else
