@@ -80,7 +80,22 @@ def drive(command: list[str], fields: dict, transcript: str, timeout: int) -> st
     )
     os.close(child)
 
+    # WRITTEN AS IT ARRIVES, not at the end. An install takes minutes and can
+    # stall on a question this table does not know; a transcript that only
+    # exists once the run finishes means the one run you most need to read —
+    # the one you had to kill — leaves nothing behind. `tail -f` it.
     seen, pending, deadline = [], "", time.time() + timeout
+    log = open(transcript, "w", encoding="utf8", buffering=1)
+    # What the harness DID, beside what the program said. A stall is either "it
+    # asked something we have no answer for" or "we answered and it hung", and
+    # the transcript alone cannot tell those apart.
+    actions = open(transcript + ".actions", "w", encoding="utf8", buffering=1)
+    started = time.time()
+
+    def note(message: str) -> None:
+        actions.write(f"{time.time() - started:7.1f}s  {message}\n")
+
+    note(f"running {' '.join(command)}")
     while proc.poll() is None and time.time() < deadline:
         ready, _, _ = select.select([parent], [], [], 1.0)
         if not ready:
@@ -92,21 +107,46 @@ def drive(command: list[str], fields: dict, transcript: str, timeout: int) -> st
         if not chunk:
             break
         seen.append(chunk)
+        log.write(chunk)
         pending += chunk
+        # WHAT MAKES A PROMPT A PROMPT is that nothing follows it: the program
+        # wrote it and stopped, waiting. So only the text after the last newline
+        # can be one — and after the last carriage return, or a spinner frame
+        # counts as a question.
+        #
+        # This is not fussiness. Searching the whole buffer matched setup's own
+        # CONFIRMATION SUMMARY ("Username: rod") as though it were the Username
+        # prompt, and the harness answered it, and the answer echoed, and it
+        # answered again — thousands of times in a tenth of a second, wedged
+        # behind a question nobody had asked.
+        prompt_line = pending.split("\n")[-1].split("\r")[-1]
+        if not prompt_line.strip():
+            continue
         for index, (pattern, reply) in enumerate(answers):
             # `answered` is per-INDEX, not global: the same question can be asked
             # twice (a rejected path is re-asked), and refusing to answer the
-            # second time would hang. Only the tail is searched, so an answer is
-            # not re-triggered by its own echo scrolling past.
-            if pattern.search(pending[-400:]):
-                os.write(parent, (reply.format(**fields) + "\n").encode())
+            # second time would hang.
+            if pattern.search(prompt_line):
+                filled = reply.format(**fields)
+                os.write(parent, (filled + "\n").encode())
+                note(f"answered /{pattern.pattern}/ with "
+                     + ("<empty: Enter>" if filled == "" else
+                        "<secret>" if "password" in pattern.pattern.lower() else repr(filled)))
                 pending = ""
                 answered.add(index)
                 break
     if proc.poll() is None:
         proc.terminate()
+        tail = ANSI.sub("", as_rendered(pending)).strip().splitlines()
+        note("TIMED OUT — last thing on screen: "
+             + (tail[-1][:120] if tail else "(nothing)"))
         seen.append(f"\n[harness] TIMED OUT after {timeout}s\n")
     proc.wait(timeout=30)
+    note(f"exit code {proc.returncode}")
+    log.close()
+    actions.close()
+    # Rewrite once at the end as a terminal would have shown it — the live file
+    # is raw so it can be followed, the saved one is readable.
     text = as_rendered("".join(seen))
     with open(transcript, "w", encoding="utf8") as f:
         f.write(text)
@@ -124,7 +164,15 @@ def as_rendered(raw: str) -> str:
     is the smallest possible terminal emulator, and enough for a wizard whose
     only cursor trick is that one.
     """
-    return "\n".join(line.split("\r")[-1] for line in raw.split("\n"))
+    rendered = []
+    for line in raw.split("\n"):
+        # A PTY ends every line with CRLF, so the trailing \r is a LINE ENDING
+        # and not a cursor move. Treating it as one meant "text\r".split("\r")[-1]
+        # == "" — a transcript of nothing but blank lines, which then failed the
+        # checks for reasons that had nothing to do with the product.
+        line = line.rstrip("\r")
+        rendered.append(line.split("\r")[-1])
+    return "\n".join(rendered)
 
 
 # ── the checks ──────────────────────────────────────────────────────────────
@@ -205,8 +253,23 @@ def finished(text: str) -> str | None:
     return None
 
 
-CHECKS = (no_raw_log_lines, password_not_measured, no_stale_org,
-          both_doors_offered, finished)
+def transcript_is_readable(text: str) -> str | None:
+    """The harness captured something a person could have read.
+
+    First, because every other check searches this text: a renderer bug once
+    reduced a whole install to blank lines, and the checks then reported the
+    PRODUCT as broken. A harness that fails silently into "all clear" is worse
+    than no harness, so it fails loudly into "look at me instead".
+    """
+    visible = [line for line in ANSI.sub("", text).splitlines() if line.strip()]
+    if len(visible) < 10:
+        return (f"the transcript holds only {len(visible)} visible line(s) — "
+                "the HARNESS is broken, not necessarily the install")
+    return None
+
+
+CHECKS = (transcript_is_readable, no_raw_log_lines, password_not_measured,
+          no_stale_org, both_doors_offered, finished)
 
 
 def report(text: str) -> int:
