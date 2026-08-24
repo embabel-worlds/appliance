@@ -135,7 +135,11 @@ def drive(command: list[str], fields: dict, transcript: str, timeout: int) -> st
                 pending = ""
                 answered.add(index)
                 break
-    if proc.poll() is None:
+    # THE DEADLINE, not proc.poll(). A child that has just exited has not been
+    # reaped yet, and reading its pty raises EIO the instant it goes — so the
+    # loop breaks with poll() still None on a run that finished perfectly, and
+    # the harness stamped TIMED OUT on a complete, correct install.
+    if time.time() >= deadline:
         proc.terminate()
         tail = ANSI.sub("", as_rendered(pending)).strip().splitlines()
         note("TIMED OUT — last thing on screen: "
