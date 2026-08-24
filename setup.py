@@ -1570,6 +1570,25 @@ def wire_coding_agents(result: dict) -> None:
         answer = prompt("  Point Claude Code at this appliance now (user scope)? [Y/n]: ").strip().lower()
         if answer in ("", "y", "yes"):
             try:
+                # REMOVE FIRST, exactly as the Codex path does. `claude mcp add` refuses a
+                # name that already exists, and this branch treated that refusal as a
+                # message to print rather than a thing to fix — so an operator who had
+                # ever wired an earlier appliance kept the OLD entry, silently. A
+                # developer hit precisely that: his Claude Code went on dialling
+                # localhost:4242, the port this product used before the rebase, because
+                # the registration from his previous install was never replaced.
+                #
+                # The token is also a reason on its own: it is minted fresh here, so even
+                # a same-URL entry holds a bearer that no longer authenticates.
+                existing = registered_mcp_url(claude, MCP_SERVER_NAME)
+                if existing and existing.rstrip("/").lower() != url.rstrip("/").lower():
+                    print(f"  (replacing Claude Code's '{MCP_SERVER_NAME}' entry, which pointed at {existing})")
+                # No --scope: the CLI then removes the entry from WHICHEVER scope holds
+                # it. Naming `user` would step over a stale entry sitting in local or
+                # project scope, which would go on shadowing the one we are about to
+                # write — the same silent survival this whole block exists to end.
+                subprocess.run([claude, "mcp", "remove", MCP_SERVER_NAME],
+                               capture_output=True, text=True, timeout=30)
                 run = subprocess.run(
                     [claude, "mcp", "add", "--transport", "http", "--scope", "user",
                      MCP_SERVER_NAME, url, "--header", f"Authorization: Bearer {token}"],

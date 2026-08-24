@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The Embabel appliance, as a command rather than a directory.
 
-    embabel up · status · doctor · version · ps · logs · realms · open
+    embabel up · status · doctor · version · ps · logs · realms · open · agents
     backup · restore · bugreport · prune · upgrade · down · uninstall
 
 WHY THIS EXISTS. Everything below was already possible — as `cd ~/embabel-me &&
@@ -274,6 +274,53 @@ def cmd_realms(args) -> int:
             print(f"  {note}")
         return 1
     s.announce_realms(path, found, notes)
+    return 0
+
+
+def cmd_agents(args) -> int:
+    """Point Claude Code and Codex at THIS appliance, again.
+
+    WIRING ONLY EVER HAPPENED ONCE, during first-run setup, and the setup API
+    closes permanently when setup completes — so there was no second chance. Every
+    way that goes wrong left the operator editing client config by hand:
+
+      · an appliance installed before the port rebase left a registration aimed at
+        4242, and the next install could not replace it (`claude mcp add` refuses a
+        name that exists, and this printed the refusal rather than acting on it)
+      · a second appliance, or a reinstall, mints a new token and the old one in the
+        client stops authenticating
+      · somebody declined at setup and changed their mind
+
+    The token is not re-minted here, and cannot be: the server returns it exactly
+    once. It is READ BACK from the data volume, which is where the appliance keeps
+    it for its own use — so this re-registers the credential that is actually live
+    rather than inventing a rival one.
+    """
+    mode = current_mode() or s.configured_mode()
+    if not mode:
+        print("  Nothing is running.  `embabel up` starts it.")
+        return 1
+    container = s.find_mode_container(mode)
+    base = s.container_base_url(container) if container else None
+    if not container or not base:
+        print("  The appliance is not up.  `embabel up` starts it.")
+        return 1
+
+    run = s._docker("exec", container, "sh", "-c",
+                    "cat /data/embabel/assistant/admin/providers.env 2>/dev/null")
+    token = user = None
+    for line in (run.stdout if run and run.returncode == 0 else "").splitlines():
+        if line.startswith("EMBABEL_SETUP_MCP_TOKEN="):
+            token = line.split("=", 1)[1].strip()
+        elif line.startswith("EMBABEL_SETUP_MCP_TOKEN_USER="):
+            user = line.split("=", 1)[1].strip()
+    if not token:
+        print("  This appliance has no MCP token — it was never minted, or MCP was declined.")
+        print("  " + s.dim("A token is minted during first-run setup and cannot be re-issued afterwards."))
+        return 1
+
+    print(f"  Wiring agents to {base}/mcp" + (f" as {user}" if user else ""))
+    s.wire_coding_agents({"token": token, "url": f"{base}/mcp", "user": user})
     return 0
 
 
@@ -804,6 +851,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true", help="skip the confirmation")
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("agents", help="re-point Claude Code and Codex at this appliance")
+    p.set_defaults(func=cmd_agents)
 
     p = sub.add_parser("upgrade", help="pull newer images, keep your data")
     mode_flags(p)
