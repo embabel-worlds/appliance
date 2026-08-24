@@ -9,12 +9,20 @@ are cheap to catch here and expensive to notice in the field.
     python3 scripts/check-copy.py
 """
 import os
+import pathlib
 import re
 import sys
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COPY = os.path.join(HERE, "copy")
-SOURCES = ("setup.py", "embabel")
+# EVERY source that can call say(), not just the two that used to. The refactor
+# moved most of them into embabel_setup/, and this checker went on scanning the
+# old two — reporting "1 block, 5 unused" for copy that is very much in use. A
+# checker that quietly stops checking is worse than no checker.
+SOURCES = ("setup.py", "embabel", "me.py", "worlds.py") + tuple(
+    os.path.join("embabel_setup", f.name)
+    for f in sorted(pathlib.Path(os.path.join(HERE, "embabel_setup")).glob("*.py"))
+)
 
 used, missing = set(), []
 for source in SOURCES:

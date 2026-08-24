@@ -6,6 +6,7 @@ who has one. It is a module because a second install turns every one of these
 from a constant into a question, and the answers all come from the same place.
 """
 import os
+import shutil
 import re
 
 from .core import APPLIANCE_DIR, MODE_COMPOSE, SetupError
@@ -307,3 +308,20 @@ def env_file_value(key: str, name: str | None = None) -> str | None:
                 raw = stripped.split("=", 1)[1].strip()
                 return raw.replace("$$", "$") or None
     return None
+
+
+def resume_command() -> str:
+    """What to type to pick setup up again, phrased for how this person got here.
+
+    "Re-run this command" is useless to somebody who ran a `curl … | sh`: the
+    command they typed downloaded an installer that is now gone from their
+    history, and the thing to run is the CLI it left behind. So look for the
+    launcher on PATH first, and fall back to the checkout's own entry point —
+    named for the mode, because ./worlds.py and ./me.py are different doors.
+    """
+    if shutil.which("embabel"):
+        return "embabel up"
+    entry = "worlds.py" if configured_mode() == "worlds" else "me.py"
+    if APPLIANCE_DIR != os.getcwd():
+        return f"cd {APPLIANCE_DIR} && ./{entry}"
+    return f"./{entry}"

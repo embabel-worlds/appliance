@@ -96,4 +96,57 @@ for filename in ["../setup.py"] + sorted(os.listdir(PKG)):
 for p in sorted(set(problems)):
     print(f"  ✗ {p}")
 print(f"  {'✓ every name resolves in its own module' if not problems else f'{len(set(problems))} unresolved name(s)'}")
-sys.exit(1 if problems else 0)
+_unresolved = len(set(problems))
+
+
+# ── do the imports name things that exist? ──────────────────────────────────
+#
+# The check above proves every name a module USES resolves to something. It said
+# yes while `from .settings import instance_ports` was in the tree — because it
+# trusted the import line to be true. A wrong name there is an ImportError at
+# first run, which is exactly the class of failure this script exists to catch
+# before a user does.
+def _check_intra_package_imports() -> int:
+    import ast as _ast
+    import os as _os
+
+    package = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                            "embabel_setup")
+    exported: dict[str, set[str]] = {}
+    trees: dict[str, _ast.Module] = {}
+    for entry in sorted(_os.listdir(package)):
+        if not entry.endswith(".py"):
+            continue
+        name = entry[:-3]
+        tree = _ast.parse(open(_os.path.join(package, entry), encoding="utf-8").read())
+        trees[name] = tree
+        names: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+                names.add(node.name)
+            elif isinstance(node, _ast.Assign):
+                names.update(t.id for t in node.targets if isinstance(t, _ast.Name))
+            elif isinstance(node, _ast.AnnAssign) and isinstance(node.target, _ast.Name):
+                names.add(node.target.id)
+            elif isinstance(node, (_ast.Import, _ast.ImportFrom)):
+                names.update((a.asname or a.name).split(".")[0] for a in node.names)
+        exported[name] = names
+
+    bad = 0
+    for module, tree in trees.items():
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.ImportFrom) and node.level == 1 and node.module in exported:
+                for alias in node.names:
+                    if alias.name == "*":
+                        continue
+                    if alias.name not in exported[node.module]:
+                        print(f"  ✗ {module}.py imports '{alias.name}' from "
+                              f"{node.module}.py, which does not define it")
+                        bad += 1
+    if bad == 0:
+        print("  ✓ every intra-package import names something that exists")
+    return bad
+
+
+_bad_imports = _check_intra_package_imports()
+sys.exit(1 if (_unresolved or _bad_imports) else 0)
