@@ -122,7 +122,10 @@ def this_appliance_urls() -> set[str]:
         value = env_file_value(key)
         if value:
             bases.append(value)
-    return {base.rstrip("/").lower() + "/mcp" for base in bases}
+    # Both doors: coding agents are wired against /mcp/dev when the server has the
+    # developer endpoint, and an uninstall that only recognized /mcp would leave that
+    # registration standing — a client pointed at an appliance that no longer exists.
+    return {base.rstrip("/").lower() + suffix for base in bases for suffix in ("/mcp", "/mcp/dev")}
 
 
 def registered_mcp_url(cli: str, name: str) -> str | None:
@@ -196,7 +199,13 @@ def wire_coding_agents(result: dict) -> None:
 
     `claude mcp add` only writes config; the token itself goes live when setup
     completes and the appliance restarts, and the closing message says so."""
-    token, url = result.get("token"), result.get("url")
+    # Coding agents are the DEVELOPER audience, so they get the developer door when the
+    # server has one — its tools/list is the building surface (realm authoring, mining)
+    # with none of the personal-assistant tools. The server states both URLs as facts
+    # and this installer picks; `developerUrl` is absent entirely on a server without
+    # the door, so an old image degrades to the primary endpoint rather than to a 404.
+    token = result.get("token")
+    url = result.get("developerUrl") or result.get("url")
     if not token or not url:
         return
 

@@ -50,6 +50,14 @@ services:
         required: false
     environment:
       - SERVER_PORT=${WORLDS_PORT:-11043}
+      # TWO MCP DOORS from the one server. The primary endpoint (/mcp) is the
+      # assistant surface and introduces itself as embabel-me — a chat client
+      # like Cowork connects there and sees the user's data tools, nothing
+      # else. The developer door (/mcp/dev, enabled below) always carries the
+      # building surface and names itself embabel-worlds; setup wires coding
+      # agents against it. One JVM, one graph, two tool lists.
+      - SPRING_AI_MCP_SERVER_NAME=embabel-me
+      - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
       # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
       - TZ=${TZ:-Etc/UTC}
       - NEO4J_HOST=neo4j
@@ -118,21 +126,17 @@ services:
       - EMBABEL_AGENT_PLATFORM_MODELS_LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
       - EMBABEL_AGENT_PLATFORM_MODELS_OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - EMBABEL_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
-      # WORLDS IS THE DEVELOPER DOOR, SO IT SAYS SO.
+      # THE DEVELOPER DOOR CARRIES THE BUILDING SURFACE NOW, so the primary endpoint
+      # goes back to ASSISTANT — the surface for a chat client asking about the
+      # world's data. This used to say DEVELOPER, because the primary endpoint was
+      # the only door and worlds exists to be built on; with /mcp/dev always serving
+      # the developer list (and setup wiring coding agents there), leaving the
+      # primary on DEVELOPER would show every chat client the realm-mining tools.
       #
-      # The MCP mode decides whether a connected coding agent can install and author
-      # realms, and it defaults to ASSISTANT — the right default for Me, where someone
-      # asking where their invoices went should never read about realms. It is the wrong
-      # one here: this mode exists to be built ON, and it was handing every arriving
-      # agent a surface where realm authoring refuses.
-      #
-      # The server cannot work this out for itself. Me and Worlds are the same image, the
-      # same profile and the same volume — see the header of this file — so the only thing
-      # that knows which product this is, is this file. Hence: it declares it.
-      #
-      # A user who picks a mode in the console still wins; this only decides where someone
-      # who has never touched the switch starts.
-      - ASSISTANT_INFRASTRUCTURE_MCP_DEFAULT_MODE=${WORLDS_MCP_MODE:-DEVELOPER}
+      # A user who picks a mode in the console still wins; this only decides where
+      # someone who has never touched the switch starts. A request arriving on the
+      # developer door is DEVELOPER regardless of any of this.
+      - ASSISTANT_INFRASTRUCTURE_MCP_DEFAULT_MODE=${WORLDS_MCP_MODE:-ASSISTANT}
       - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
       - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}

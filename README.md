@@ -340,10 +340,12 @@ token before first boot:
 | `EMBABEL_MCP_API_TOKEN` | empty | Pre-set bearer token for `/mcp` and `/sse` (`openssl rand -hex 32`). A setup-minted token **takes precedence** — adding a value here after setup has minted one has no effect. |
 | `EMBABEL_MCP_API_TOKEN_USER` | empty | Which user's world a pre-set token acts as. Both must be set together; there is no implicit default user. |
 
-To wire a client manually (Claude Code shown; the URL + header work for any client):
+To wire a client manually (Claude Code shown; the URL + header work for any client).
+Coding agents connect to the developer door, `/mcp/dev` — the building surface; chat
+clients connect to `/mcp`, the assistant surface:
 
 ```bash
-claude mcp add --transport http --scope user embabel http://localhost:11042/mcp \
+claude mcp add --transport http --scope user embabel http://localhost:11042/mcp/dev \
   --header "Authorization: Bearer <your token>"
 ```
 

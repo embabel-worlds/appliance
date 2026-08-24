@@ -30,7 +30,8 @@ def print_worlds_surfaces(base: str) -> None:
     print("                 Opens with the commissioning sequence.")
     print()
     print(f"  API            {url(base)}   " + dim("(the server the console talks to)"))
-    print(f"  MCP endpoint   {url(base + '/mcp')}")
+    print(f"  MCP            {url(base + '/mcp')}   " + dim("(chat clients \u2014 the assistant surface)"))
+    print(f"  MCP (dev)      {url(base + '/mcp/dev')}   " + dim("(coding agents \u2014 realms, authoring)"))
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
     print(f"  Graph          {url(surface_urls()['graph'])}  "
@@ -51,7 +52,8 @@ def print_me_surfaces(base: str) -> None:
     print(f"  Assistant      {base}   \u2190 START HERE")
     print("                 Chat, documents and memories, in the browser.")
     print()
-    print(f"  MCP endpoint   {base}/mcp")
+    print(f"  MCP            {base}/mcp      " + dim("(chat clients \u2014 the assistant surface)"))
+    print(f"  MCP (dev)      {base}/mcp/dev  " + dim("(coding agents \u2014 realms, authoring)"))
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
     print(f"  Graph          {url(surface_urls()['graph'])}  "
