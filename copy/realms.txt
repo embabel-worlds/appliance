@@ -4,8 +4,12 @@ Typically, they bring in external systems, data sources and applications.
 You can install realms from our realm store or author them yourself.
 
 If you are writing your own, they live in a directory on this machine, which
-your world reads live so an edit shows up without reinstalling anything.
+your world reads live so an edit shows up without reinstalling anything. One is
+already set up for you — the directory named below — so there is nothing to do
+here until you have a realm to put in it.
 
-Press Enter to take the default below. To keep them somewhere else, type that
-path instead — Tab completes it as you go. It has to be a directory that
-already exists, and it is the one your realms sit IN, not a realm itself.
+To keep them somewhere else, say so whenever you like:
+
+    embabel realms link ~/dev
+
+That wants the directory your realms sit IN, not a realm itself.

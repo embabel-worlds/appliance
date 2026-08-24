@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 from .colour import MIDDOT, TICK, bold, dim, url, warn
-from .core import APPLIANCE_DIR, SetupError, prompt_path
+from .core import APPLIANCE_DIR, SetupError
 from .settings import env_file_value, set_env_var
 from .colour import heading
 from .words import say
@@ -141,24 +141,30 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
     if mode != "worlds" or not sys.stdin.isatty():
         return
 
+    # THE ANSWER IS THE DEFAULT, so it is applied rather than asked for.
+    #
+    # Every early return above means this ran only on a FIRST worlds run — the one
+    # moment when the machine has no realm checkouts, so there is no directory to
+    # name and Enter is the only sensible answer. A question asked exactly when it
+    # cannot be answered is not a question.
+    #
+    # The SECTION stays: what a realm checkout directory is, that one is already
+    # set, and the verb that changes it are all worth knowing at this point in a
+    # first run — that is teaching, and it was the only thing the prompt carried.
+    default = os.path.realpath("realms")
+    os.makedirs(default, exist_ok=True)
+    path, realms, notes = inspect_realms_dir(default)
+    if not path:
+        # The default is ours and should always be usable; if it is not — an
+        # unshared path on macOS, a permission — say what and move on rather than
+        # turning a note into a blocking question.
+        print("\n" + heading("Working on realms"))
+        for note in notes:
+            print(f"  {warn('!')} {note}")
+        print()
+        return
+    set_realms_dir(path)
     print("\n" + heading("Working on realms"))
     say("realms")
     print()
-
-    default = os.path.realpath("realms")
-    for _ in range(3):
-        # prompt_path, not prompt: this is the one question in setup that wants a
-        # path typed from memory, and Tab completing it is the difference between
-        # a guess and a choice. The bracketed default is what Enter takes — said
-        # in words above too, because a `[default]` convention is only obvious to
-        # people who already know it.
-        answer = prompt_path(f"  Realm checkouts directory [{default}]: ").strip()
-        path, realms, notes = inspect_realms_dir(answer or default)
-        if path:
-            set_realms_dir(path)
-            announce_realms(path, realms, notes)
-            return
-        for note in notes:
-            print(f"  {note}")
-        print()
-    print("  Skipping — set EMBABEL_REALMS_DIR in .env when you want it.\n")
+    announce_realms(path, realms, notes)

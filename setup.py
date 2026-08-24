@@ -234,7 +234,7 @@ def main() -> int:
         seed_auth = None
         for step in pending:
             result = run_step(base, token, step, use_environment=not args.ignore_env)
-            if not result and deferrable_provider_step(step):
+            if not result and provider_step(step):
                 deferred.append(step)
             # START HERE, FINISH BEFORE /complete. The only credential that can
             # index anything is the one the account step just took, and it exists
