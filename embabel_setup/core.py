@@ -3,6 +3,7 @@ fails. Kept apart so nothing has to import a large module to raise an error."""
 
 from __future__ import annotations
 import os
+import re
 import sys
 
 # Every path is absolute rather than relying on a chdir, because the Me app and
@@ -65,6 +66,20 @@ BOOT_WAIT_SECONDS = 120
 
 # ── plumbing ────────────────────────────────────────────────────────────────
 
+# Terminal escape sequences that PASTING smuggles into an answer. A modern terminal
+# wraps every paste in bracketed-paste markers (ESC[200~ … ESC[201~), and input()
+# reading /dev/tty keeps them — so a pasted username was stored with "[200~" glued
+# to its front and sign-in failed against the name the user thought they chose
+# (observed on a fresh install, 2026-08-25). CSI covers those markers, arrow keys
+# and colour codes; the control-character sweep afterwards catches any stray ESC.
+_TERMINAL_ESCAPES = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _sanitize(raw: str) -> str:
+    cleaned = _TERMINAL_ESCAPES.sub("", raw)
+    return "".join(ch for ch in cleaned if ch >= " " or ch == "\t")
+
+
 def prompt(text: str) -> str:
     """prompt(), with the one failure it has in this program handled.
 
@@ -79,7 +94,7 @@ def prompt(text: str) -> str:
     is to say which command to run by hand.
     """
     try:
-        return input(text)
+        return _sanitize(input(text))
     except EOFError:
         raise SetupError(
             "No terminal to ask on — setup needs to ask you a few questions.\n"
