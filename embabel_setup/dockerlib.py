@@ -165,7 +165,19 @@ def _compose(mode: str, *argv: str, capture: bool = False):
     if os.path.exists(env_path()):
         cmd += ["--env-file", env_path()]
     cmd += ["-f", MODE_COMPOSE[mode]]
-    if mode == "me" and os.path.exists(OVERRIDE_FILE):
+    # THE OVERRIDE IS FOR BOTH MODES NOW. It used to be me-only, and the stated
+    # reason was sound: the file names the `assistant` service, which the worlds
+    # compose does not define, and merging it there fabricates an image-less
+    # service. The consequence was that the mode a developer arrives through was
+    # the one that could never share a folder. So the file is RETARGETED at the
+    # service this mode defines, here rather than in each caller — every path that
+    # creates a container (up, restart, upgrade) needs it, and a caller that
+    # forgets produces the one failure with no symptom: everything starts and
+    # nothing is mounted. Imported inside the function because mounts reads this
+    # module's vocabulary and importing it at module scope is a cycle.
+    if os.path.exists(OVERRIDE_FILE):
+        from .mounts import retarget
+        retarget(mode)
         cmd += ["-f", OVERRIDE_FILE]
     cmd += argv
     try:

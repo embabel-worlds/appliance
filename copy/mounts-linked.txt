@@ -1,0 +1,12 @@
+Shared read-only. Nothing is copied and nothing is uploaded: files are read
+where they lie, on every question, so there is no index to go stale.
+
+A source tree is mounted at its own path, because git worktrees and symlinks
+inside it point at absolute paths that resolve no other way.
+
+    > embabel mount list          what is shared, and whether it is visible
+    > embabel mount add <dir>     share another one
+    > embabel mount rm <dir>      stop sharing it (the directory is untouched)
+
+Adding one later recreates the container, which takes a few seconds. Doing it
+now, before the first start, costs nothing.

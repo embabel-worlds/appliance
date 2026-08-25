@@ -75,6 +75,9 @@ from embabel_setup.surfaces import *     # noqa: F403 — where to go once it is
 from embabel_setup.steps import *        # noqa: F403 — asking, and posting the answers
 from embabel_setup.lifecycle import *    # noqa: F403 — up, down, and away
 from embabel_setup.realms import *       # noqa: F403 — realm checkouts and the world repo
+# Imported by name for the same reason as the wizard: two verbs, and the reader
+# should be able to see where a mount comes from without grepping.
+from embabel_setup.mounts import ensure_mounts, report as report_mounts
 from embabel_setup.samples import *      # noqa: F403 — fictional records, marked and removable
 from embabel_setup.scenarios import *    # noqa: F403 — the world in a named state
 # Imported as a module, not starred: the wizard is a small named vocabulary
@@ -125,6 +128,15 @@ def main() -> int:
              "EMBABEL_REALMS_DIR; checked before it is written",
     )
     parser.add_argument(
+        "--mount",
+        action="append",
+        metavar="DIR",
+        help="a source directory to share READ-ONLY with the appliance, so your world can "
+             "answer questions about your own repositories. Repeatable. Mounted at its own "
+             "path, because git worktrees and symlinks under it hold absolute paths that "
+             "only resolve that way. Written to docker-compose.override.yml",
+    )
+    parser.add_argument(
         "--ignore-env",
         action="store_true",
         help=f"always ask, even if {' or '.join(PROVIDER_ENV.values())} is set",
@@ -173,6 +185,7 @@ def main() -> int:
         # the variable exists, and an upgrade that silently undid it made it a trap.
         remember_source()
         ensure_realms_dir(mode, args.realms)
+        ensure_mounts(mode, args.mount)
 
         if args.fresh:
             fresh_wipe()
@@ -317,6 +330,7 @@ def main() -> int:
                 print(f"  {MIDDOT} " + dim("Documentation not re-indexed this run — "
                                            "add or refresh it from Documents."))
         warn_if_conversion_pending()
+        report_mounts(container)
         if service == "worlds":
             print_worlds_surfaces(base)
         elif service == "assistant":
