@@ -2,10 +2,10 @@
                    The Worlds console: realms, documents, keys, views, chat.
                    Opens with the commissioning sequence.
 
-    {api}   the server the console talks to
+    {api}   ((the server the console talks to))
     {dashboards}   ·   Metrics  {metrics}
 
-    {mcp}       embabel-me — chat clients, the assistant surface
-    {mcp_dev}   embabel-worlds — coding agents: realms, authoring
-                   Authorization: Bearer — the token this setup just minted,
-                   stored at /data/embabel/assistant/admin/providers.env
+    {mcp}       ((embabel-me — chat clients, the assistant surface))
+    {mcp_dev}   ((embabel-worlds — coding agents: realms, authoring))
+                   ((Authorization: Bearer — the token this setup just minted,))
+                   ((stored at /data/embabel/assistant/admin/providers.env))

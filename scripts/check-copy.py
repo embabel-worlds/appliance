@@ -69,6 +69,18 @@ for source in SOURCES:
             bad_fields.append(f"copy/{name}.txt wants {sorted(wanted - given)}, "
                               f"call site passes {sorted(given) or 'nothing'}")
 
+# AN UNBALANCED ASIDE eats the rest of the file. `((` with no `))` makes the
+# renderer's non-greedy match reach for the next `))` anywhere after it — or
+# find none and leave the markers on screen. Both are silent, and both are a
+# typo away, so they are counted here instead.
+for name in sorted(on_disk):
+    with open(os.path.join(COPY, f"{name}.txt"), encoding="utf-8") as f:
+        words = f.read()
+    if words.count("((") != words.count("))"):
+        bad_fields.append(
+            f"copy/{name}.txt has {words.count('((')} '((' and {words.count('))')} '))' "
+            "— an aside that never closes swallows the text after it")
+
 # Some copy is duplicated into install.sh, which runs before there is a checkout
 # to read copy/ from. Duplication is the right call there and a drift risk
 # everywhere, so each one is compared byte for byte against its file. The
