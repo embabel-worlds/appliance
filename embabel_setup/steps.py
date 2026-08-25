@@ -452,8 +452,20 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
     forced: dict | None = None
     if provider_step(step):
         say("provider-choice")
-        environment = from_environment(step) if use_environment else {}
-        source = PROVIDER_ENV[environment["provider"]] if environment else None
+        # THE ENVIRONMENT READ DIRECTLY, not through from_environment — which asks
+        # its OWN menu when both keys are exported, and a menu followed by this
+        # prompt is two questions where the point was to have one. The appliance's
+        # preferred provider decides, and the other is named in passing so nobody
+        # wonders whether it was seen.
+        exported = {p: os.environ[var] for p, var in PROVIDER_ENV.items()
+                    if os.environ.get(var, "").strip()} if use_environment else {}
+        chosen = (PREFERRED_DEFAULTS.get("provider") if PREFERRED_DEFAULTS.get("provider") in exported
+                  else next(iter(exported), None))
+        environment = {"provider": chosen, "apiKey": exported[chosen]} if chosen else {}
+        source = PROVIDER_ENV[chosen] if chosen else None
+        others = [PROVIDER_ENV[p] for p in exported if p != chosen]
+        if others:
+            print(f"\n  {MIDDOT} " + dim(f"{' and '.join(others)} also exported — paste a key here to use one instead."))
         while True:
             asked = getpass.getpass(
                 f"\n  Enter to use {source} from your environment, or paste another key, "

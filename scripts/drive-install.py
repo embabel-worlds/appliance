@@ -44,12 +44,14 @@ ANSWERS = [
     (r"Username:", "{username}"),
     (r"Your name:", "{display}"),
     (r"Password \(min \d+ characters\):", "{password}"),
-    (r"Correct\? \[Y/n\]:", "y"),
+    # The step summary: Enter accepts, a number re-asks that one field.
+    (r"Enter to continue, or a number to change:", ""),
     # The provider step when keys are already in the environment: a numbered
     # choice whose default is the first key found. Enter takes it.
     (r"Choose 1-\d+ \[", ""),
     (r"API key:", "{apikey}"),
-    (r"Realm checkouts directory \[", ""),
+    # The provider prompt takes the key itself — Enter uses the exported one.
+    (r"or 'n' to skip:", ""),
     (r"Enable MCP access", ""),
     # Wiring somebody's global coding-agent config is not this harness's
     # business — it edits ~/.claude.json and ~/.codex/config.toml for real.
