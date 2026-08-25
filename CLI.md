@@ -30,6 +30,8 @@ embabel open          # the console, in your browser
 embabel backup        # everything it knows, copied somewhere safe
 embabel version       # tag, digest, the commit it was built from
 embabel bugreport     # one folder to attach to an issue, with no secrets in it
+embabel sample add …  # fictional records, marked so they can be taken back out
+embabel scenario run … # put the world in a named state, for a demo or a repro
 ```
 
 ---
@@ -166,6 +168,108 @@ a couple of hundred bytes.
 
 `embabel backup` records exactly this in each backup's `manifest.json`, so a
 year-old backup can still say what wrote it.
+
+### `embabel sample`
+
+Fictional records, loaded into a live world and removable in one move.
+
+```bash
+embabel sample add hubspot-demo      # a name, a file, or gh:owner/repo
+embabel sample list                  # what is loaded, and what is mixed with real records
+embabel sample remove hubspot-demo   # that set, and nothing else
+embabel sample clear                 # everything fake, before somebody sees the screen
+```
+
+The appliance marks every node a set loads, so removing it is exact rather than a
+best guess at what came from where. **Sample data is the only thing this product
+deletes** — removing a realm leaves its records, and so does deleting a world — which
+is what makes `remove` and `clear` safe to run without reading anything first.
+
+A bare name resolves only inside the `embabel-worlds` org, the same rule realms follow:
+a short name in a mailed instruction must not be squattable. `owner/name` and full URLs
+work too, and show whose data you are about to load before you load it.
+
+Sets are JSON: this client is stdlib-only and runs on whatever `python3` you have, and a
+YAML dependency would be a package to install before the first command works. A `.yml`
+set is read when PyYAML happens to be installed, and says so plainly when it is not.
+
+```json
+{ "name": "hubspot-demo", "realm": "hubspot",
+  "nodes": [
+    {"label": "Company", "id": "acme", "displayName": "Acme Pty",
+     "properties": {"website": "https://acme.example", "revenue": 84000}}
+  ],
+  "edges": [] }
+```
+
+`realm` is required. It is how a set refuses to load when the realm that gives its types
+meaning is absent, instead of creating records nothing can interpret.
+
+Loading the same set twice merges rather than duplicates, so a set is safe to re-run when
+something did not land and there is an audience.
+
+### `embabel sample export`
+
+Records back out, as a set somebody else can load.
+
+```bash
+embabel sample export --labels Company,Deal --realm hubspot -o case-1174.json
+embabel sample export --labels Company --realm hubspot --with-values -o real.json
+```
+
+**Shape-only by default**: labels, property keys and edges are kept, and the values are
+replaced with blanks of the same type — a number stays a number, so a query that sorts or
+counts still behaves in whoever's world it lands in. Ids are replaced too, because they
+are routinely email addresses.
+
+That default is the point. Most support reproductions need the shape and the query rather
+than the content, and the safe choice should not be the one you have to remember to make.
+`--with-values` gives the real thing and says so; read that file before sending it
+anywhere.
+
+What comes out is exactly what `embabel sample add` takes, so there is no conversion step
+between exporting and loading, and therefore none to get wrong.
+
+### `embabel scenario`
+
+Put the world in a named state, from wherever it is now.
+
+```bash
+embabel scenario list                     # what exists, and which one you are in
+embabel scenario run pipeline-at-risk     # bring the world to that state
+embabel scenario next                     # the one after the one you are in
+embabel scenario run … --dry-run          # say what would change, change nothing
+```
+
+A scenario **declares** what should be loaded rather than listing steps:
+
+```json
+{ "name": "pipeline-at-risk", "order": 2, "description": "a deal has stalled",
+  "wants":   ["accounts-base", "deals-at-risk"],
+  "without": ["pipeline-healthy"] }
+```
+
+Running it works out the difference and does the minimum — adds what is missing, removes
+what should not be there, leaves everything else alone.
+
+Declared rather than scripted, because `sample add X && sample remove Y` works right up
+until somebody is watching. Then a question from the room means a step gets skipped, or
+re-shown, or half-applied, and every later line of a script of CHANGES assumes a state its
+predecessor no longer produced. A declaration asserts the state, so jumping straight to
+the fourth scenario from anywhere lands correctly, and re-running one that is already
+current does nothing.
+
+There is no saved position. `next` works out where you are by looking at what is loaded,
+because a remembered "you are on step 3" is a second source of truth that goes wrong the
+moment somebody loads a set by hand — and goes wrong silently.
+
+Scenarios are `.json` files in `./scenarios`, ordered by their `order` field and then by
+name. A set named in `wants` is looked for beside the scenario (`scenarios/sets/<name>.json`)
+before the ordinary rules apply, so a scenario and the data it needs travel together.
+
+This is not only for demos, which is why the verb is not `demo`: the same move puts a
+world into a fixed state to evaluate a realm before connecting an account, to reproduce a
+support case, or to start a test from somewhere known.
 
 ### `embabel backup [directory]`
 

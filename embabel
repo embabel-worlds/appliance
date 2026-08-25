@@ -2,7 +2,8 @@
 """The Embabel appliance, as a command rather than a directory.
 
     embabel up · status · doctor · version · ps · logs · realms · open · agents
-    sample · backup · restore · bugreport · prune · upgrade · down · uninstall
+    sample · scenario · backup · restore · bugreport · prune · upgrade
+    down · uninstall
 
 WHY THIS EXISTS. Everything below was already possible — as `cd ~/embabel-me &&
 ./worlds.py`, `./setup.py --uninstall`, `docker compose -f docker-compose-worlds.yml
@@ -405,6 +406,52 @@ def cmd_sample(args) -> int:
         return 0
 
     print("  embabel sample add | remove | list | clear | export")
+    return 1
+
+
+def cmd_scenario(args) -> int:
+    """Put the world in a named state, from wherever it is now.
+
+    Declared rather than scripted: a scenario says what should be loaded, and running it
+    works out the difference. That is what makes it safe to jump straight to the fourth
+    one when somebody in the room asks to see it.
+    """
+    if args.scenario_command == "list" and not s.scenario_files():
+        print("  " + s.dim("No scenarios found. Put .json files in ./scenarios."))
+        return 0
+
+    base, auth = _sample_target(args)
+    if not base:
+        return 1
+    scenarios = s.load_scenarios()
+    loaded = s.loaded_names(base, auth)
+
+    if args.scenario_command == "list":
+        s.describe_scenarios(scenarios, loaded)
+        return 0
+
+    if args.scenario_command == "run":
+        s.apply_scenario(base, auth, s.find_scenario(args.name), loaded, dry_run=args.dry_run)
+        return 0
+
+    if args.scenario_command == "next":
+        if not scenarios:
+            print("  " + s.dim("No scenarios found."))
+            return 1
+        here = s.current_scenario(scenarios, loaded)
+        if here is None:
+            # Nothing matches, so start at the beginning rather than guess.
+            following = scenarios[0]
+        else:
+            index = next(i for i, x in enumerate(scenarios) if x["name"] == here["name"])
+            if index + 1 >= len(scenarios):
+                print(f"  {s.MIDDOT} " + s.dim(f"'{here['name']}' is the last one."))
+                return 0
+            following = scenarios[index + 1]
+        s.apply_scenario(base, auth, following, loaded, dry_run=args.dry_run)
+        return 0
+
+    print("  embabel scenario list | run | next")
     return 1
 
 
@@ -973,6 +1020,20 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("-o", "--output", help="write here instead of stdout")
     a.set_defaults(func=cmd_sample)
     p.set_defaults(func=cmd_sample, sample_command=None)
+
+    p = sub.add_parser("scenario", help="put the world in a named state")
+    sc = p.add_subparsers(dest="scenario_command")
+    a = sc.add_parser("list", help="scenarios on this machine, and which one you are in")
+    a.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
+    a.set_defaults(func=cmd_scenario)
+    a = sc.add_parser("run", help="bring the world to a scenario's declared state")
+    a.add_argument("name")
+    a.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
+    a.set_defaults(func=cmd_scenario)
+    a = sc.add_parser("next", help="the scenario after the one you are in")
+    a.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
+    a.set_defaults(func=cmd_scenario)
+    p.set_defaults(func=cmd_scenario, scenario_command=None, dry_run=False)
 
     p = sub.add_parser("agents", help="re-point Claude Code and Codex at this appliance")
     p.set_defaults(func=cmd_agents)
