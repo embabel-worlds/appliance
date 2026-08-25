@@ -152,3 +152,46 @@ def describe_scenarios(scenarios: list, loaded: set) -> None:
         if scenario.get("description"):
             line += "  " + dim(scenario["description"])
         print(line)
+
+
+def capture_scenario(name: str, loaded: set, scenarios: list,
+                     description: str | None = None, force: bool = False) -> str:
+    """Write the world's current state out as a scenario.
+
+    THIS IS HOW SCENARIOS ACTUALLY GET MADE. Nobody writes one first: they load a set,
+    load another, remove the one that was wrong, look at the screen, and only then know
+    what they wanted. Capture turns that arrangement into something repeatable, which is
+    the difference between a demo that worked once and a demo you can give again.
+
+    `without` is the part worth understanding. It is every set the OTHER scenarios name
+    that is not loaded here — so this scenario knows what to clear away when somebody
+    arrives from one of its siblings. Recording only `wants` would produce a scenario
+    that adds correctly and never removes anything, which shows up as yesterday's data
+    still on screen halfway through a demo.
+    """
+    known = {
+        entry
+        for scenario in scenarios
+        for entry in (scenario.get("wants") or []) + (scenario.get("without") or [])
+    }
+    scenario = {
+        "name": name,
+        # After everything that exists, so a captured scenario appends to the walk rather
+        # than silently inserting itself in the middle of somebody's sequence.
+        "order": max([s.get("order", 0) for s in scenarios] or [0]) + 1,
+        "wants": sorted(loaded),
+        "without": sorted(known - loaded),
+    }
+    if description:
+        scenario["description"] = description
+
+    directory = next((d for d in ([os.environ.get("EMBABEL_SCENARIOS")] + list(SCENARIO_DIRS))
+                      if d and os.path.isdir(d)), "scenarios")
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"{name}.json")
+    if os.path.exists(path) and not force:
+        raise SetupError(f"{path} already exists. Use --force to replace it.")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(scenario, f, indent=2)
+        f.write("\n")
+    return path

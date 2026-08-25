@@ -258,6 +258,7 @@ Put the world in a named state, from wherever it is now.
 embabel scenario list                     # what exists, and which one you are in
 embabel scenario run pipeline-at-risk     # bring the world to that state
 embabel scenario next                     # the one after the one you are in
+embabel scenario capture pipeline-at-risk # freeze the world as it is now
 embabel scenario run … --dry-run          # say what would change, change nothing
 ```
 
@@ -282,6 +283,24 @@ current does nothing.
 There is no saved position. `next` works out where you are by looking at what is loaded,
 because a remembered "you are on step 3" is a second source of truth that goes wrong the
 moment somebody loads a set by hand — and goes wrong silently.
+
+**`capture` is how scenarios actually get made.** Nobody writes one first: you load a set,
+load another, remove the one that was wrong, look at the screen, and only then know what
+you wanted. Capture turns that arrangement into something repeatable.
+
+```
+✓ Wrote scenarios/pipeline-at-risk.json
+   wants:   accounts-base, deals-at-risk
+   without: pipeline-healthy
+```
+
+`without` is inferred, and it is the part that matters: every set the OTHER scenarios name
+that is not loaded here, so this one knows what to clear away when somebody arrives from a
+sibling. Recording only `wants` would give a scenario that adds correctly and never
+removes anything — which shows up as yesterday's data still on screen halfway through a
+demo. A captured scenario is ordered after everything that exists, so it appends to the
+walk rather than inserting itself into somebody's sequence, and it refuses to overwrite an
+existing file without `--force`.
 
 Scenarios are `.json` files in `./scenarios`, ordered by their `order` field and then by
 name. A set named in `wants` is looked for beside the scenario (`scenarios/sets/<name>.json`)

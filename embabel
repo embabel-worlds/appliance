@@ -448,6 +448,20 @@ def cmd_scenario(args) -> int:
         s.apply_scenario(base, auth, s.find_scenario(args.name), loaded, dry_run=args.dry_run)
         return 0
 
+    if args.scenario_command == "capture":
+        if not loaded:
+            print("  " + s.warn("Nothing is loaded — this will capture an empty world."))
+        path = s.capture_scenario(args.name, loaded, scenarios,
+                                  description=args.description, force=args.force)
+        scenario = s.read_set(path)
+        print(f"  {s.TICK} Wrote {s.bold(path)}")
+        print(f"     wants:   {', '.join(scenario['wants']) or '(nothing)'}")
+        if scenario["without"]:
+            print(f"     without: {', '.join(scenario['without'])}")
+            print("  " + s.dim("(what the other scenarios load, so this one clears it away)"))
+        print("  " + s.dim(f"Replay it with: embabel scenario run {args.name}"))
+        return 0
+
     if args.scenario_command == "next":
         if not scenarios:
             print("  " + s.dim("No scenarios found."))
@@ -1044,6 +1058,12 @@ def build_parser() -> argparse.ArgumentParser:
     a = sc.add_parser("run", help="bring the world to a scenario's declared state")
     a.add_argument("name")
     a.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
+    a.set_defaults(func=cmd_scenario)
+    a = sc.add_parser("capture", help="write the world's current state out as a scenario")
+    a.add_argument("name")
+    a.add_argument("--description", help="one line, shown in `scenario list`")
+    a.add_argument("--force", action="store_true", help="replace an existing scenario file")
+    a.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
     a.set_defaults(func=cmd_scenario)
     a = sc.add_parser("next", help="the scenario after the one you are in")
     a.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
