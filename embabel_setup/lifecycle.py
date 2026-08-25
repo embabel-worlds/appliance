@@ -40,6 +40,12 @@ BOOT_AWAITING_KEY = re.compile(
     r"is not registered.*(awaiting a key|falling back to the 'setup-required')")
 
 
+# The server's first-boot block, recognised by what it ASKS FOR rather than by
+# its wording: whichever way it is phrased, a block telling somebody to run setup
+# is one this process is already the answer to.
+SETUP_IS_DRIVING = re.compile(r"ACTION REQUIRED|Setup token:|worlds\.py|me\.py|setup\.py", re.IGNORECASE)
+
+
 # No single log line should be able to flood a terminal. Wide enough for a real
 # message, short enough that a thirty-model inventory does not arrive twice.
 BOOT_LINE_MAX = 200
@@ -86,6 +92,7 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
     def pump() -> None:
         inside = False
         awaiting_key = 0
+        block: list[str] = []
         for line in proc.stdout:
             line = line.rstrip("\n")
             border = line.strip().startswith("═") and len(line.strip()) > 8
@@ -98,12 +105,30 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
                     STATUS.log(f"  {MIDDOT} {awaiting_key} model-role warning(s): no provider key yet. "
                                "Setup asks for one next.")
                     awaiting_key = 0
-                STATUS.log(line)
+                if inside:
+                    block = [line]
+                    continue
+                # THE BLOCK IS ADDRESSED TO SOMEBODY ELSE. The server prints
+                # "ACTION REQUIRED — run ./worlds.py" for the operator who started
+                # a container by hand. Relayed HERE it is addressed to the process
+                # already doing it: ./worlds.py exec'd this, the next line printed
+                # is "✓ Setup token read from its log", and the block hands over a
+                # token it says in its own words you will not need. Correct where
+                # it was written, wrong where it arrives — so setup, which IS the
+                # answer to it, does not repeat the question.
+                block.append(line)
+                if not any(SETUP_IS_DRIVING.search(entry) for entry in block):
+                    for entry in block:
+                        STATUS.log(entry)
+                block = []
+                continue
+            if inside:
+                block.append(line)
                 continue
             if not inside and BOOT_AWAITING_KEY.search(line):
                 awaiting_key += 1
                 continue
-            if inside or " ERROR " in line:
+            if " ERROR " in line:
                 STATUS.log(line if len(line) <= BOOT_LINE_MAX
                            else line[:BOOT_LINE_MAX] + dim(" …"))
                 continue

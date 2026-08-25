@@ -1,7 +1,19 @@
-This appliance is an MCP server. Point a coding agent at it and the agent gets
-the whole world — your graph, your documents, your installed realms — instead
-of another single-system connector.
+This appliance is an MCP server, and it answers on two doors. One token opens
+both.
+
+    /mcp/chat    a chat client — Claude Desktop, Open WebUI, anything that
+                 speaks MCP. It gets your world's data: the graph, your
+                 documents, saved views, and the assistant's own memory. Plain
+                 /mcp is the same door, and is what most clients assume.
+
+    /mcp/code    a coding agent — Claude Code, Codex. Same world, a different
+                 set of tools: installing and authoring realms, mining an
+                 existing system into one, writing views and handlers.
+
+They differ on purpose. A chat client asking where the invoices went should not
+have to read past realm authoring, and an agent building a realm has no use for
+the assistant's persona — so each door lists only its own.
 
 That is also how views get written: ask the agent for the question you want
-answered, and it can explore the world, save the query as a view, and check
-the answer before you keep it.
+answered, and it can explore the world, save the query as a view, and check the
+answer before you keep it.

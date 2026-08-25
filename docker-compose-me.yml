@@ -49,10 +49,10 @@ services:
       # remapped port leaves every code-mode call dialling nothing. Moving the
       # appliance to another port therefore moves both sides together.
       - SERVER_PORT=${ASSISTANT_PORT:-11042}
-      # Two MCP doors — see the worlds compose file's note. The primary endpoint
-      # is the personal assistant (embabel-me); /mcp/dev is the developer door
-      # (embabel-worlds), which is where setup wires coding agents.
-      - SPRING_AI_MCP_SERVER_NAME=embabel-me
+      # Two MCP doors — see the worlds compose file's note. /mcp (also /mcp/chat)
+      # is the chat surface, `embabel-chat`; /mcp/code is the building surface,
+      # `embabel-code`, which is where setup wires coding agents. The server names
+      # them itself, so nothing here has to.
       - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
       # The image runs UTC unless told otherwise, and a wrong zone skews every
       # "now" the assistant utters and every schedule it keeps. setup.py detects

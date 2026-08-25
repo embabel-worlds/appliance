@@ -63,12 +63,14 @@ otherwise), the console serves on its (11044), Neo4j browser and bolt answer, an
 connection lists capabilities (`available_capabilities`). Use the admin credentials the
 wizard just printed — retyping stale ones tests your memory, not the install.
 
-**L1.5 — both doors, and they differ.** `/mcp` is the assistant surface (`embabel-me`);
-`/mcp/dev` is the developer door (`embabel-worlds`). Handshake each, diff their
-`tools/list` — `learn_*` on the door only, `personality`/`memory_*` on the primary only —
-and CALL a door-only tool, because the tool LIST and the tool DISPATCH have been wrong
-independently of each other. Both doors carry the world's persona: a coding agent without
-it falls back to its own voice, which is what the persona exists to replace.
+**L1.5 — both doors, and they differ.** `/mcp/chat` is the assistant surface
+(`embabel-chat`); `/mcp/code` is the building surface (`embabel-code`). Handshake each,
+diff their `tools/list` — `learn_*` on the code door only, `personality`/`memory_*` on the
+chat door only — and CALL a code-door-only tool, because the tool LIST and the tool
+DISPATCH have been wrong independently of each other. Both doors carry the world's
+persona: a coding agent without it falls back to its own voice, which is what the persona
+exists to replace. Handshake bare `/mcp` too: it is an alias of the chat door — a servlet
+forward, so a client must complete a real `initialize` there and not merely get a 200.
 
 **L2 — the empty world is honest.** Before any realm: ask the world a question
 (`kg_ask`). The pass is an honest empty — a stated absence, never invented rows, never an

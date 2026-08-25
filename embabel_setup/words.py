@@ -4,6 +4,7 @@ The words are prose, with different editors and a different review cadence from
 the logic, so they live in files and this module is only the loader.
 """
 import os
+import re
 import textwrap
 
 from .core import APPLIANCE_DIR, SetupError
@@ -48,6 +49,25 @@ def copy_text(name: str, **fields) -> str:
     return wrap_copy(raw.format(**fields) if fields else raw)
 
 
+# AN ASIDE, MARKED AS ONE. `((like this))` renders dim.
+#
+# Copy files carry no escape codes — that is what keeps them editable by
+# somebody who never opens Python — but the emphasis a sentence needs is a
+# property OF the sentence, and the writer is the one who knows which half is
+# secondary. So the file marks the aside and the renderer decides what dim
+# means, which is the same division as the wrapping: intent here, mechanics
+# there.
+#
+# Double parens because a single one appears in ordinary prose, and because an
+# unrendered marker still reads as an aside — if this feature were removed
+# tomorrow the words would degrade to "(text)" rather than to nonsense.
+#
+# DOTALL, so a marker split across a wrap still renders: the dim spans the
+# newline, which costs nothing, where a line-at-a-time substitution would leave
+# the markers visible exactly when a paragraph grew.
+ASIDE = re.compile(r"\(\((.+?)\)\)", re.DOTALL)
+
+
 def wrap_copy(raw: str, indent: str = "  ", width: int = COPY_WIDTH) -> str:
     """Paragraphs wrapped and indented; blank lines kept; a line that begins with
     whitespace in the FILE is left exactly as written.
@@ -76,7 +96,12 @@ def wrap_copy(raw: str, indent: str = "  ", width: int = COPY_WIDTH) -> str:
             flat = " ".join(line.strip() for line in block.splitlines())
             out.append(textwrap.fill(flat, width=width,
                                      initial_indent=indent, subsequent_indent=indent))
-    return "\n\n".join(out)
+    # Imported HERE, not at module scope: colour reads COPY_DIR from this module,
+    # so importing it back at the top is a cycle — and the failure is an
+    # ImportError on a partially initialised module, which reads like a broken
+    # install rather than like two files pointing at each other.
+    from .colour import dim
+    return ASIDE.sub(lambda match: dim(match.group(1)), "\n\n".join(out))
 
 
 def say(name: str, **fields) -> None:

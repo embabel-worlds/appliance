@@ -21,13 +21,15 @@ shown again, so if you no longer have it, the simplest honest answer is to re-ru
 
 ```bash
 claude mcp add --transport http --scope user embabel \
-  http://localhost:11043/mcp/dev --header "Authorization: Bearer <token>"
+  http://localhost:11043/mcp/code --header "Authorization: Bearer <token>"
 ```
 
-Note the `/mcp/dev` path: the server has two MCP doors, and this one carries the
+Note the `/mcp/code` path: the server has two MCP doors, and this one carries the
 building surface — realms, authoring, mining an existing system into a realm. The
-other door, `/mcp`, is the assistant surface for chat clients, and connecting a coding
-agent there would show it the user's personal tools instead of the ones it needs.
+other door is `/mcp/chat`, the assistant surface for chat clients, and connecting a
+coding agent there would show it the user's personal tools instead of the ones it
+needs. `/mcp` on its own is the chat door as well — it is the path clients default to,
+so it stayed put when the pair got their names.
 
 Other agents — Codex, Cursor, anything speaking MCP — take the same URL and the same
 `Authorization` header in whatever form their config uses.

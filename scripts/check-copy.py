@@ -28,7 +28,12 @@ used, missing = set(), []
 for source in SOURCES:
     with open(os.path.join(HERE, source), encoding="utf-8") as f:
         text = f.read()
-    for name in re.findall(r'\bsay\(\s*"([a-z0-9-]+)"', text):
+    # `say("name")` is one way a block is used; a wizard step naming its own
+    # words with `"copy": "name"` is the other. Missing the second would report
+    # every step description as an orphan AND let a deleted file through — the
+    # failure this checker exists to catch, arriving at a user's screen instead.
+    for name in re.findall(r'\bsay\(\s*"([a-z0-9-]+)"|"copy":\s*"([a-z0-9-]+)"', text):
+        name = name[0] or name[1]
         used.add(name)
         if not os.path.exists(os.path.join(COPY, f"{name}.txt")):
             missing.append(f"{source}: say(\"{name}\") has no copy/{name}.txt")
@@ -63,6 +68,18 @@ for source in SOURCES:
         if wanted - given:
             bad_fields.append(f"copy/{name}.txt wants {sorted(wanted - given)}, "
                               f"call site passes {sorted(given) or 'nothing'}")
+
+# AN UNBALANCED ASIDE eats the rest of the file. `((` with no `))` makes the
+# renderer's non-greedy match reach for the next `))` anywhere after it — or
+# find none and leave the markers on screen. Both are silent, and both are a
+# typo away, so they are counted here instead.
+for name in sorted(on_disk):
+    with open(os.path.join(COPY, f"{name}.txt"), encoding="utf-8") as f:
+        words = f.read()
+    if words.count("((") != words.count("))"):
+        bad_fields.append(
+            f"copy/{name}.txt has {words.count('((')} '((' and {words.count('))')} '))' "
+            "— an aside that never closes swallows the text after it")
 
 # Some copy is duplicated into install.sh, which runs before there is a checkout
 # to read copy/ from. Duplication is the right call there and a drift risk

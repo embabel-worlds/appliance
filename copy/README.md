@@ -9,6 +9,23 @@ diff through a wall of quoting — so it drifted from
 [worlds.embabel.com](https://worlds.embabel.com), which is the one place it
 has to agree with.
 
+## Asides
+
+Wrap the secondary half of a line in double parens and it renders dim:
+
+```
+    {mcp}   ((embabel-chat — chat clients, the assistant surface))
+```
+
+That is the only mark these files carry, and it says INTENT rather than
+colour: the writer knows which half of a sentence is the aside, and the
+renderer decides what dim means on the terminal in front of it. Double,
+because a single paren is ordinary prose — and because an unrendered marker
+still reads as an aside if this is ever removed.
+
+An aside that never closes swallows everything after it, so `check-copy.py`
+counts the markers.
+
 ## Editing
 
 Write paragraphs. Separate them with a blank line. **Do not wrap lines and do

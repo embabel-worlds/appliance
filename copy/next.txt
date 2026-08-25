@@ -1,0 +1,4 @@
+    {up}  ((start it, or finish setting it up))
+    {doctor}  ((why it is not working))
+    {open}  ((this appliance's front door, in your browser))
+    {help}  ((everything else))

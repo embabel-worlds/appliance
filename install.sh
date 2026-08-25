@@ -259,7 +259,14 @@ CODE=""
 for url in $SOURCES; do
   tries=0
   while [ "$tries" -lt 3 ]; do
-    CODE="$(attempt "$url")"
+    # `|| CODE=000`, and it is load-bearing. Under `set -eu` the exit status of
+    # an assignment IS the substitution's status, so a curl that fails MID-BODY —
+    # a stalled transfer, a dropped connection — killed the script right here,
+    # with a bare "exit 56" and none of the diagnosis below. The retry loop never
+    # ran either. A transport failure is what 000 already means, and its message
+    # ("Could not reach GitHub. Check your connection or proxy") is the one to
+    # print. Observed live: codeload answered 200 and then stalled mid-tarball.
+    CODE="$(attempt "$url")" || CODE="000"
     [ "$CODE" = "200" ] && break 2
     # A missing ref is not a blip; retrying it just makes the person wait.
     [ "$CODE" = "404" ] && break
@@ -357,7 +364,12 @@ cd "$HOME_DIR"
 #
 # No terminal (CI, a container, nohup) means no redirect, and setup.py says which
 # command to run by hand instead of crashing.
-if [ -r /dev/tty ]; then
+# OPENING it, not `-r`. The device node is readable by permission even when the
+# process has no CONTROLLING terminal — a pty without a session leader, a CI
+# runner, some containers — so `-r` passed and the redirect then died with
+# "/dev/tty: Device not configured", which is the raw failure this branch exists
+# to prevent. Actually opening it is the only test that means anything.
+if { : < /dev/tty; } 2>/dev/null; then
   if [ "$MODE" = "worlds" ]; then
     exec python3 ./worlds.py "$@" < /dev/tty
   else
