@@ -259,7 +259,14 @@ CODE=""
 for url in $SOURCES; do
   tries=0
   while [ "$tries" -lt 3 ]; do
-    CODE="$(attempt "$url")"
+    # `|| CODE=000`, and it is load-bearing. Under `set -eu` the exit status of
+    # an assignment IS the substitution's status, so a curl that fails MID-BODY —
+    # a stalled transfer, a dropped connection — killed the script right here,
+    # with a bare "exit 56" and none of the diagnosis below. The retry loop never
+    # ran either. A transport failure is what 000 already means, and its message
+    # ("Could not reach GitHub. Check your connection or proxy") is the one to
+    # print. Observed live: codeload answered 200 and then stalled mid-tarball.
+    CODE="$(attempt "$url")" || CODE="000"
     [ "$CODE" = "200" ] && break 2
     # A missing ref is not a blip; retrying it just makes the person wait.
     [ "$CODE" = "404" ] && break
