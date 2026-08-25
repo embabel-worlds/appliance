@@ -5,6 +5,8 @@ same time, and two writers sharing a line shred each other — so every concurre
 log line goes through StatusLine.log, which erases, prints above, and redraws.
 That coordination is why this is a class and not a print().
 """
+
+from __future__ import annotations
 import re
 import shutil
 import sys

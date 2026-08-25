@@ -9,6 +9,8 @@ Everything here is a thin client over `/api/v1/samples`. The rules live in the
 appliance: what a set may contain, what gets marked, what redaction means. A CLI that
 reimplemented any of that would be a second opinion nobody asked for.
 """
+
+from __future__ import annotations
 import base64
 import getpass
 import json

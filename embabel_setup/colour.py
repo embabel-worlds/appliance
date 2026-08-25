@@ -4,6 +4,8 @@ Depends on nothing in this package: it is the leaf every other module paints
 with, and keeping it that way is what stops a colour question becoming a reason
 to import the backup logic.
 """
+
+from __future__ import annotations
 import os
 import shutil
 import sys

@@ -8,6 +8,8 @@ is executed once and every verb sees the same constants.
 The launcher keeps only argument parsing and main(); the verbs themselves live beside
 this file, grouped by what they are about.
 """
+
+from __future__ import annotations
 import importlib.util
 import os
 import sys

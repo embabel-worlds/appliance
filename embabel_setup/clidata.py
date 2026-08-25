@@ -5,6 +5,8 @@ data is the only thing any of them deletes — removing a realm leaves its recor
 so does deleting a world.
 """
 
+from __future__ import annotations
+
 import argparse
 import contextlib
 import io

@@ -5,6 +5,8 @@ One appliance is the normal case and none of this should be visible to somebody
 who has one. It is a module because a second install turns every one of these
 from a constant into a question, and the answers all come from the same place.
 """
+
+from __future__ import annotations
 import os
 import shutil
 import re

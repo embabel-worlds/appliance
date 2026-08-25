@@ -5,6 +5,8 @@ bundle is an exfiltration shape if it is careless. Two rules, enforced here
 rather than left to a warning: .env VALUES are never copied, and logs are
 filtered to warnings and errors because an INFO line can carry a document title.
 """
+
+from __future__ import annotations
 import os
 import re
 import shutil

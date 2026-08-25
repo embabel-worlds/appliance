@@ -4,6 +4,8 @@ Nothing here builds. The compose files are pull-only by design, so this verb
 lands on what the registry publishes and says so when that turns out to be older
 than a local build it replaced.
 """
+
+from __future__ import annotations
 import hashlib
 import os
 import shutil

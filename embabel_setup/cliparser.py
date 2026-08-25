@@ -4,6 +4,8 @@ Separate from the verbs themselves because it is the one place that has to know 
 ALL of them, and separate from the launcher because `embabel completion` reads it to
 generate shell completions — a script cannot import a script.
 """
+
+from __future__ import annotations
 import argparse
 
 from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mode, run_setup, s

@@ -16,3 +16,5 @@ things depend on that: `embabel` loads setup.py by path and reads its module
 namespace, ./me.py and ./worlds.py exec it, and install.sh runs those. The
 facade is not legacy — it is the contract those callers already have.
 """
+
+from __future__ import annotations

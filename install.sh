@@ -304,15 +304,15 @@ if mkdir -p "$BIN_DIR" 2>/dev/null; then
   cat > "$BIN_DIR/embabel" <<SHIM
 #!/bin/sh
 # Forwards to the Embabel appliance in $HOME_DIR. Written by install.sh.
-# Finds a Python 3.10+ each run — the setup code needs it, and macOS's own
-# python3 may still be 3.9. The CLI itself repeats this check as a sentence.
+# Finds a Python 3.9+ each run, preferring newer. The CLI repeats this check
+# as a sentence.
 for cand in python3.13 python3.12 python3.11 python3.10 python3; do
   command -v "\$cand" >/dev/null 2>&1 || continue
-  if "\$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+  if "\$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
     exec "\$cand" "$HOME_DIR/embabel" "\$@"
   fi
 done
-echo "embabel: Python 3.10+ not found (macOS: brew install python@3.12)" >&2
+echo "embabel: Python 3.9+ not found (macOS: brew install python@3.12)" >&2
 exit 1
 SHIM
   chmod +x "$BIN_DIR/embabel"
@@ -352,21 +352,20 @@ fi
 # setup.py owns the real flow — starting the mode, streaming the first boot,
 # the account and model-provider key, and the offer to open the Me app. There
 # is deliberately no second implementation of any of that here.
-# THE PYTHON THAT CAN RUN THIS. The setup code needs 3.10+ (`str | None` at import
-# time, `match` statements) and macOS still ships 3.9 as `python3` — a fresh Mac died
-# in a TypeError on the first import. Prefer a versioned interpreter when one exists;
-# a bare `python3` is accepted only after proving its version. Fail as a sentence.
+# THE PYTHON THAT CAN RUN THIS. The setup code runs on the stock Mac 3.9 (deferred
+# annotations everywhere), but prefer a NEWER interpreter when one exists, and prove
+# whatever is chosen is at least 3.9 rather than dying in a traceback later.
 find_python() {
   for cand in python3.13 python3.12 python3.11 python3.10 python3; do
     command -v "$cand" >/dev/null 2>&1 || continue
-    if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+    if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
       command -v "$cand"
       return 0
     fi
   done
   return 1
 }
-PY="$(find_python)" || die "Embabel needs Python 3.10 or newer — found $(python3 -V 2>/dev/null || echo 'no python3').
+PY="$(find_python)" || die "Embabel needs Python 3.9 or newer — found $(python3 -V 2>/dev/null || echo 'no python3').
   macOS:  brew install python@3.12   (then rerun this installer)
   Linux:  apt install python3.10  ·  dnf install python3.12"
 

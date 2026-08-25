@@ -1,5 +1,7 @@
 """The two things every other module needs: where the appliance is, and how it
 fails. Kept apart so nothing has to import a large module to raise an error."""
+
+from __future__ import annotations
 import os
 import sys
 

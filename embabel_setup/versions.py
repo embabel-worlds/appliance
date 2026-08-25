@@ -5,6 +5,8 @@ NOT AN HTTP CALL. The server answers this too, but the moment somebody needs a
 version is the moment it will not boot — so everything here reads the image and
 the jar, and works with the container stopped.
 """
+
+from __future__ import annotations
 import json
 import os
 import struct

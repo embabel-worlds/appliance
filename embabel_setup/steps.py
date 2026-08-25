@@ -12,6 +12,8 @@ An answer the SERVER cannot check gets confirmed before it is sent. The server
 accepts a step once and then refuses to reopen setup, so a username typed with a
 typo is permanent the instant Enter is pressed.
 """
+
+from __future__ import annotations
 import base64
 import getpass
 import http.client

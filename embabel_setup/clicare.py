@@ -4,6 +4,8 @@ Everything that answers "what have I got, and how do I not lose it". The destruc
 ends of this file — restore, uninstall — confirm first and say exactly what goes.
 """
 
+from __future__ import annotations
+
 import argparse
 import contextlib
 import io

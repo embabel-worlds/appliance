@@ -8,6 +8,8 @@ only the variable's NAME. That asymmetry is most of what is here.
 The token itself is minted by the server exactly once, during setup, so nothing
 in this module can re-issue one — it can only register the one it is handed.
 """
+
+from __future__ import annotations
 import os
 import re
 import shutil

@@ -7,6 +7,8 @@ directory. It is asked for once and remembered in .env.
 Nothing here deletes a checkout, ever — they are somebody's work in progress and
 this installer has no business touching them.
 """
+
+from __future__ import annotations
 import os
 import re
 import subprocess

@@ -20,6 +20,8 @@ This is not only for demos, which is why the verb is `scenario` and not `demo`. 
 move puts a world into a fixed state to evaluate a realm, to reproduce a support case, or
 to start a test from somewhere known.
 """
+
+from __future__ import annotations
 import json
 import os
 

@@ -3,6 +3,8 @@
 The words are prose, with different editors and a different review cadence from
 the logic, so they live in files and this module is only the loader.
 """
+
+from __future__ import annotations
 import os
 import re
 import textwrap

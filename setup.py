@@ -25,14 +25,13 @@ HTTP; see /swagger-ui on your instance.
 from __future__ import annotations
 
 # THE VERSION GATE, BEFORE ANY embabel_setup IMPORT. The setup package is written for
-# Python 3.10+ (`str | None` annotations evaluated at import, `match` statements), and
-# macOS still ships 3.9 as `python3` — which died in a TypeError a new user cannot be
-# expected to read. Fail as a sentence instead. install.sh prefers a 3.10+ interpreter
-# when one exists; this guard catches the run that bypassed it.
+# deferred annotations and runs on 3.9 — every module imports `from __future__ import
+# annotations`, so the stock Mac 3.9 works. Older than that fails here as a sentence
+# rather than a TypeError a new user cannot be expected to read.
 import sys as _sys
-if _sys.version_info < (3, 10):
+if _sys.version_info < (3, 9):
     _sys.exit(
-        "Embabel needs Python 3.10 or newer — this is Python "
+        "Embabel needs Python 3.9 or newer — this is Python "
         + _sys.version.split()[0]
         + ".\n  macOS:  brew install python@3.12   (then rerun the installer)"
         + "\n  Linux:  apt install python3.10  ·  dnf install python3.12"

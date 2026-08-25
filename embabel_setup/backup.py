@@ -5,6 +5,8 @@ COLD ON PURPOSE. Community Neo4j has no online backup, so whichever mode is
 running stops for the copy and starts again afterwards — including on failure,
 so a backup that goes wrong is never the reason an assistant is down.
 """
+
+from __future__ import annotations
 import json
 import os
 import shutil

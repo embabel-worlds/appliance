@@ -20,6 +20,8 @@ The shape below is the same dict the server used to send, because `ask` and
 to need wrapping still belongs in copy/, not here; these are labels.
 """
 
+from __future__ import annotations
+
 # Ids double as endpoint paths: `account` posts to /setup/account. Kept identical
 # to the server's own constants, which is the actual contract between us now.
 ACCOUNT = "account"

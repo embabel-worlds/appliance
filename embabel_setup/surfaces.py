@@ -7,6 +7,8 @@ because it is the whole answer on a headless box, and only then try to open it.
 Launching the Me app also has to SEED it, or a freshly built app opens on an
 empty settings file and asks the operator for a URL they were just shown.
 """
+
+from __future__ import annotations
 import json
 import os
 import platform

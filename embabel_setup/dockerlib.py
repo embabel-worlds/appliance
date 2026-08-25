@@ -10,6 +10,8 @@ project label says so: matching on a name prefix caught a developer's own stack
 from the assistant repo, and matching on a service label alone found the other
 instance's server.
 """
+
+from __future__ import annotations
 import os
 import subprocess
 

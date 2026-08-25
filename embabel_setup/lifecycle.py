@@ -9,6 +9,8 @@ Images and the local embedding model survive all three, always. The embedding
 artifact alone is over a gigabyte and re-downloading one that has not changed is
 pure waste.
 """
+
+from __future__ import annotations
 import base64
 import json
 import os
