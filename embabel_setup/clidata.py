@@ -14,8 +14,9 @@ import shutil
 import subprocess
 import sys
 
-from .cli import _sample_target, current_mode, run_setup, s
-from .core import prompt
+from .cli import _sample_target, current_mode, resolved_mode, run_setup, s
+from .core import MODE_SERVICE, SetupError, prompt
+from . import mounts
 
 def cmd_realms(args) -> int:
     if args.realms_command == "link":
@@ -38,6 +39,68 @@ def cmd_realms(args) -> int:
         return 1
     s.announce_realms(path, found, notes)
     return 0
+
+
+def _apply_mounts(mode: str, changed: list) -> int:
+    """Wire the current set into every world, then recreate so the container carries it.
+
+    Provisioning goes FIRST and straight into the data volume, so the boot that
+    follows already has the wiring — the alternative is a container that mounts a
+    directory no world knows how to walk, which looks identical to a broken mount.
+    """
+    wired = mounts.provision(changed)
+    if wired["error"]:
+        print(f"  {s.CROSS} {wired['error']}")
+        return 1
+    for warning in wired["warnings"]:
+        print(f"  {s.warn('!')} {warning}")
+
+    service = MODE_SERVICE[mode]
+    result = s._compose(mode, "up", "-d", service, capture=True)
+    if result.returncode != 0:
+        print(f"  {s.CROSS} docker compose up failed: {(result.stderr or result.stdout).strip()[-300:]}")
+        return 1
+    mounts.report(s.find_mode_container(mode))
+    return 0
+
+
+def cmd_mount(args) -> int:
+    """Directories on this machine the appliance may read.
+
+    The one thing the appliance cannot do for itself: the server is in a container
+    and the console is another container, so only a process on the host can bind a
+    host directory. Every change here recreates the container — compose reads the
+    volume list when it CREATES one — which is why first-run setup asks before the
+    first start, where the recreate is free.
+    """
+    mode = current_mode() or resolved_mode(None)
+    try:
+        if args.mount_command == "list":
+            current, _ = mounts.read()
+            if not current:
+                print("  Nothing shared.  embabel mount add <directory>")
+                return 0
+            mounts.report(s.find_mode_container(mode))
+            return 0
+
+        if args.mount_command == "add":
+            kind = mounts.KIND_TREE if args.kind == "tree" else mounts.KIND_FOLDER
+            if args.index and kind == mounts.KIND_TREE:
+                # Indexing embeds document BODIES. A source tree is structured data
+                # walked live; committing it to a vector index costs money to build
+                # and answers worse than the walk it replaces.
+                print(f"  {s.warn('!')} --index applies to document folders, not source trees. Ignored.")
+            updated = mounts.add(args.directory, kind, args.index and kind == mounts.KIND_FOLDER, mode)
+            return _apply_mounts(mode, updated)
+
+        # rm: the mount goes, the directory is untouched. Nothing here ever deletes
+        # somebody's files, and a world that still references a removed tree simply
+        # walks nothing rather than failing.
+        updated = mounts.remove(args.directory[0], mode)
+        return _apply_mounts(mode, updated)
+    except SetupError as e:
+        print(f"  {s.CROSS} {e}")
+        return 1
 
 
 def cmd_agents(args) -> int:

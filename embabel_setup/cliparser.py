@@ -10,7 +10,7 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import cmd_agents, cmd_realms, cmd_sample, cmd_scenario
+from .clidata import cmd_agents, cmd_mount, cmd_realms, cmd_sample, cmd_scenario
 from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
@@ -83,6 +83,21 @@ def build_parser() -> argparse.ArgumentParser:
     rl.add_argument("directory")
     rsub.add_parser("list", help="which realms the appliance can see")
     p.set_defaults(func=cmd_realms)
+
+    p = sub.add_parser("mount", help="directories on this machine the appliance may read")
+    msub = p.add_subparsers(dest="mount_command", required=True)
+    ma = msub.add_parser("add", help="share a directory READ-ONLY with the appliance")
+    ma.add_argument("directory", nargs="+")
+    ma.add_argument("--kind", choices=["tree", "folder"], default="tree",
+                    help="tree (default): source, mounted at its own path so git worktrees and "
+                         "symlinks under it resolve. folder: documents, mounted under /local")
+    ma.add_argument("--index", action="store_true",
+                    help="folders only: also ingest the documents in it, for summarizing and "
+                         "semantic search. Files are queryable WITHOUT this")
+    mr = msub.add_parser("rm", help="stop sharing a directory (the directory is not touched)")
+    mr.add_argument("directory", nargs=1)
+    msub.add_parser("list", help="what is shared, and whether the appliance can actually see it")
+    p.set_defaults(func=cmd_mount)
 
     p = sub.add_parser("version", help="which appliance this is: tag, digest, commit, checkout")
     mode_flags(p)
