@@ -28,7 +28,12 @@ used, missing = set(), []
 for source in SOURCES:
     with open(os.path.join(HERE, source), encoding="utf-8") as f:
         text = f.read()
-    for name in re.findall(r'\bsay\(\s*"([a-z0-9-]+)"', text):
+    # `say("name")` is one way a block is used; a wizard step naming its own
+    # words with `"copy": "name"` is the other. Missing the second would report
+    # every step description as an orphan AND let a deleted file through — the
+    # failure this checker exists to catch, arriving at a user's screen instead.
+    for name in re.findall(r'\bsay\(\s*"([a-z0-9-]+)"|"copy":\s*"([a-z0-9-]+)"', text):
+        name = name[0] or name[1]
         used.add(name)
         if not os.path.exists(os.path.join(COPY, f"{name}.txt")):
             missing.append(f"{source}: say(\"{name}\") has no copy/{name}.txt")

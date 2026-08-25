@@ -35,6 +35,11 @@ MCP_DECLINED = "mcpDeclined"
 def steps(facts: dict) -> list[dict]:
     """Every step, with `satisfied` decided here from the server's facts.
 
+    The step's WORDS are not here. A description is prose a person reads while
+    installing, so it lives in copy/ under the name in `copy` — hand-wrapped
+    across string concatenations was exactly the shape the rule in words.py
+    exists to prevent, and the MCP one had just grown a paragraph.
+
     `facts` is the body of `GET /setup`: hasAccount, providers,
     supportedProviders, mcpTokenExists, minPasswordLength, clientState.
     """
@@ -45,8 +50,7 @@ def steps(facts: dict) -> list[dict]:
         {
             "id": ACCOUNT,
             "title": "Create your account",
-            "description": "The account you will sign in with. Until this exists, "
-                           "nobody can sign in at all.",
+            "copy": "step-account",
             "satisfied": bool(facts.get("hasAccount")),
             "fields": [
                 {"name": "username", "label": "Username", "type": "STRING"},
@@ -60,8 +64,7 @@ def steps(facts: dict) -> list[dict]:
         {
             "id": PROVIDER,
             "title": "Connect a model provider",
-            "description": "Paste a key and we work out whose it is. It is checked "
-                           "against the provider now, and stays on this machine.",
+            "copy": "step-provider",
             "satisfied": bool(facts.get("providers")),
             "fields": [
                 {"name": "apiKey", "label": "API key", "type": "SECRET"},
@@ -75,11 +78,14 @@ def steps(facts: dict) -> list[dict]:
         },
         {
             "id": MCP,
-            "title": "Connect coding agents (MCP)",
-            "description": "Lets Claude Code, Codex or any MCP client drive this "
-                           "appliance as you. The token stays on this machine and "
-                           "becomes active when setup completes and the appliance "
-                           "restarts.",
+            # TWO DOORS, BOTH NAMED. The step said "coding agents" and wired
+            # `claude` and `codex`, while the closing block called /mcp "chat
+            # clients" — so the door most people would reach through a tool they
+            # already have open was never mentioned at the moment it mattered.
+            # One server, two endpoints, different tool lists; whoever is reading
+            # this should be able to tell which one is theirs.
+            "title": "Connect a client (MCP)",
+            "copy": "step-mcp",
             # A token already exists, or we asked once and were told no. The
             # server knows the first; only we know the second.
             "satisfied": bool(facts.get("mcpTokenExists")) or declined_mcp,

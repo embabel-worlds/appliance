@@ -1,0 +1,7 @@
+This appliance serves two MCP endpoints, and one token opens both:
+
+    /mcp        a chat client — the assistant's own tools, over your world's data
+    /mcp/dev    a coding agent — realms, authoring, mining a system into one
+
+The token stays on this machine and becomes active when setup completes and the
+appliance restarts.

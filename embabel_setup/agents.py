@@ -13,10 +13,9 @@ import re
 import shutil
 import subprocess
 
-from .colour import TICK, bold, dim, warn
+from .colour import TICK, bold, dim, heading, warn
 from .core import APPLIANCE_DIR, prompt
 from .settings import env_file_value, surface_urls
-from .colour import heading
 from .words import say
 
 # The name setup registers with MCP clients, and therefore the name --uninstall
@@ -290,13 +289,28 @@ def wire_coding_agents(result: dict) -> None:
             except (subprocess.SubprocessError, OSError) as e:
                 print(f"  Could not run codex: {e}")
 
+    # THE CHAT DOOR, ALWAYS — wired or not.
+    #
+    # This function wires `claude` and `codex`, which are the two clients with a
+    # CLI to wire. The door most people would reach through a tool they already
+    # have open has none, so it was never mentioned: the step said "coding
+    # agents", the closing block called /mcp "chat clients", and nothing in
+    # between ever handed the operator what a chat client needs. It costs two
+    # lines and it is the same token.
+    chat_url = result.get("url") or url
+    if chat_url != url:
+        print(f"\n  For a chat client — Claude Desktop, Open WebUI, anything speaking MCP:")
+        print(f"    URL:    {chat_url}")
+        print(f"    Header: Authorization: Bearer {token}")
+        print("  " + dim("Same token, the assistant's tools rather than the builder's."))
+
     if wired:
         return
 
     # Manual fallback — also what Cursor and other MCP clients copy from. Printing
     # the token is deliberate: this is the operator's own machine and the only time
     # it is available.
-    print("  Wire any MCP client manually:")
+    print("\n  Wire a coding agent manually:")
     print(f"    URL:    {url}")
     print(f"    Header: Authorization: Bearer {token}")
     print(f"  (Claude Code: claude mcp add --transport http --scope user {MCP_SERVER_NAME} "

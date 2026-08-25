@@ -428,7 +428,12 @@ def provider_step(step: dict) -> bool:
 
 def run_step(base: str, token: str, step: dict, use_environment: bool = True) -> dict:
     print("\n" + heading(step["title"]))
-    if step.get("description"):
+    # The step's own words, from copy/. `description` stays supported for a step
+    # this installer does not know — the server can add one, and it arrives as a
+    # string rather than as a file we ship.
+    if step.get("copy"):
+        say(step["copy"])
+    elif step.get("description"):
         print(f"   {step['description']}")
 
     # A KEY IS NOT A TOLL GATE. Asking for a paid credential before anybody has
