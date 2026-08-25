@@ -969,15 +969,9 @@ def main() -> int:
 
     if not args.command:
         rc = cmd_status(args)
-        print("  " + s.heading("Next", 58))
-        for verb, what in (("up", "start it, or finish setting it up"),
-                           ("doctor", "why it is not working"),
-                           ("open", "this appliance's front door, in your browser"),
-                           ("--help", "everything else")):
-            # ljust BEFORE accent(): padding a string that already carries escape
-            # codes counts them toward the width, and every row steps left.
-            print("    " + s.accent(f"embabel {verb}".ljust(16)) + "  " + s.dim(what))
-        print()
+        # ONE list of what to do next, shared with the end of setup. Two copies is
+        # how the CLI and the wizard come to recommend different things.
+        s.print_next()
         return rc
     try:
         return args.func(args)

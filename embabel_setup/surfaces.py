@@ -14,10 +14,35 @@ import shutil
 import subprocess
 import sys
 
-from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, url
+from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
 from .settings import console_url, surface_urls
-from .colour import heading
+
+# THE VERB, which every ending was missing.
+#
+# install.sh promises "after this, use the 'embabel' command" and then, minutes
+# of pulls and five questions later, the closing block printed addresses and no
+# verb — so the command was found by guessing. These are the same four lines a
+# bare `embabel` prints as its Next block; the CLI calls this rather than
+# carrying its own copy, because two lists of what to do next is how they come
+# to disagree.
+NEXT_VERBS = (
+    ("up", "start it, or finish setting it up"),
+    ("doctor", "why it is not working"),
+    ("open", "this appliance's front door, in your browser"),
+    ("--help", "everything else"),
+)
+
+
+def print_next(width: int = 58) -> None:
+    """What to type next. The LAST thing any run says, so it survives the scroll."""
+    print("  " + heading("Next", width))
+    for verb, what in NEXT_VERBS:
+        # ljust BEFORE accent(): padding a string that already carries escape
+        # codes counts them toward the width, and every row steps left.
+        print("    " + accent(f"embabel {verb}".ljust(16)) + "  " + dim(what))
+    print()
+
 
 def print_worlds_surfaces(base: str) -> None:
     """Worlds onboarding ends at the way in, not at "done": every
@@ -43,6 +68,7 @@ def print_worlds_surfaces(base: str) -> None:
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
     print()
+    print_next()
 
 
 def print_me_surfaces(base: str) -> None:
@@ -63,6 +89,7 @@ def print_me_surfaces(base: str) -> None:
     print("                 Authorization: Bearer \u2014 the token this setup just minted,")
     print("                 stored at /data/embabel/assistant/admin/providers.env")
     print()
+    print_next()
 
 
 def me_app_settings_file() -> str | None:
