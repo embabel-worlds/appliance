@@ -26,6 +26,7 @@ import os
 import pty
 import re
 import select
+import signal
 import subprocess
 import sys
 import termios
@@ -162,12 +163,20 @@ def drive(command: list[str], fields: dict, transcript: str, timeout: int) -> st
     # loop breaks with poll() still None on a run that finished perfectly, and
     # the harness stamped TIMED OUT on a complete, correct install.
     if time.time() >= deadline:
-        proc.terminate()
         tail = ANSI.sub("", as_rendered(pending)).strip().splitlines()
         note("TIMED OUT — last thing on screen: "
              + (tail[-1][:120] if tail else "(nothing)"))
         seen.append(f"\n[harness] TIMED OUT after {timeout}s\n")
-    proc.wait(timeout=30)
+    # THE WHOLE GROUP, and never fatally.
+    #
+    # terminate() signals the process we started — the shell — and install.sh's
+    # curl is a child of it, so a download stalled on bad wifi outlived the
+    # SIGTERM and proc.wait(30) raised TimeoutExpired. The harness then died in a
+    # traceback at the exact moment it had something to report, losing both the
+    # rendered transcript and the verdict: the same "fails into a crash" this
+    # tool exists to catch elsewhere. The child is a session leader (see
+    # own_the_terminal), so its pid IS its group.
+    stop(proc)
     note(f"exit code {proc.returncode}")
     log.close()
     actions.close()
@@ -177,6 +186,31 @@ def drive(command: list[str], fields: dict, transcript: str, timeout: int) -> st
     with open(transcript, "w", encoding="utf8") as f:
         f.write(text)
     return text
+
+
+def stop(proc: subprocess.Popen) -> None:
+    """End the run and everything it started, without ever raising.
+
+    SIGTERM to the group first — a shell script's own children (curl, docker)
+    are the ones actually stuck — then SIGKILL for whatever ignored it. Any
+    failure here is swallowed: this runs when the news is already bad, and a
+    harness that raises while reporting is worse than one that reports late.
+    """
+    if proc.poll() is not None:
+        return
+    for signal_number in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, signal_number)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except OSError:
+                return
+        try:
+            proc.wait(timeout=10)
+            return
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def as_rendered(raw: str) -> str:
