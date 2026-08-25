@@ -26,7 +26,10 @@ import path from 'node:path'
  *  Overridable for tests and unconventional installs. */
 const VOLUME = process.env.EMBABEL_APPLIANCE_VOLUME || 'embabel-appliance_embabel_assistant_data'
 const HELPER_IMAGE = 'alpine:3.20'
-const MARKER = 'Written by Embabel Me'
+// Matched as a PREFIX by both provisioners (this one and embabel_setup/mounts.py),
+// so each recognises the other's work instead of refusing to touch it — and so the
+// `Written by Embabel Me` files existing installs carry are still ours.
+const MARKER = 'Written by Embabel'
 
 /** @param {string} name @returns {string} base64 of the bundled resource */
 const resourceB64 = (name: string) =>
@@ -52,7 +55,11 @@ write_owned() {
 }
 for w in "$BASE"/*/*; do
   [ -d "$w/config" ] || continue
-  mkdir -p "$w/data" "$w/config/types" "$w/config/producers"
+  # data/trees ALWAYS exists, even with no source trees mounted: the producers
+  # below declare it as a root, and an empty directory yields no rows while a
+  # missing one is a root that may not resolve. The CLI fills it with one symlink
+  # per tree (embabel mount add); this panel only ever creates document folders.
+  mkdir -p "$w/data" "$w/data/trees" "$w/config/types" "$w/config/producers"
   if [ "$(readlink "$w/data/local" 2>/dev/null)" != "/local" ]; then
     ln -sfn /local "$w/data/local"
     CHANGED=1

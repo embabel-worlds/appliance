@@ -21,7 +21,7 @@ const OVERRIDE = 'docker-compose.override.yml'
 const MOUNT_ROOT = '/local'
 // First line of every file this panel writes. A file WITHOUT it was written by
 // a person, and this panel refuses to touch it rather than eat their work.
-const MARKER = '# Written by Embabel Me'
+const MARKER = '# Written by Embabel'
 
 /**
  * The appliance checkout: the nearest ancestor holding docker-compose-me.yml.
@@ -43,7 +43,12 @@ function applianceDir() {
 // The trailing `# index` comment is this panel's own annotation — compose
 // ignores YAML comments, so the override file stays the single source of truth
 // for BOTH what is mounted and what the user opted into indexing.
-const MOUNT_LINE = /^\s*-\s*"(.+):(\/local\/[^:"]+):ro"(\s*# index)?\s*$/
+// TREE MOUNTS ARE READ HERE TOO, and they must be: this panel rewrites the whole
+// file from what it parsed, so a line it cannot match is a line it silently
+// deletes. A source tree is mounted at its own path (identity) rather than under
+// /local — see embabel_setup/mounts.py for why — which the old /local-only
+// pattern could not express. The panel does not CREATE trees; it must not lose them.
+const MOUNT_LINE = /^\s*-\s*"(.+):([^:"]+):ro"\s*(?:#\s*(index|tree))?\s*$/
 // Environment the app sets on the assistant service — today the appliance-wide
 // default model. Same file because compose merges ONE override by convention;
 // two files would need two -f flags and would not survive a plain `up`.
@@ -62,12 +67,17 @@ function read(dir: string) {
   if (!text.startsWith(MARKER)) {
     throw new Error(`${OVERRIDE} exists but was not written by this panel — edit or remove it yourself.`)
   }
-  const mounts = []
+  const mounts: LocalMount[] = []
   const env: Record<string,string> = {}
   for (const line of text.split('\n')) {
     const mount = MOUNT_LINE.exec(line)
     if (mount) {
-      mounts.push({ host: mount[1], target: mount[2], index: !!mount[3] })
+      mounts.push({
+        host: mount[1],
+        target: mount[2],
+        kind: mount[3] === 'tree' ? 'tree' : 'folder',
+        index: mount[3] === 'index',
+      })
       continue
     }
     const variable = ENV_LINE.exec(line)
@@ -87,7 +97,7 @@ function write(dir: string, mounts: LocalMount[], env: Record<string, string> = 
     return
   }
   const volumes = mounts.length
-    ? `    volumes:\n${mounts.map((m: LocalMount) => `      - "${m.host}:${m.target}:ro"${m.index ? ' # index' : ''}`).join('\n')}\n`
+    ? `    volumes:\n${mounts.map((m: LocalMount) => `      - "${m.host}:${m.target}:ro"${m.kind === 'tree' ? ' # tree' : m.index ? ' # index' : ''}`).join('\n')}\n`
     : ''
   const environment = entries.length
     ? `    environment:\n${entries.map(([k, v]) => `      - ${k}=${v}`).join('\n')}\n`
@@ -139,7 +149,7 @@ function targetFor(host: string, taken: Set<string>) {
 function add(hosts: string[]) {
   const current = state()
   if (!current.supported || !current.dir) return current
-  const mounts = [...current.mounts]
+  const mounts: LocalMount[] = [...current.mounts]
   const taken = new Set(mounts.map((m: LocalMount) => m.target))
   for (const host of hosts) {
     // Quotes and backslashes break the double-quoted YAML scalar; a colon breaks
@@ -151,7 +161,7 @@ function add(hosts: string[]) {
     if (mounts.some((m) => m.host === host)) continue
     const target = targetFor(host, taken)
     taken.add(target)
-    mounts.push({ host, target, index: false })
+    mounts.push({ host, target, kind: 'folder', index: false })
   }
   write(current.dir, mounts, current.env)
   return { ...current, mounts }

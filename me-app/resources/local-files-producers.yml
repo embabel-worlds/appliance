@@ -1,12 +1,20 @@
 # Written by Embabel Me — the "Local files" panel provisions this file; it is rewritten on Apply.
 #
-# The `files` producer (assistant specs/LOCAL_FILES.md) over the folders the user shared
-# through the Me app: bind-mounted read-only under /local, reached through the world's
-# data/local symlink (trusted via filesTrustedRoots in world.yml). Roots are RELATIVE —
-# resolved under the world sandbox base; the walk is live on every query.
+# The `files` producer (assistant specs/LOCAL_FILES.md) over the directories the user
+# shared, in the two ways they can be shared. Roots are RELATIVE — resolved under the
+# world sandbox base; the walk is live on every query.
+#
+#   local/   document folders, bind-mounted under /local and reached through the
+#            world's data/local symlink. Named collections; the Me app's panel.
+#   trees/   source trees, bind-mounted at their OWN host path and reached through
+#            one data/trees/<name> symlink each (`embabel mount add`). Identity
+#            mounting is what makes a git worktree's absolute gitdir pointer resolve.
+#
+# Both are trusted via filesTrustedRoots in world.yml. An empty trees/ is normal and
+# costs nothing — it simply contributes no rows.
 - name: worldFiles
   kind: files
-  roots: ["local/"]
+  roots: ["local/", "trees/"]
   include: ["**/*"]
   maxFiles: 4000
   contentCapKb: 64
@@ -18,7 +26,7 @@
 - name: worldFolders
   kind: files
   emit: directories
-  roots: ["local/"]
+  roots: ["local/", "trees/"]
   include: ["**/*"]
   maxFiles: 4000
 
@@ -27,7 +35,7 @@
 - name: fileContentSearch
   kind: files
   emit: search
-  roots: ["local/"]
+  roots: ["local/", "trees/"]
   include: ["**/*"]
   maxFiles: 4000
   contentCapKb: 64
@@ -41,7 +49,7 @@
   agentic: true
   intent: "files on the user's own disk that concern the given idea or topic"
   maxProbes: 5
-  roots: ["local/"]
+  roots: ["local/", "trees/"]
   include: ["**/*"]
   maxFiles: 4000
   contentCapKb: 64

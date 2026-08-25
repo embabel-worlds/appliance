@@ -102,6 +102,13 @@ export interface StreamState {
 export interface LocalMount {
   host: string
   target: string
+  /**
+   * 'folder' — a curated document collection under /local/<name>, which is what
+   * this panel creates. 'tree' — a source tree mounted at its OWN path, created
+   * by `embabel mount add`. The panel reads and preserves trees without offering
+   * them: it rewrites the whole file, so anything it drops is gone.
+   */
+  kind: 'folder' | 'tree'
   index: boolean
 }
 

@@ -63,9 +63,11 @@ def backup_config_files() -> tuple[str, ...]:
     """A function, not a constant: which settings file belongs to this appliance
     depends on which instance it is."""
     return (env_file(), OVERRIDE_FILE, "secrets.env")
-# The Me app writes the override and stamps it (mounts.ts). A file WITHOUT the
-# stamp was written by a person, and a restore does not eat their work.
-OVERRIDE_MARKER = "# Written by Embabel Me"
+# The Me app (mounts.ts) and the CLI (embabel_setup/mounts.py) both write the
+# override and stamp it. Matched as a PREFIX, so the `# Written by Embabel Me`
+# files existing installs already carry are still recognised as ours. A file
+# WITHOUT the stamp was written by a person, and a restore does not eat their work.
+OVERRIDE_MARKER = "# Written by Embabel"
 # Has tar, weighs a few MB, and is pinned so a backup taken next year is cut by
 # the same tool as one taken today.
 BACKUP_HELPER_IMAGE = "alpine:3.22"
