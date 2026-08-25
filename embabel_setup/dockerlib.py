@@ -245,6 +245,39 @@ IMAGE_PURPOSE = {
     "prometheus": "metrics",
     "open-webui": "the alternative chat UI",
 }
+
+# Approximate pull sizes, stated so a wait explains itself: "pulling the appliance
+# itself ~1.7 GB" and "pulling docling" are the same minute felt two different ways.
+# Approximate on purpose — these drift a little per release, and "~7 GB" stays true.
+IMAGE_SIZE = {
+    "docling": "~7 GB",
+    "sandbox": "~2.6 GB",
+    "assistant": "~1.7 GB",
+    "neo4j": "~600 MB",
+    "grafana": "~400 MB",
+    "prometheus": "~300 MB",
+    "worlds-console": "~80 MB",
+}
+
+# The images the mode WAITS on. Everything else arrives via start_deferred while
+# the wizard runs, so the progress line must not count it against the boot — a
+# counter that says 3/7 during a 3-image boot reads as a stall (observed on a
+# fresh install, 2026-08-25). "sandbox" is checked FIRST when classifying: the
+# sandbox image name contains "assistant" too, and matching that fragment would
+# promote a background pull into the boot count.
+BOOT_IMAGE_FRAGMENTS = ("neo4j", "worlds-console", "assistant")
+
+def _boots(image: str) -> bool:
+    if "sandbox" in image:
+        return False
+    return any(fragment in image for fragment in BOOT_IMAGE_FRAGMENTS)
+
+def _describe(image: str) -> str:
+    for fragment, purpose in IMAGE_PURPOSE.items():
+        if fragment in image:
+            size = IMAGE_SIZE.get(fragment)
+            return purpose + (f" {size}" if size else "")
+    return "an image"
 def images_for(mode: str) -> list[str]:
     if mode not in _IMAGES_FOR_MODE:
         run = _compose(mode, "config", "--images", capture=True)
@@ -276,15 +309,25 @@ def image_progress(mode: str) -> str:
     missing = [image for image in needed if not present(image)]
     if not missing:
         return ""
-    waiting = sorted({purpose for image in missing
-                      for fragment, purpose in IMAGE_PURPOSE.items() if fragment in image})
-    # At most two named. This shares one line with three lamps and a clock, and a
-    # status line that wraps leaves its first half on screen at every redraw.
-    shown = ", ".join(waiting[:2]) or "an image"
-    if len(waiting) > 2:
-        shown += f" +{len(waiting) - 2}"
-    return (dim(f"images {len(needed) - len(missing)}/{len(needed)}")
-            + dim(" · pulling ") + shown)
+    # The BOOT count is the promise being kept; the background pulls are news, not
+    # a debt. Counting them together made a three-image boot read as "3/7, stuck".
+    boot = [image for image in needed if _boots(image)]
+    boot_missing = [image for image in missing if _boots(image)]
+    background_missing = [image for image in missing if not _boots(image)]
+    if boot_missing:
+        # One named with its size. This shares a line with three lamps and a clock,
+        # and a status line that wraps leaves its first half behind at every redraw.
+        shown = _describe(sorted(boot_missing)[0])
+        if len(boot_missing) > 1:
+            shown += f" +{len(boot_missing) - 1}"
+        tail = f" · {len(background_missing)} more in background" if background_missing else ""
+        return (dim(f"boot images {len(boot) - len(boot_missing)}/{len(boot)}")
+                + dim(" · pulling ") + shown + dim(tail))
+    # Boot is satisfied — whatever remains downloads behind the running appliance.
+    shown = _describe(sorted(background_missing)[0])
+    if len(background_missing) > 1:
+        shown += f" +{len(background_missing) - 1}"
+    return dim("background: ") + shown + dim(" still downloading")
 def mode_of(container: str | None) -> str:
     """Which mode a container belongs to, for looking up its image list."""
     service = mode_service(container) if container else None
