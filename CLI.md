@@ -213,8 +213,28 @@ something did not land and there is an audience.
 Records back out, as a set somebody else can load.
 
 ```bash
+embabel sample export --source hubspot-demo --realm hubspot -o demo.json
 embabel sample export --labels Company,Deal --realm hubspot -o case-1174.json
-embabel sample export --labels Company --realm hubspot --with-values -o real.json
+embabel sample export --source hubspot-demo --realm hubspot --with-values -o real.json
+```
+
+**Select by `--source` where you can.** `--labels Company` takes every Company in the
+world — the three you assembled for a demo and every real account beside them. Shape-only
+redaction limits what leaks, not how much noise comes with it, and ten thousand blanked
+companies is a useless reproduction. `--source` names exactly what one set loaded, which
+is what makes "I fiddled until the demo looked right" capturable.
+
+An export with neither is refused: it would be the whole world.
+
+**Truncation is reported.** A caller who asks for 500 and receives 500 cannot otherwise
+tell a complete answer from a cut-off one, and an export that looks finished and is not is
+worse than one that failed — somebody sends it and then wonders why the reproduction will
+not reproduce.
+
+```
+✓ Wrote 1 node(s) to t.json
+TRUNCATED: 3 record(s) matched, 1 written.
+Narrow it with --source <set>, or raise --limit.
 ```
 
 **Shape-only by default**: labels, property keys and edges are kept, and the values are

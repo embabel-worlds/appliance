@@ -381,10 +381,15 @@ def cmd_sample(args) -> int:
         return 0
 
     if args.sample_command == "export":
+        if not args.labels and not args.source:
+            print("  Name a --source set or at least one --label.")
+            print("  " + s.dim("An export with no selector is the whole world."))
+            return 1
         payload = {
             "name": args.name,
             "realm": args.realm,
-            "labels": [l.strip() for l in args.labels.split(",") if l.strip()],
+            "labels": [l.strip() for l in (args.labels or "").split(",") if l.strip()],
+            "source": args.source,
             "limit": args.limit,
             # SHAPE_ONLY unless asked otherwise, and the appliance defaults the same way.
             # Stated here as well so the request says what it means.
@@ -396,6 +401,15 @@ def cmd_sample(args) -> int:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(text + "\n")
             print(f"  {s.TICK} Wrote {len(result.get('nodes', []))} node(s) to {s.bold(args.output)}")
+            # LOUDLY. A caller who asked for 500 and got 500 cannot tell a complete
+            # answer from a truncated one, and an export that looks finished and is not
+            # is worse than one that refused — somebody sends it and wonders why the
+            # reproduction does not reproduce.
+            if result.get("truncated"):
+                print("  " + s.warn(
+                    f"TRUNCATED: {result.get('matched', 0)} record(s) matched, "
+                    f"{len(result.get('nodes', []))} written."))
+                print("  " + s.dim("Narrow it with --source <set>, or raise --limit."))
             if not args.with_values:
                 print("  " + s.dim("Shape only: labels, property keys and edges. No values, no ids."))
             else:
@@ -1011,7 +1025,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--yes", action="store_true", help="skip the confirmation")
     a.set_defaults(func=cmd_sample)
     a = sp.add_parser("export", help="write records out as a set somebody else can load")
-    a.add_argument("--labels", required=True, help="comma-separated, e.g. Company,Deal")
+    a.add_argument("--labels", help="comma-separated, e.g. Company,Deal")
+    a.add_argument("--source", help="only what one sample set loaded — the precise selector")
     a.add_argument("--name", default="export", help="what to call the set")
     a.add_argument("--realm", required=True, help="the realm whose types these belong to")
     a.add_argument("--limit", type=int, default=500)
