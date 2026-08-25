@@ -158,6 +158,75 @@ discover: a realm's declared npm/wasm build runs as part of cloning, so it never
 fires for a local realm. A declarative realm needs nothing; a realm with a build
 step must be built on the host first.
 
+## Sharing your own files
+
+Your world can read directories on this machine — your source, your documents —
+read-only. Nothing is copied and nothing is uploaded: the files are read where
+they lie, on every question, so there is no index to go stale and nothing to
+keep in sync.
+
+**What this is for: the surfaces that have no shell.** Chat, an app, a saved
+view, a scheduled job — none of those can run `grep`, and a mount is how they
+reach your files at all. If you are sitting at a terminal with a coding agent,
+that agent is better at searching your source than this is, and you should use
+it: it has real tools, no walk cap, and no container in the way. The mount earns
+its place when the thing asking the question is not a shell.
+
+First run offers it, because on a developer's machine the answer already exists:
+
+```
+  Your source, in your world
+
+  /Users/you/dev  34 repositories
+
+  Share /Users/you/dev read-only? [Y/n]
+```
+
+Later, or to add another:
+
+```bash
+embabel mount add ~/work                    # a source tree
+embabel mount add ~/Documents --kind folder # documents
+embabel mount add ~/Papers --kind folder --index   # …and embed them
+embabel mount list                          # what is shared, and whether it is visible
+embabel mount rm ~/work                     # stop sharing (the directory is untouched)
+```
+
+**Two kinds, and the difference matters.** A `folder` is a curated document
+collection, mounted under `/local/<name>`. A `tree` is source, mounted at **its
+own path** — the same path inside the container as outside. That is not tidiness:
+a git worktree's `.git` is a *file* holding an absolute `gitdir:` pointer into
+the main repo, and a symlink between two checkouts is an absolute path too. Mount
+a tree somewhere else and every worktree under it is unreadable, because the path
+it names does not exist in the container. Identity mounting also means a file's
+`url` opens on your host exactly as stored.
+
+`--index` applies to document folders only. Sharing already makes files queryable
+live — metadata, a bounded content grep, and a concept search that expands an
+idea into probes. Indexing additionally embeds document *bodies* (PDFs included)
+for summarization and semantic search. Source trees are deliberately not indexed:
+embedding code costs money to build and answers worse than the walk it replaces.
+
+Everything is **read-only**, and read-only is not the same as private: the
+appliance can read every `.env` and key under a directory you share. Share the
+directory you mean, not `$HOME`.
+
+Mounts are written to a gitignored `docker-compose.override.yml` beside the
+compose files — the tracked files stay pull-only — and the container is recreated
+to pick them up, which takes a few seconds. Answering at first run costs nothing,
+because the container has not been created yet. Both modes carry them; the Me
+app's **Local files** panel writes the same file for document folders, and the
+two leave each other's entries alone.
+
+If a mount is configured but the appliance cannot see it, `embabel mount list`
+says so rather than letting a query come back empty:
+
+```
+  ✓ /Users/you/dev (tree)
+  ! /Users/you/scans — mounted but EMPTY — on macOS, share the path in
+    Docker Desktop -> Resources -> File sharing
+```
+
 ## The Me app — a sensor for your Mac
 
 ![Embabel Me](images/me_electron.png)
@@ -197,7 +266,8 @@ push, never written to the graph, and is what lets the assistant know not to
 interrupt you.
 
 **Local files.** Share folders — Documents, a projects directory — with the
-appliance. Each is bind-mounted **read-only** into the assistant container
+appliance, the same mounts [`embabel mount`](#sharing-your-own-files) writes and
+in the same file. Each is bind-mounted **read-only** into the assistant container
 under `/local/<name>`; the panel writes a gitignored
 `docker-compose.override.yml` next to the compose files (the tracked files
 stay pull-only), wires the folders into the assistant's virtual Cypher, and
