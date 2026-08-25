@@ -17,56 +17,59 @@ import sys
 from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
 from .settings import console_url, surface_urls
+from .words import say
 
 # THE VERB, which every ending was missing.
 #
 # install.sh promises "after this, use the 'embabel' command" and then, minutes
 # of pulls and five questions later, the closing block printed addresses and no
-# verb — so the command was found by guessing. These are the same four lines a
-# bare `embabel` prints as its Next block; the CLI calls this rather than
-# carrying its own copy, because two lists of what to do next is how they come
-# to disagree.
-NEXT_VERBS = (
-    ("up", "start it, or finish setting it up"),
-    ("doctor", "why it is not working"),
-    ("open", "this appliance's front door, in your browser"),
-    ("--help", "everything else"),
-)
+# verb — so the command was found by guessing. These are the same lines a bare
+# `embabel` prints as its Next block; the CLI calls this rather than carrying
+# its own copy, because two lists of what to do next is how they come to
+# disagree.
+#
+# THE WORDS ARE IN copy/, the DECORATION is here. A copy file holds sentences,
+# not escape codes and not column widths — so the verb column is padded and
+# accented at this end and interpolated in, and an editor changing "why it is
+# not working" never has to count spaces or open this file.
+
+
+def verb(name: str) -> str:
+    """`embabel <name>`, accented and padded to the column the block aligns on.
+
+    ljust BEFORE accent(): padding a string that already carries escape codes
+    counts them toward the width, and every row steps left.
+    """
+    return accent(f"embabel {name}".ljust(16))
 
 
 def print_next(width: int = 58) -> None:
     """What to type next. The LAST thing any run says, so it survives the scroll."""
     print("  " + heading("Next", width))
-    for verb, what in NEXT_VERBS:
-        # ljust BEFORE accent(): padding a string that already carries escape
-        # codes counts them toward the width, and every row steps left.
-        print("    " + accent(f"embabel {verb}".ljust(16)) + "  " + dim(what))
+    say("next", up=verb("up"), doctor=verb("doctor"),
+        open=verb("open"), help=verb("--help"))
     print()
 
 
 def print_worlds_surfaces(base: str) -> None:
-    """Worlds onboarding ends at the way in, not at "done": every
-    surface a worlds operator reaches next, in one block. The API/MCP lines use the
-    mode's real detected port; the rest are the compose defaults (.env moves them)."""
+    """Worlds onboarding ends at the way in, not at "done": every surface a worlds
+    operator reaches next, in one block. The API/MCP lines use the mode's real
+    detected port; the rest are the compose defaults (.env moves them).
+
+    The MCP servers come LAST because they are the takeaway — the last lines of a
+    wizard are the ones still on screen when everything above has scrolled — and
+    the graph link is gone on purpose: the browser and bolt ports are an
+    implementation detail, while the console and MCP are the product's doors.
+    """
     print("  " + heading("Your Worlds surfaces", 58))
-    print(f"  {bold('Console')}        {url(surface_urls()['console'])}   "
-          + accent(f"{ARROW} START HERE"))
-    print("                 The Worlds console: realms, documents, keys, views, chat.")
-    print("                 Opens with the commissioning sequence.")
-    print()
-    print(f"  API            {url(base)}   " + dim("(the server the console talks to)"))
-    print(f"  Dashboards     {url(surface_urls()['dashboards'])}   {MIDDOT}   "
-          f"Metrics  {url(surface_urls()['metrics'])}")
-    print()
-    # LAST, because they are the takeaway: the two MCP servers are how anything
-    # agentic reaches this world, and the last lines of a wizard are the ones
-    # that survive in the terminal when everything above has scrolled away.
-    # (The graph link is gone on purpose \u2014 the browser and bolt ports are an
-    # implementation detail; the console and MCP are the product's doors.)
-    print(f"  MCP servers    {url(base + '/mcp')}       {dim('embabel-me \u2014 chat clients, the assistant surface')}")
-    print(f"                 {url(base + '/mcp/dev')}   {dim('embabel-worlds \u2014 coding agents: realms, authoring')}")
-    print("                 Authorization: Bearer \u2014 the token this setup just minted,")
-    print("                 stored at /data/embabel/assistant/admin/providers.env")
+    say("surfaces-worlds",
+        console=bold("Console") + "        " + url(surface_urls()["console"]),
+        start_here=accent(f"{ARROW} START HERE"),
+        api="API            " + url(base) + "  ",
+        dashboards="Dashboards     " + url(surface_urls()["dashboards"]),
+        metrics=url(surface_urls()["metrics"]),
+        mcp="MCP servers    " + url(base + "/mcp"),
+        mcp_dev="               " + url(base + "/mcp/dev"))
     print()
     print_next()
 
@@ -75,19 +78,15 @@ def print_me_surfaces(base: str) -> None:
     """Where a Me operator goes next.
 
     The worlds mode has always ended on a block like this; Me ended on the app
-    offer alone, which left the assistant's own web UI, its MCP endpoint and the
-    graph undiscoverable from the terminal that had just configured all three.
+    offer alone, which left the assistant's own web UI and its MCP endpoints
+    undiscoverable from the terminal that had just configured all three.
     """
-    print("  \u2500\u2500 Your Me surfaces " + "\u2500" * 41)
-    print(f"  Assistant      {base}   \u2190 START HERE")
-    print("                 Chat, documents and memories, in the browser.")
-    print()
-    # The two MCP servers close the block \u2014 see print_worlds_surfaces for why
-    # they come last and the graph link is gone.
-    print(f"  MCP servers    {base}/mcp      " + dim("embabel-me \u2014 chat clients, the assistant surface"))
-    print(f"                 {base}/mcp/dev  " + dim("embabel-worlds \u2014 coding agents: realms, authoring"))
-    print("                 Authorization: Bearer \u2014 the token this setup just minted,")
-    print("                 stored at /data/embabel/assistant/admin/providers.env")
+    print("  " + heading("Your Me surfaces", 58))
+    say("surfaces-me",
+        assistant=bold("Assistant") + "      " + url(base),
+        start_here=accent(f"{ARROW} START HERE"),
+        mcp="MCP servers    " + url(base + "/mcp"),
+        mcp_dev="               " + url(base + "/mcp/dev"))
     print()
     print_next()
 

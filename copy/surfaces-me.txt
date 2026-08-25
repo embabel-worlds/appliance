@@ -1,0 +1,7 @@
+    {assistant}   {start_here}
+                   Chat, documents and memories, in the browser.
+
+    {mcp}       embabel-me — chat clients, the assistant surface
+    {mcp_dev}   embabel-worlds — coding agents: realms, authoring
+                   Authorization: Bearer — the token this setup just minted,
+                   stored at /data/embabel/assistant/admin/providers.env
