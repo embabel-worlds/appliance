@@ -304,7 +304,16 @@ if mkdir -p "$BIN_DIR" 2>/dev/null; then
   cat > "$BIN_DIR/embabel" <<SHIM
 #!/bin/sh
 # Forwards to the Embabel appliance in $HOME_DIR. Written by install.sh.
-exec python3 "$HOME_DIR/embabel" "\$@"
+# Finds a Python 3.10+ each run — the setup code needs it, and macOS's own
+# python3 may still be 3.9. The CLI itself repeats this check as a sentence.
+for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+  command -v "\$cand" >/dev/null 2>&1 || continue
+  if "\$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+    exec "\$cand" "$HOME_DIR/embabel" "\$@"
+  fi
+done
+echo "embabel: Python 3.10+ not found (macOS: brew install python@3.12)" >&2
+exit 1
 SHIM
   chmod +x "$BIN_DIR/embabel"
 
@@ -343,7 +352,23 @@ fi
 # setup.py owns the real flow — starting the mode, streaming the first boot,
 # the account and model-provider key, and the offer to open the Me app. There
 # is deliberately no second implementation of any of that here.
-command -v python3 >/dev/null 2>&1 || die "python3 is required (it ships with macOS; on Linux: apt install python3)."
+# THE PYTHON THAT CAN RUN THIS. The setup code needs 3.10+ (`str | None` at import
+# time, `match` statements) and macOS still ships 3.9 as `python3` — a fresh Mac died
+# in a TypeError on the first import. Prefer a versioned interpreter when one exists;
+# a bare `python3` is accepted only after proving its version. Fail as a sentence.
+find_python() {
+  for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+      command -v "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+PY="$(find_python)" || die "Embabel needs Python 3.10 or newer — found $(python3 -V 2>/dev/null || echo 'no python3').
+  macOS:  brew install python@3.12   (then rerun this installer)
+  Linux:  apt install python3.10  ·  dnf install python3.12"
 
 ok "Done. Starting setup — after this, use the 'embabel' command."
 echo
@@ -371,14 +396,14 @@ cd "$HOME_DIR"
 # to prevent. Actually opening it is the only test that means anything.
 if { : < /dev/tty; } 2>/dev/null; then
   if [ "$MODE" = "worlds" ]; then
-    exec python3 ./worlds.py "$@" < /dev/tty
+    exec "$PY" ./worlds.py "$@" < /dev/tty
   else
-    exec python3 ./me.py "$@" < /dev/tty
+    exec "$PY" ./me.py "$@" < /dev/tty
   fi
 fi
 
 if [ "$MODE" = "worlds" ]; then
-  exec python3 ./worlds.py "$@"
+  exec "$PY" ./worlds.py "$@"
 else
-  exec python3 ./me.py "$@"
+  exec "$PY" ./me.py "$@"
 fi

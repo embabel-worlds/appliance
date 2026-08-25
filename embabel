@@ -18,6 +18,20 @@ this imports them. Two copies of "is Docker running" is how they come to disagre
 Python 3 standard library only, like everything else here, so it runs wherever the
 appliance does with nothing installed.
 """
+
+# THE VERSION GATE, BEFORE ANY embabel_setup IMPORT. The setup package is written for
+# Python 3.10+ (`str | None` annotations evaluated at import, `match` statements), and
+# macOS still ships 3.9 as `python3` — which died in a TypeError a new user cannot be
+# expected to read. Fail as a sentence instead. install.sh prefers a 3.10+ interpreter
+# when one exists; this guard catches the run that bypassed it.
+import sys as _sys
+if _sys.version_info < (3, 10):
+    _sys.exit(
+        "Embabel needs Python 3.10 or newer — this is Python "
+        + _sys.version.split()[0]
+        + ".\n  macOS:  brew install python@3.12   (then rerun the installer)"
+        + "\n  Linux:  apt install python3.10  ·  dnf install python3.12"
+    )
 import os
 import sys
 
