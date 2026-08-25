@@ -121,10 +121,14 @@ def this_appliance_urls() -> set[str]:
         value = env_file_value(key)
         if value:
             bases.append(value)
-    # Both doors: coding agents are wired against /mcp/dev when the server has the
-    # developer endpoint, and an uninstall that only recognized /mcp would leave that
-    # registration standing — a client pointed at an appliance that no longer exists.
-    return {base.rstrip("/").lower() + suffix for base in bases for suffix in ("/mcp", "/mcp/dev")}
+    # EVERY door this appliance has ever answered on, including the ones it no longer
+    # offers. Coding agents are wired against the code door, so an uninstall that only
+    # recognized /mcp would leave that registration standing — a client pointed at an
+    # appliance that no longer exists. /mcp/dev is the code door's old name and stays in
+    # this list for exactly that reason: the registrations it made are still out there,
+    # and uninstall is the one place that has to recognize history rather than intent.
+    doors = ("/mcp", "/mcp/chat", "/mcp/code", "/mcp/dev")
+    return {base.rstrip("/").lower() + door for base in bases for door in doors}
 
 
 def registered_mcp_url(cli: str, name: str) -> str | None:
@@ -198,11 +202,12 @@ def wire_coding_agents(result: dict) -> None:
 
     `claude mcp add` only writes config; the token itself goes live when setup
     completes and the appliance restarts, and the closing message says so."""
-    # Coding agents are the DEVELOPER audience, so they get the developer door when the
-    # server has one — its tools/list is the building surface (realm authoring, mining)
-    # with none of the personal-assistant tools. The server states both URLs as facts
-    # and this installer picks; `developerUrl` is absent entirely on a server without
-    # the door, so an old image degrades to the primary endpoint rather than to a 404.
+    # Coding agents get the CODE door (/mcp/code) when the server has one — its
+    # tools/list is the building surface (realm authoring, mining) with none of the
+    # personal-assistant tools. The server states both URLs as facts and this installer
+    # picks; `developerUrl` is absent entirely on a server without the door, so an old
+    # image degrades to the chat door rather than to a 404. The wire key keeps the older
+    # word because the server's own type for that surface is McpMode.DEVELOPER.
     token = result.get("token")
     url = result.get("developerUrl") or result.get("url")
     if not token or not url:
@@ -264,8 +269,9 @@ def wire_coding_agents(result: dict) -> None:
         if answer in ("", "y", "yes"):
             try:
                 existing = registered_mcp_url(codex, MCP_SERVER_NAME)
-                if existing and existing.rstrip("/").lower() != url.rstrip("/").lower() + "/mcp" \
-                        and existing.rstrip("/").lower() != url.rstrip("/").lower():
+                # `url` is a whole endpoint, not a base — the second arm of this test used
+                # to append "/mcp" to it and so could never match anything.
+                if existing and existing.rstrip("/").lower() != url.rstrip("/").lower():
                     print(f"  (replacing Codex's '{MCP_SERVER_NAME}' entry, which pointed at {existing})")
                 subprocess.run([codex, "mcp", "remove", MCP_SERVER_NAME],
                                capture_output=True, text=True, timeout=30)

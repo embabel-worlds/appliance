@@ -285,8 +285,8 @@ def no_stale_org(text: str) -> str | None:
 
 
 def both_doors_offered(text: str) -> str | None:
-    """The closing block names both MCP servers, or the developer door is a
-    secret only the release notes know about.
+    """The closing block names both MCP servers, or the code door is a secret
+    only the release notes know about.
 
     Only when an install actually RAN. A re-run against a configured appliance
     ends at "already set up" and prints no surfaces block, which is correct
@@ -295,8 +295,8 @@ def both_doors_offered(text: str) -> str | None:
     clean = ANSI.sub("", text)
     if "already set up" in clean and "Your Worlds surfaces" not in clean:
         return None
-    if "/mcp/dev" not in clean:
-        return "the closing surfaces never mention the developer door (/mcp/dev)"
+    if "/mcp/code" not in clean:
+        return "the closing surfaces never mention the code door (/mcp/code)"
     if "/mcp" not in clean:
         return "the closing surfaces never mention the MCP endpoint"
     return None

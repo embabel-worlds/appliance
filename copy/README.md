@@ -14,7 +14,7 @@ has to agree with.
 Wrap the secondary half of a line in double parens and it renders dim:
 
 ```
-    {mcp}   ((embabel-me — chat clients, the assistant surface))
+    {mcp}   ((embabel-chat — chat clients, the assistant surface))
 ```
 
 That is the only mark these files carry, and it says INTENT rather than

@@ -1,13 +1,14 @@
 This appliance is an MCP server, and it answers on two doors. One token opens
 both.
 
-    /mcp        a chat client — Claude Desktop, Open WebUI, anything that speaks
-                MCP. It gets your world's data: the graph, your documents, saved
-                views, and the assistant's own memory.
+    /mcp/chat    a chat client — Claude Desktop, Open WebUI, anything that
+                 speaks MCP. It gets your world's data: the graph, your
+                 documents, saved views, and the assistant's own memory. Plain
+                 /mcp is the same door, and is what most clients assume.
 
-    /mcp/dev    a coding agent — Claude Code, Codex. Same world, a different set
-                of tools: installing and authoring realms, mining an existing
-                system into one, writing views and handlers.
+    /mcp/code    a coding agent — Claude Code, Codex. Same world, a different
+                 set of tools: installing and authoring realms, mining an
+                 existing system into one, writing views and handlers.
 
 They differ on purpose. A chat client asking where the invoices went should not
 have to read past realm authoring, and an agent building a realm has no use for

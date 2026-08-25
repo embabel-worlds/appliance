@@ -60,6 +60,10 @@ def print_worlds_surfaces(base: str) -> None:
     wizard are the ones still on screen when everything above has scrolled — and
     the graph link is gone on purpose: the browser and bolt ports are an
     implementation detail, while the console and MCP are the product's doors.
+
+    /mcp/chat rather than the bare /mcp, because these two lines sit one above the
+    other and the pair has to READ as a pair: `/mcp` beside `/mcp/code` looks like a
+    general endpoint and a special one. Both spellings reach the same server.
     """
     print("  " + heading("Your Worlds surfaces", 58))
     say("surfaces-worlds",
@@ -68,8 +72,8 @@ def print_worlds_surfaces(base: str) -> None:
         api="API            " + url(base) + "  ",
         dashboards="Dashboards     " + url(surface_urls()["dashboards"]),
         metrics=url(surface_urls()["metrics"]),
-        mcp="MCP servers    " + url(base + "/mcp"),
-        mcp_dev="               " + url(base + "/mcp/dev"))
+        mcp="MCP servers    " + url(base + "/mcp/chat"),
+        mcp_code="               " + url(base + "/mcp/code"))
     print()
     print_next()
 
@@ -85,8 +89,8 @@ def print_me_surfaces(base: str) -> None:
     say("surfaces-me",
         assistant=bold("Assistant") + "      " + url(base),
         start_here=accent(f"{ARROW} START HERE"),
-        mcp="MCP servers    " + url(base + "/mcp"),
-        mcp_dev="               " + url(base + "/mcp/dev"))
+        mcp="MCP servers    " + url(base + "/mcp/chat"),
+        mcp_code="               " + url(base + "/mcp/code"))
     print()
     print_next()
 
