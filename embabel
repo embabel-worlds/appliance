@@ -2,7 +2,7 @@
 """The Embabel appliance, as a command rather than a directory.
 
     embabel up · status · doctor · version · ps · logs · realms · open · agents
-    backup · restore · bugreport · prune · upgrade · down · uninstall
+    sample · backup · restore · bugreport · prune · upgrade · down · uninstall
 
 WHY THIS EXISTS. Everything below was already possible — as `cd ~/embabel-me &&
 ./worlds.py`, `./setup.py --uninstall`, `docker compose -f docker-compose-worlds.yml
@@ -322,6 +322,90 @@ def cmd_agents(args) -> int:
     print(f"  Wiring agents to {base}/mcp" + (f" as {user}" if user else ""))
     s.wire_coding_agents({"token": token, "url": f"{base}/mcp", "user": user})
     return 0
+
+
+def _sample_target(args):
+    """The running appliance, and a credential for it. Shared by every sample verb."""
+    mode = current_mode() or s.configured_mode()
+    if not mode:
+        print("  Nothing is running.  `embabel up` starts it.")
+        return None, None
+    container = s.find_mode_container(mode)
+    base = s.container_base_url(container) if container else None
+    if not container or not base:
+        print("  The appliance is not up.  `embabel up` starts it.")
+        return None, None
+    return base, s.sample_credential(container)
+
+
+def cmd_sample(args) -> int:
+    """Fictional records: load them, see them, take them away, hand them on.
+
+    The appliance marks everything loaded here so that removing it is exact. Nothing
+    else this product does deletes anything, which is what makes `remove` and `clear`
+    safe to run without reading the manual first.
+    """
+    base, auth = _sample_target(args)
+    if not base:
+        return 1
+
+    if args.sample_command == "list":
+        s.describe_sets(s.samples_api(base, auth))
+        return 0
+
+    if args.sample_command == "add":
+        payload = s.read_set(args.source)
+        name = payload.get("name") or args.source
+        print(f"  Loading {s.bold(name)}" + s.dim(f" into realm {payload.get('realm', '?')}…"))
+        result = s.samples_api(base, auth, "", payload)
+        print(f"  {s.TICK} Loaded {result.get('nodes', 0)} node(s), {result.get('edges', 0)} edge(s).")
+        print("  " + s.dim(f"Remove it with: embabel sample remove {name}"))
+        return 0
+
+    if args.sample_command == "remove":
+        result = s.samples_api(base, auth, f"/{args.name}", method="DELETE")
+        print(f"  {s.TICK} Removed {result.get('nodes', 0)} node(s) from '{args.name}'.")
+        return 0
+
+    if args.sample_command == "clear":
+        # Asked, not assumed. It is a small action with a wide blast radius, and the
+        # person running it before a customer demo is in a hurry.
+        if not args.yes:
+            answer = prompt("  Remove ALL sample data from this world? [y/N]: ").strip().lower()
+            if answer not in ("y", "yes"):
+                print("  Left alone.")
+                return 0
+        result = s.samples_api(base, auth, "", method="DELETE")
+        print(f"  {s.TICK} Removed {result.get('nodes', 0)} node(s).")
+        return 0
+
+    if args.sample_command == "export":
+        payload = {
+            "name": args.name,
+            "realm": args.realm,
+            "labels": [l.strip() for l in args.labels.split(",") if l.strip()],
+            "limit": args.limit,
+            # SHAPE_ONLY unless asked otherwise, and the appliance defaults the same way.
+            # Stated here as well so the request says what it means.
+            "mode": "WITH_VALUES" if args.with_values else "SHAPE_ONLY",
+        }
+        result = s.samples_api(base, auth, "/export", payload)
+        text = json.dumps(result, indent=2)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(text + "\n")
+            print(f"  {s.TICK} Wrote {len(result.get('nodes', []))} node(s) to {s.bold(args.output)}")
+            if not args.with_values:
+                print("  " + s.dim("Shape only: labels, property keys and edges. No values, no ids."))
+            else:
+                print("  " + s.warn("Contains real values — read it before sending it anywhere."))
+            print("  " + s.dim(f"Load it elsewhere with: embabel sample add {args.output}"))
+        else:
+            print(text)
+        return 0
+
+    print("  embabel sample add | remove | list | clear | export")
+    return 1
 
 
 def _emit(as_json: bool, ok: bool, message: str, **extra) -> int:
@@ -865,6 +949,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true", help="skip the confirmation")
     p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("sample", help="fictional records: load, list, remove, export")
+    sp = p.add_subparsers(dest="sample_command")
+    a = sp.add_parser("add", help="load a sample set (a name, a file, or gh:owner/repo)")
+    a.add_argument("source", help="e.g. hubspot-demo, ./my-set.json, gh:me/my-samples")
+    a.set_defaults(func=cmd_sample)
+    a = sp.add_parser("remove", help="remove one sample set and nothing else")
+    a.add_argument("name")
+    a.set_defaults(func=cmd_sample)
+    a = sp.add_parser("list", help="what sample data is loaded")
+    a.set_defaults(func=cmd_sample)
+    a = sp.add_parser("clear", help="remove ALL sample data from this world")
+    a.add_argument("--yes", action="store_true", help="skip the confirmation")
+    a.set_defaults(func=cmd_sample)
+    a = sp.add_parser("export", help="write records out as a set somebody else can load")
+    a.add_argument("--labels", required=True, help="comma-separated, e.g. Company,Deal")
+    a.add_argument("--name", default="export", help="what to call the set")
+    a.add_argument("--realm", required=True, help="the realm whose types these belong to")
+    a.add_argument("--limit", type=int, default=500)
+    a.add_argument("--with-values", action="store_true",
+                   help="include the real values and ids; read it before sending it")
+    a.add_argument("-o", "--output", help="write here instead of stdout")
+    a.set_defaults(func=cmd_sample)
+    p.set_defaults(func=cmd_sample, sample_command=None)
 
     p = sub.add_parser("agents", help="re-point Claude Code and Codex at this appliance")
     p.set_defaults(func=cmd_agents)

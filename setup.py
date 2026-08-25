@@ -75,6 +75,7 @@ from embabel_setup.surfaces import *     # noqa: F403 — where to go once it is
 from embabel_setup.steps import *        # noqa: F403 — asking, and posting the answers
 from embabel_setup.lifecycle import *    # noqa: F403 — up, down, and away
 from embabel_setup.realms import *       # noqa: F403 — realm checkouts and the world repo
+from embabel_setup.samples import *      # noqa: F403 — fictional records, marked and removable
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
