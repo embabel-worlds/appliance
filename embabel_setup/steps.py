@@ -20,6 +20,7 @@ import http.client
 import json
 import os
 import re
+import socket
 import subprocess
 import time
 import urllib.error
@@ -27,8 +28,9 @@ import urllib.request
 
 from .colour import MIDDOT, TICK, bold, dim, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
-                   TokenRejected, Unreachable, prompt)
-from .dockerlib import _compose, _docker, boot_failure, container_started_at
+                   Timeout, TokenRejected, Unreachable, prompt)
+from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
+                        find_mode_container)
 from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, console_url,
                        phone_home_on, resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
@@ -38,6 +40,29 @@ from .seed import account_username, remember_account, remember_provider_key
 from . import wizard
 
 TOKEN_HEADER = "X-Embabel-Setup-Token"
+
+# How long to wait on a setup call. Most are the appliance talking to itself and answer
+# in milliseconds; the number is a backstop, not a budget.
+CALL_TIMEOUT_SECONDS = 60
+
+# EXCEPT THE PROVIDER STEP, which is not the appliance talking to itself. Validating a
+# key means a real completion call to the provider with the provider's own client — the
+# server does that deliberately, because a key that lists models can still fail the first
+# real request. Sixty seconds is the appliance's budget, not OpenAI's, and a slow or
+# proxied network blew through it while the appliance sat there patiently waiting: the
+# installer then announced it "could not reach the appliance", which was false and sent
+# somebody looking for a Docker fault.
+#
+# Three minutes, not the provider client's own ten: past three minutes something is
+# wrong and saying so beats making a person watch a spinner for the rest of it.
+PROVIDER_TIMEOUT_SECONDS = 180
+
+# Where to prove egress, per provider — the endpoint that answers 401 fastest to an
+# unauthenticated request, so a person can tell "blocked" from "bad key" in one command.
+PROVIDER_PROBE_URLS = {
+    "openai": "https://api.openai.com/v1/models",
+    "anthropic": "https://api.anthropic.com/v1/models",
+}
 
 # A key this CLIENT adds to /complete's answer when it had to ride the restart out
 # itself. NOT the server's own `restarting`, which is on every successful answer and
@@ -68,8 +93,59 @@ PROVIDER_ENV = {
 PREFERRED_DEFAULTS = {"provider": "openai"}
 
 
+def provider_of(api_key: str | None) -> str:
+    """Whose key this is, from the key itself — for the timeout message, and nothing else.
+
+    The SERVER is the authority on this (it detects the provider and validates against
+    it); this is only so a message can say "OpenAI" instead of "your provider", and it
+    has to work when the server never answered. Anthropic's keys announce themselves;
+    everything else is called OpenAI, which is both the common case and the default the
+    wizard offers.
+    """
+    return "Anthropic" if (api_key or "").startswith("sk-ant-") else "OpenAI"
+
+
+def _timed_out(base: str, seconds: int, waiting_on: str | None) -> Timeout:
+    """The message for a call that ran out of patience, which must not blame the appliance.
+
+    The appliance answering slowly is not the appliance being absent, and on the provider
+    step it is usually not even the appliance's fault: it is mid-call to the provider,
+    with the provider's own client, and a network that drops those packets rather than
+    refusing them looks exactly like this. So when we know who is being waited on, the
+    message names them and hands over the one command that settles it — run INSIDE the
+    container, because that is where the blocked egress is.
+    """
+    if not waiting_on:
+        return Timeout(
+            f"The appliance at {base} did not answer within {seconds}s.\n"
+            "It is running — something is just taking longer than expected. Try again, "
+            "or look at what it is doing: docker compose logs -f"
+        )
+    return Timeout(
+        f"The appliance did not answer within {seconds}s, because it is still waiting "
+        f"for {waiting_on}.\n"
+        f"THE APPLIANCE IS FINE. It validates your key by making a real call to "
+        f"{waiting_on}, and that call has not come back — which is what a proxy or "
+        f"firewall that drops traffic looks like from in here.\n"
+        f"Check whether the container can reach it at all:\n"
+        f"    docker exec {find_mode_container() or '<the appliance container>'} curl -s -o /dev/null "
+        f'-w "%{{http_code}}\\n" --max-time 20 {PROVIDER_PROBE_URLS.get(waiting_on.lower(), "https://api.openai.com/v1/models")}\n'
+        f"A quick 401 means reachable. A hang or 000 means blocked, and no key will get "
+        f"through until that does.\n"
+        f"You can also skip this step (press Enter) and put the key in secrets.env later."
+    )
+
+
 def call(base: str, path: str, token: str, payload: dict | None = None,
-         method: str | None = None) -> dict:
+         method: str | None = None, timeout: int = CALL_TIMEOUT_SECONDS,
+         waiting_on: str | None = None) -> dict:
+    """POST/GET a setup endpoint.
+
+    `waiting_on` names the THIRD PARTY this call ends up waiting for, when there is one.
+    It changes nothing about the request and everything about the timeout message: the
+    appliance answering slowly because it is mid-call to OpenAI is a fact worth stating,
+    and stating it as "could not reach the appliance" is worse than saying nothing.
+    """
     url = f"{base}/api/v1/setup{path}"
     data = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(
@@ -78,7 +154,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None,
     if data:
         request.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read() or "{}")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")
@@ -96,10 +172,17 @@ def call(base: str, path: str, token: str, payload: dict | None = None,
             raise TokenRejected(f"The setup token was not accepted.\n{detail}")
         raise SetupError(detail)
     except urllib.error.URLError as e:
+        # A timeout arrives BOTH ways: wrapped in URLError when the connect phase runs
+        # out, and bare from the socket when the read does. Unwrap it here or the read
+        # case gets the honest message and the connect case gets the misleading one.
+        if isinstance(e.reason, socket.timeout):
+            raise _timed_out(base, timeout, waiting_on)
         raise Unreachable(
             f"Could not reach the appliance at {base} ({e.reason}).\n"
             "Is it running? Try: docker compose ps"
         )
+    except socket.timeout:
+        raise _timed_out(base, timeout, waiting_on)
     except (http.client.HTTPException, ConnectionError, TimeoutError, OSError) as e:
         # DURING BOOT, "up" is a spectrum: Docker's port proxy accepts the TCP
         # connection before the app listens, then hangs up — RemoteDisconnected,
@@ -601,7 +684,13 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
 
         print("\n  Working…", end=" ", flush=True)
         try:
-            result = call(base, f"/{step['id']}", token, answers)
+            # A step declares its own clock only when its clock is not ours: `timeout`
+            # names a budget rather than carrying a number, so the durations stay in
+            # one place here beside the reason for each of them.
+            waits = step.get("waitsOnProvider")
+            result = call(base, f"/{step['id']}", token, answers,
+                          timeout=PROVIDER_TIMEOUT_SECONDS if waits else CALL_TIMEOUT_SECONDS,
+                          waiting_on=provider_of(answers.get("apiKey")) if waits else None)
         except (AlreadySetUp, Unreachable, TokenRejected):
             # The appliance or the session is the problem, not the answer — no amount
             # of retyping helps.

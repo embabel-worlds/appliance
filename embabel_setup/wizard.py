@@ -68,6 +68,12 @@ def steps(facts: dict) -> list[dict]:
             "title": "Connect a model provider",
             "copy": "step-provider",
             "satisfied": bool(facts.get("providers")),
+            # THE ONE STEP THAT WAITS ON SOMEBODY ELSE. The server validates the key
+            # with a real call to the provider, so this step's clock is the provider's,
+            # not the appliance's — and if it runs out, the message has to say whose
+            # fault it probably is. One flag; steps.py owns the duration, the name of
+            # whoever is being waited for, and the wording.
+            "waitsOnProvider": True,
             "fields": [
                 {"name": "apiKey", "label": "API key", "type": "SECRET"},
                 # Deliberately last and optional: the key identifies its own

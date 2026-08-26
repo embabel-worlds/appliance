@@ -23,6 +23,18 @@ class Unreachable(SetupError):
     """The door did not answer. Distinct from a refusal, which is an answer."""
 
 
+class Timeout(Unreachable):
+    """The appliance took longer to answer than we were willing to wait.
+
+    A SUBCLASS of Unreachable, so every `except Unreachable` still catches it — but a
+    distinct type, because the two are not the same fact and must not read the same. A
+    refused connection means nothing is listening. A timeout means something IS, and is
+    busy; on the provider step it is usually busy waiting on the provider, and calling
+    that "could not reach the appliance" sent at least one person hunting a Docker
+    problem that did not exist.
+    """
+
+
 class TokenRejected(SetupError):
     """The setup token was wrong."""
 
