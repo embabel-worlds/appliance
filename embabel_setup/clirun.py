@@ -88,6 +88,36 @@ def cmd_status(args) -> int:
     return 0
 
 
+def docker_credential_helpers() -> list[tuple[str, str]]:
+    """Every credential helper `~/.docker/config.json` names, with where it was named.
+
+    `credsStore` applies to all registries; `credHelpers` maps particular ones. Both are
+    checked, because a helper named for a registry this appliance never pulls from still
+    cannot break anything, and one named globally breaks everything.
+
+    Unreadable or absent config is not a problem — that is the normal state of a machine
+    that has never logged in to a registry — so it yields nothing rather than a warning.
+    """
+    path = os.path.expanduser("~/.docker/config.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            config = json.load(f)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(config, dict):
+        return []
+    named = []
+    store = config.get("credsStore")
+    if isinstance(store, str) and store:
+        named.append((store, "credsStore in ~/.docker/config.json"))
+    helpers = config.get("credHelpers")
+    if isinstance(helpers, dict):
+        for registry, helper in sorted(helpers.items()):
+            if isinstance(helper, str) and helper and helper not in [n for n, _ in named]:
+                named.append((helper, f"credHelpers[{registry}] in ~/.docker/config.json"))
+    return named
+
+
 def cmd_doctor(args) -> int:
     """Everything that has actually gone wrong for somebody, checked in one place.
 
@@ -114,6 +144,26 @@ def cmd_doctor(args) -> int:
     compose = s._docker("compose", "version")
     check("docker compose v2", bool(compose and compose.returncode == 0),
           "Update Docker Desktop, or install the compose plugin.")
+    # THE CREDENTIAL HELPER, which fails in a way that looks nothing like its cause.
+    #
+    # `~/.docker/config.json` can name a helper binary — `credsStore: desktop` is what
+    # Docker Desktop writes — and the CLI then runs that binary for EVERY registry,
+    # including anonymous pulls of public images. If the binary is not on PATH the pull
+    # dies with `error getting credentials - err: exec: "docker-credential-desktop":
+    # executable file not found in $PATH` before a single byte is fetched, and the
+    # appliance's own message on top of it is the useless "docker compose up failed".
+    #
+    # Docker Desktop installs the symlink into /usr/local/bin, and declining the admin
+    # prompt that asks to do so is enough to leave a machine in exactly this state.
+    for helper, where in docker_credential_helpers():
+        check(f"docker credential helper '{helper}' on PATH", shutil.which(f"docker-credential-{helper}") is not None,
+              f"Named by {where}, but docker-credential-{helper} is not on PATH, so every pull "
+              f"fails before it starts.\n"
+              f"       Put Docker Desktop's own bin directory on your PATH:\n"
+              f"         export PATH=\"$PATH:/Applications/Docker.app/Contents/Resources/bin\"\n"
+              f"       or drop the helper — these images are public and need no credentials:\n"
+              f"         remove the \"credsStore\" line from ~/.docker/config.json")
+
     runner = s._docker("model", "status")
     check("Docker Model Runner (embeddings run locally)", bool(runner and runner.returncode == 0),
           "Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner")
