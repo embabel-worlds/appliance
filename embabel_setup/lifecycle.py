@@ -561,7 +561,9 @@ def ensure_mode(mode: str) -> bool:
         if run.returncode != 0:
             raise SetupError(
                 f"docker compose up failed while reconciling the {mode} mode.\n"
-                "  The error above is docker's. `embabel doctor` checks the usual causes."
+                "  The error above is docker's. What usually causes it:\n"
+            "    embabel doctor   —  or `sh doctor.sh` from this folder, which needs "
+            "nothing installed and works even when that command does not exist yet."
             )
         print()
         return False
@@ -574,7 +576,9 @@ def ensure_mode(mode: str) -> bool:
         # and needs a fix nothing in this sentence could carry.
         raise SetupError(
             f"docker compose up failed for the {mode} mode.\n"
-            "  The error above is docker's. `embabel doctor` checks the usual causes."
+            "  The error above is docker's. What usually causes it:\n"
+            "    embabel doctor   —  or `sh doctor.sh` from this folder, which needs "
+            "nothing installed and works even when that command does not exist yet."
         )
     print()
     start_deferred(mode)

@@ -22,6 +22,19 @@ Use it when a fresh appliance is a blank page: `learn_sources` on a new install
 returns nothing, because nothing has been connected yet, and this is the thing
 that finds what to connect.
 
+## appliance-doctor
+
+For when the appliance itself is the problem — a failed install, containers that
+restart, a console that never connects, a wizard that stops with an error. It
+assumes the MCP surface is unavailable, because if it were up this would not be
+the situation, so everything in it runs on the user's own machine with docker and
+a shell.
+
+Written for the case where the person asking is not a Docker expert and does not
+want to become one today: run the commands yourself, translate the log rather
+than pasting it, one action at a time. It also carries the list of observations
+that LOOK like evidence and are not, each of which has cost somebody hours.
+
 ## realm-doctor
 
 Diagnoses a realm that is not behaving: installed but answering nothing, verbs

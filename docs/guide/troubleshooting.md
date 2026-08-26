@@ -17,7 +17,31 @@ embabel doctor
 
 Every line in it is a real failure somebody hit, with the fix attached. It checks the
 host: Docker, compose, credential helpers, the Model Runner, the embedding model, your
-realm checkouts. It does **not** check a running appliance — for that, keep reading.
+realm checkouts, and how much room Docker has. It does **not** check a running appliance —
+for that, keep reading.
+
+## If there is no `embabel` command yet
+
+The install never got far enough to leave one. Nothing here needs it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/doctor.sh | sh
+```
+
+That checks the same machine from the outside — Docker, the credential helper, memory and
+disk, every Embabel container and whether it is actually staying up, both doors, and the
+recent errors — and ends with a numbered list of what to fix, in order. It reads only. It
+starts nothing, deletes nothing, and prints no password, key or token, so the output is
+safe to paste into an issue.
+
+If you already have the checkout, `sh doctor.sh` inside it does the same thing.
+
+## Working with a coding agent instead
+
+If you have Claude Code or a similar agent, `skills/appliance-doctor` in this repository
+teaches it to do all of this for you and explain the result in plain words. It is written
+for exactly this situation: it assumes the appliance's own tools are unavailable, because
+if they worked you would not be reading this.
 
 ## The two logs, and why this matters more than anything else here
 

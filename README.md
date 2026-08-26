@@ -16,6 +16,14 @@ pipe installs the personal assistant instead:
 curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
 ```
 
+**If that goes wrong**, this checks the machine and says what to fix, in order. It needs
+nothing installed, reads only, and prints no key or password — so its output is safe to
+paste into an issue:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/doctor.sh | sh
+```
+
 To install a BRANCH rather than main — testing a change the way a user meets it —
 name it with `EMBABEL_REF`:
 
