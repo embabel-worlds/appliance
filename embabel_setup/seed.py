@@ -117,6 +117,16 @@ def remember_account(username: str, password: str) -> None:
     _ACCOUNT = (username, password)
 
 
+def account_username() -> str | None:
+    """Who setup just created, when it created anyone.
+
+    Normally the server says this back in /complete's `signInAs`. It is readable
+    here too, for the one case where that answer never reaches the client — see
+    [complete_setup] in steps.py. The password stays inside this module.
+    """
+    return _ACCOUNT[0] if _ACCOUNT else None
+
+
 def seed_credential(api_token: str | None) -> str | None:
     """An Authorization header for the seed upload, or None if there is nothing.
 

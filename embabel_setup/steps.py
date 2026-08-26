@@ -28,16 +28,22 @@ import urllib.request
 from .colour import MIDDOT, TICK, bold, dim, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
                    TokenRejected, Unreachable, prompt)
-from .dockerlib import _compose, _docker, boot_failure
+from .dockerlib import _compose, _docker, boot_failure, container_started_at
 from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, console_url,
                        phone_home_on, resume_command, set_env_var)
-from .status import STATUS, boot_phase
+from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
 from .words import say
-from .seed import remember_account, remember_provider_key
+from .seed import account_username, remember_account, remember_provider_key
 from . import wizard
 
 TOKEN_HEADER = "X-Embabel-Setup-Token"
+
+# A key this CLIENT adds to /complete's answer when it had to ride the restart out
+# itself. NOT the server's own `restarting`, which is on every successful answer and
+# means the restart is still ahead of us — reading that one as "already waited" skips
+# the wait on the normal path and hands somebody a URL that dies a second later.
+RODE_OUT_RESTART = "clientRodeOutTheRestart"
 
 
 TOKEN_PATTERN = re.compile(r"Setup token:\s*([0-9a-f]{32,})")
@@ -148,6 +154,47 @@ def call_when_ready(base: str, token: str) -> dict:
                 STATUS.start("Waiting for the appliance to answer")
                 announced = True
             time.sleep(2)
+
+
+def complete_setup(base: str, token: str, container: str | None) -> dict:
+    """Close setup, and survive the restart that closing it causes.
+
+    THE ONE CALL WHERE A DROPPED CONNECTION IS THE EXPECTED OUTCOME. The server
+    persists completion FIRST, then schedules its own `exit(0)` two seconds later so
+    the model beans are rebuilt with the provider key — and it puts `"restarting": true`
+    in the body precisely so a client reads a dead socket as a restart rather than a
+    failure. This client used to read it as a failure: `call()` raised Unreachable, the
+    caller re-raised, and an install that had ALREADY SUCCEEDED ended on "Could not
+    reach the appliance (RemoteDisconnected)".
+
+    It only ever bit people who supplied a provider key, which made it look like a key
+    problem and is exactly backwards: a key is what makes the restart happen at all.
+    Two seconds is enough on an idle laptop and is a race everywhere else.
+
+    CHECKED, NEVER ASSUMED. A dropped connection could also be a crash, so this waits
+    for the appliance to come back and then ASKS: setup answering 410 Gone is proof it
+    completed, and anything else re-raises rather than declaring a success nobody
+    verified.
+
+    Returns /complete's body, or the part of it that can be reconstructed — the caller
+    needs `signInAs`, which [account_username] still knows when the wire does not.
+    """
+    started_before = container_started_at(container) if container else ""
+    try:
+        return call(base, "/complete", token, {})
+    except Unreachable as dropped:
+        STATUS.start("Restarting to pick up your provider key")
+        wait_until_serving(container, base, started_before)
+        STATUS.stop()
+        try:
+            state = probe(base)
+        except AlreadySetUp:
+            return {"ok": True, "detail": "complete", RODE_OUT_RESTART: True,
+                    "signInAs": account_username()}
+        raise Unreachable(
+            f"The appliance dropped the connection while finishing setup, came back, and "
+            f"still reports setup as {state}.\n{dropped}"
+        ) from dropped
 
 
 def token_from_logs(container: str) -> str | None:

@@ -271,7 +271,14 @@ def main() -> int:
         print("\n  Finishing…", end=" ", flush=True)
         started_before = container_started_at(container) if container else ""
         try:
-            done = call(base, "/complete", token, {})
+            done = complete_setup(base, token, container)
+        except Unreachable:
+            # [complete_setup] already waited for the appliance and asked it; if it
+            # still says setup is open, the connection died for a reason that is not
+            # the restart. Nothing below can help, and the deferred branch certainly
+            # cannot — asking for a provider key would be answering a question the
+            # server never asked.
+            raise
         except SetupError:
             # The server may insist on a provider before it will close setup. If it
             # does, the offer to defer was a promise this client could not keep —
@@ -285,7 +292,7 @@ def main() -> int:
             for step in deferred:
                 wire_coding_agents(run_step(base, token, step, use_environment=False) or {})
             print("\n  Finishing…", end=" ", flush=True)
-            done = call(base, "/complete", token, {})
+            done = complete_setup(base, token, container)
         print(done.get("detail", "complete"))
 
         username = done.get("signInAs")
@@ -298,7 +305,10 @@ def main() -> int:
         # that gap — measured at 21 seconds on this machine, during which the door
         # is shut and nothing says when it reopens. Somebody clicking immediately
         # met a dead port and concluded the install had failed.
-        if not deferred:
+        # Unless the restart already happened out from under us — RODE_OUT_RESTART marks
+        # the answer [complete_setup] reconstructed after riding one out, and waiting
+        # again would flash a status line at somebody already being served.
+        if not deferred and not done.get(RODE_OUT_RESTART):
             STATUS.start("Restarting to pick up your provider key")
             wait_until_serving(container, base, started_before)
             STATUS.stop()
