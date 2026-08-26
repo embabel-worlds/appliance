@@ -30,7 +30,7 @@ from .colour import MIDDOT, TICK, bold, dim, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
                    Timeout, TokenRejected, Unreachable, prompt)
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
-                        find_mode_container)
+                        container_status, find_mode_container)
 from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, console_url,
                        phone_home_on, resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
@@ -346,11 +346,31 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
         time.sleep(3)
 
     STATUS.stop()
-    if container is None and state == "unreachable":
-        raise SetupError(
-            f"No appliance is running: no mode container was found and {base} does not answer.\n"
-            "Start one first:  docker compose up -d"
-        )
+    # NOBODY CAN ANSWER A QUESTION ABOUT A PROCESS THAT NEVER RAN. The token is printed
+    # by the appliance at boot, so if nothing is serving there is no token anywhere to
+    # find and the prompt below is a dead end — it asks for something that does not
+    # exist, after the real error (a failed pull, a container that exited) has scrolled
+    # away. That is what a person met when a `docker compose up` failed earlier in the
+    # run: the reason was on screen, and the last thing they were shown was a prompt.
+    #
+    # Covers a MISSING container and a container that merely exists, which used to be
+    # treated as the same as one that is up.
+    if state == "unreachable":
+        status = container_status(container) if container else ""
+        if container is None:
+            raise SetupError(
+                f"No appliance is running: no mode container was found and {base} does not answer.\n"
+                "Start one first:  docker compose up -d"
+            )
+        if status != "running":
+            raise SetupError(
+                f"The appliance is not running — {container} is '{status or 'not there'}', "
+                f"and {base} does not answer.\n"
+                f"  The setup token is printed by the appliance at boot, so there is none to find "
+                f"until it starts.\n"
+                f"  Why it did not start:  docker logs {container}\n"
+                f"  Then:                  embabel doctor"
+            )
     print("  Could not find the setup token automatically.")
     if container:
         print(f"  It is printed in the container log:  docker logs {container} 2>&1 | grep 'Setup token'")

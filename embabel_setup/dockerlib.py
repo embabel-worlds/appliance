@@ -88,6 +88,13 @@ def mode_service(container: str) -> str | None:
 def container_started_at(container: str) -> str:
     run = _docker("inspect", "-f", "{{.State.StartedAt}}", container, timeout=15)
     return run.stdout.strip() if run and run.returncode == 0 else ""
+def container_status(container: str) -> str:
+    """Docker's own word for what this container is doing — running, exited, created,
+    restarting — or "" if it cannot be asked. Used where "the container exists" and "the
+    container is up" have been confused, which is how somebody ends up being asked for a
+    token printed by a process that never ran."""
+    run = _docker("inspect", "-f", "{{.State.Status}}", container, timeout=15)
+    return run.stdout.strip() if run and run.returncode == 0 else ""
 def container_base_url(container: str) -> str | None:
     """The mode's URL from its own SERVER_PORT. The compose files keep the host and
     container ports equal by design, so the container's port IS the published one."""

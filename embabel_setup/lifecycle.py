@@ -552,13 +552,30 @@ def ensure_mode(mode: str) -> bool:
     running = modes.get(MODE_SERVICE[mode])
     if running:
         print(f"  The {mode} mode is running — reconciling with the compose file.\n")
-        _compose(mode, "up", "-d")
+        # CHECKED, like the first-start path below. This reconcile swallowed its exit
+        # code, so a compose failure here — a missing credential helper, an image that
+        # will not pull — printed docker's error and then let setup carry on as though
+        # the appliance were up. The run ended minutes later asking for a setup token
+        # that no process had printed, with the real reason long scrolled away.
+        run = _compose(mode, "up", "-d")
+        if run.returncode != 0:
+            raise SetupError(
+                f"docker compose up failed while reconciling the {mode} mode.\n"
+                "  The error above is docker's. `embabel doctor` checks the usual causes."
+            )
         print()
         return False
     print(f"  Starting the {mode} mode — pulling what it needs to answer.\n")
     run = _compose(mode, "up", "-d", *MODE_CORE[mode])
     if run.returncode != 0:
-        raise SetupError(f"docker compose up failed for the {mode} mode.")
+        # The message names docker, because the failure is docker's and the reason is
+        # already on screen above this line. Pointing at `doctor` rather than restating
+        # it: the credential-helper case in particular says "error getting credentials"
+        # and needs a fix nothing in this sentence could carry.
+        raise SetupError(
+            f"docker compose up failed for the {mode} mode.\n"
+            "  The error above is docker's. `embabel doctor` checks the usual causes."
+        )
     print()
     start_deferred(mode)
     return True
