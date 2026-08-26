@@ -88,6 +88,7 @@ from embabel_setup.surfaces import *     # noqa: F403 — where to go once it is
 from embabel_setup.steps import *        # noqa: F403 — asking, and posting the answers
 from embabel_setup.lifecycle import *    # noqa: F403 — up, down, and away
 from embabel_setup.realms import *       # noqa: F403 — realm checkouts and the world repo
+from embabel_setup.capacity import *     # noqa: F403 — what docker can actually give this
 from embabel_setup.samples import *      # noqa: F403 — fictional records, marked and removable
 from embabel_setup.scenarios import *    # noqa: F403 — the world in a named state
 # Imported as a module, not starred: the wizard is a small named vocabulary
@@ -195,6 +196,11 @@ def main() -> int:
             # this model, and dying forty seconds into a boot with a Spring
             # stack trace is a much worse way to learn that a 1.1GB file is
             # missing than being told up front that it is downloading.
+            # BEFORE THE PULL, for the same reason as the embedding model below it:
+            # everything after this line costs gigabytes and minutes, and "Docker has
+            # 3.8 GB" is worth hearing while that is still a choice rather than a
+            # post-mortem. Never a refusal — see capacity.py.
+            report_capacity()
             ensure_embedding_model()
             started = ensure_mode(mode)
 

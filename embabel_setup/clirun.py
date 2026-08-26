@@ -225,6 +225,12 @@ def cmd_doctor(args) -> int:
     else:
         print(f"  {s.MIDDOT}  " + s.dim("no realm checkouts linked   (embabel realms link <dir>)"))
 
+    # INFORMATIONAL, and last of the machine facts: doctor's crosses mean "this is
+    # broken", and a tight-but-working machine is not broken. The numbers are printed
+    # either way so somebody can see their headroom before they wonder about it.
+    for is_warning, text in s.capacity_notes():
+        print(f"  {s.warn('!') if is_warning else s.MIDDOT}  " + (text if is_warning else s.dim(text)))
+
     strays = s.stray_sandbox_containers()
     if strays:
         print(f"  {s.MIDDOT}  " + s.dim(f"{len(strays)} stray code-sandbox container(s) — `embabel prune` removes them"))

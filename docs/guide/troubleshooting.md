@@ -151,13 +151,29 @@ Read the access log's status:
 
 | Status, repeating | Meaning |
 |---|---|
-| 502 / 504 | the console cannot reach the worlds container |
+| 502 / 504 | the console cannot reach the worlds container — see the two causes below |
 | 401 | the server is answering correctly — the problem is in the browser; hard-refresh or use a private window |
 | no lines at all | your browser is not reaching this container |
 
-If the console cannot reach the door, check that they agree about the port. The console
-bakes its proxy target when the container starts, so one created before setup settled
-your ports will aim at the wrong one:
+**A repeated 502 has two causes, and the first is invisible.**
+
+**The worlds container was replaced and the console is still dialling its old address.**
+nginx resolves a literal hostname once, when its config loads, and caches that address
+for the life of the process — so any `docker compose up` that recreates `worlds` strands
+the console until the *console* is restarted. Reproduced deliberately: recreating the
+worlds container turned a 401 in 10 ms into a permanent 502 in 1 ms, and only
+`docker restart embabel-appliance-worlds-console-1` cleared it. Console images built
+after this was found re-resolve per request and follow the door across a move — verified
+by forcing the worlds container from `172.20.0.2` to `172.20.0.12`, after which an
+untouched console still answered 401. If yours predates that, restarting it is the fix:
+
+```bash
+docker restart embabel-appliance-worlds-console-1
+```
+
+**Or the two disagree about the port.** The console bakes its proxy target when the
+container starts, so one created before setup settled your ports will aim at the wrong
+one:
 
 ```bash
 docker exec embabel-appliance-worlds-console-1 sh -c \
@@ -228,9 +244,27 @@ docker logs --tail 60 embabel-appliance-neo4j-1
 docker info --format '{{.MemTotal}}'
 ```
 
-`OOMKilled=true` is the common one on a laptop: Neo4j runs a 2 GB heap plus the graph
-data science plugin, alongside the appliance's own JVM. Either raise Docker's memory
-limit, or lower the heap by putting `NEO4J_HEAP=1G` in `.env` and restarting.
+**`OOMKilled` is usually `false` even when memory is the cause**, so do not read it as the
+verdict. Neo4j checks its own configuration before it starts and refuses outright rather
+than being killed:
+
+```
+ERROR Invalid memory configuration - exceeds physical memory. Check the configured
+values for server.memory.pagecache.size and server.memory.heap.max_size
+Neo4j Server shutdown initiated by request
+```
+
+The container then crash-loops with a climbing `RestartCount`, an exit code of 0, and
+`OOMKilled=false`. **`restarts=` is the tell, not the OOM flag.**
+
+The fix is tested, not hopeful. Neo4j runs a 2 GB heap by default plus the graph data
+science plugin; in a 2 GB container it produced the error above six times in a row, and
+with `NEO4J_HEAP=1G` in `.env` the same container came up healthy on the first try and
+settled at 812 MiB. So either raise Docker's memory, or lower the heap:
+
+```bash
+echo 'NEO4J_HEAP=1G' >> .env && embabel up
+```
 
 ---
 
@@ -259,6 +293,29 @@ what causes the restart, and the validation, and the model registration — thre
 things to fail, none of them about the key's validity.
 
 ---
+
+## What it needs, measured
+
+Numbers off a working appliance, not a specification — `embabel doctor` prints your own
+alongside them.
+
+| | |
+|---|---|
+| memory, core running | ~4.6 GB (worlds 2.47, neo4j 2.09, console 0.01) |
+| disk, core | ~2.9 GB of images plus ~1.1 GB for the embedding model |
+| disk, everything | ~14 GB — docling alone is 7.2 GB and arrives in the background |
+
+**The number that decides is what Docker has, not what the machine has.** On macOS and
+Windows the appliance lives in Docker's VM and can never exceed its allocation, so a
+32 GB laptop with Docker set to 2 GB runs out and an 8 GB one set to 6 GB is fine.
+`docker info --format '{{.MemTotal}}'` is the honest figure; Docker Desktop →
+Settings → Resources is where it changes.
+
+Tested at the boundary: with the core squeezed into 4 GB, Neo4j refuses to start at its
+default 2 GB heap and `NEO4J_HEAP=1G` fixes it, while the appliance JVM in 1.8 GB
+restarts repeatedly and takes the console's `/api` calls down to 502 with it. So 4 GB is
+genuinely too little, and the first thing to give room to is the appliance rather than
+the graph.
 
 ## Ports, for reference
 
