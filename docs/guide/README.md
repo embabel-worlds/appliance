@@ -52,6 +52,9 @@ returns to whichever you set up.
   you in quality, and how to put the sensitive work on them.
 - **[What stays on your machine](privacy.md)** — the honest accounting of what leaves,
   when, and to whom, and how to check rather than trust.
+- **[When it does not work](troubleshooting.md)** — keyed on the message you actually
+  see, because most of them name the wrong component. Also the two logs, and the list
+  of things that look like evidence and are not.
 
 If something here is wrong or unclear, it is written in
 [the appliance repository](https://github.com/embabel-worlds/appliance) under
