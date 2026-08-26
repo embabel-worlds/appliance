@@ -88,8 +88,26 @@ def cmd_status(args) -> int:
     return 0
 
 
+def docker_config_path() -> str:
+    """Where the Docker CLI reads its config, which is not always `~/.docker`.
+
+    DOCKER_CONFIG names a DIRECTORY — the CLI reads `config.json` inside it. Reading the
+    default while docker reads somewhere else would make this checker pass on exactly the
+    machine it exists to catch, which is worse than not checking at all.
+    """
+    root = os.environ.get("DOCKER_CONFIG") or os.path.join(os.path.expanduser("~"), ".docker")
+    return os.path.join(root, "config.json")
+
+
+def shorten_home(path: str) -> str:
+    """`~/.docker/config.json` rather than the whole thing — these paths are printed in a
+    terminal somebody is reading, and the home prefix is noise they already know."""
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
+
+
 def docker_credential_helpers() -> list[tuple[str, str]]:
-    """Every credential helper `~/.docker/config.json` names, with where it was named.
+    """Every credential helper docker's config names, with where it was named.
 
     `credsStore` applies to all registries; `credHelpers` maps particular ones. Both are
     checked, because a helper named for a registry this appliance never pulls from still
@@ -98,7 +116,8 @@ def docker_credential_helpers() -> list[tuple[str, str]]:
     Unreadable or absent config is not a problem — that is the normal state of a machine
     that has never logged in to a registry — so it yields nothing rather than a warning.
     """
-    path = os.path.expanduser("~/.docker/config.json")
+    path = docker_config_path()
+    shown = shorten_home(path)
     try:
         with open(path, encoding="utf-8") as f:
             config = json.load(f)
@@ -109,12 +128,12 @@ def docker_credential_helpers() -> list[tuple[str, str]]:
     named = []
     store = config.get("credsStore")
     if isinstance(store, str) and store:
-        named.append((store, "credsStore in ~/.docker/config.json"))
+        named.append((store, f"credsStore in {shown}"))
     helpers = config.get("credHelpers")
     if isinstance(helpers, dict):
         for registry, helper in sorted(helpers.items()):
             if isinstance(helper, str) and helper and helper not in [n for n, _ in named]:
-                named.append((helper, f"credHelpers[{registry}] in ~/.docker/config.json"))
+                named.append((helper, f"credHelpers[{registry}] in {shown}"))
     return named
 
 
@@ -162,7 +181,7 @@ def cmd_doctor(args) -> int:
               f"       Put Docker Desktop's own bin directory on your PATH:\n"
               f"         export PATH=\"$PATH:/Applications/Docker.app/Contents/Resources/bin\"\n"
               f"       or drop the helper — these images are public and need no credentials:\n"
-              f"         remove the \"credsStore\" line from ~/.docker/config.json")
+              f"         remove the \"credsStore\" line from {shorten_home(docker_config_path())}")
 
     runner = s._docker("model", "status")
     check("Docker Model Runner (embeddings run locally)", bool(runner and runner.returncode == 0),
