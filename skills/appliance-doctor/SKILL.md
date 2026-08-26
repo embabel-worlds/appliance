@@ -29,8 +29,20 @@ Usually somebody who did not sign up to become a Docker expert. That changes the
    credential-helper trap and the embedding model.
 3. Only then start reading logs.
 
-`docs/guide/troubleshooting.md` in this repo is the same material written for the user
-directly. Read it if you have it; send them the link if you do not.
+The same material written for the user directly is at
+<https://github.com/embabel-worlds/appliance/blob/main/docs/guide/troubleshooting.md>, and
+in `docs/guide/troubleshooting.md` if there is a checkout. Send them the link; do not make
+them read it to you.
+
+**If you are reading this from a URL rather than a checkout, that is the expected case** —
+the install that would have produced the checkout is the thing that failed. Nothing here
+needs one. To keep the skill for next time:
+
+```bash
+mkdir -p ~/.claude/skills/appliance-doctor && curl -fsSL \
+  https://raw.githubusercontent.com/embabel-worlds/appliance/main/skills/appliance-doctor/SKILL.md \
+  -o ~/.claude/skills/appliance-doctor/SKILL.md
+```
 
 ## The two logs — the single most useful fact here
 

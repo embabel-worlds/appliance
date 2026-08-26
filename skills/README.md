@@ -35,6 +35,15 @@ want to become one today: run the commands yourself, translate the log rather
 than pasting it, one action at a time. It also carries the list of observations
 that LOOK like evidence and are not, each of which has cost somebody hours.
 
+**Fetchable on its own**, unlike every other skill here, and deliberately: the situation it
+covers is one where the install never produced a checkout to read it from.
+
+```bash
+mkdir -p ~/.claude/skills/appliance-doctor && curl -fsSL \
+  https://raw.githubusercontent.com/embabel-worlds/appliance/main/skills/appliance-doctor/SKILL.md \
+  -o ~/.claude/skills/appliance-doctor/SKILL.md
+```
+
 ## realm-doctor
 
 Diagnoses a realm that is not behaving: installed but answering nothing, verbs

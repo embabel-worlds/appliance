@@ -243,17 +243,33 @@ if [ -n "$APP" ]; then
 fi
 
 # ── the verdict ──────────────────────────────────────────────────────────────
+# IF THEY HAVE A CODING AGENT, it can do the rest of this for them. Printed, never run:
+# this script promises to change nothing, and writing into somebody's home directory is a
+# change however small. The skill is fetched on its own because the checkout that would
+# normally carry it is exactly what a failed install does not leave behind.
+agent_offer() {
+  command -v claude >/dev/null 2>&1 || return 0
+  say ""
+  say "  ${DIM}You have Claude Code. It can take this from here — give it the runbook once:${R}"
+  say "  ${DIM}  mkdir -p ~/.claude/skills/appliance-doctor && curl -fsSL \\${R}"
+  say "  ${DIM}    https://raw.githubusercontent.com/embabel-worlds/appliance/main/skills/appliance-doctor/SKILL.md \\${R}"
+  say "  ${DIM}    -o ~/.claude/skills/appliance-doctor/SKILL.md${R}"
+  say "  ${DIM}then ask it why Embabel will not start.${R}"
+}
+
 say ""
 if [ "$PROBLEMS" -eq 0 ]; then
   say "  ${GRN}${B}Nothing looks broken.${R}"
   say "  ${DIM}If it still is not working, the next step is:  embabel doctor${R}"
   say "  ${DIM}and the guide at https://github.com/embabel-worlds/appliance/blob/main/docs/guide/troubleshooting.md${R}"
+  agent_offer
 else
   say "  ${B}$PROBLEMS thing(s) to fix, in order:${R}"
   N=1
   while IFS= read -r LINE; do
     [ -n "$LINE" ] && printf '    %s. %s\n' "$N" "$LINE" && N=$((N + 1))
   done < "$ADVICE_FILE"
+  agent_offer
   say ""
   say "  ${DIM}Still stuck? Copy everything this printed into an issue at${R}"
   say "  ${DIM}https://github.com/embabel-worlds/appliance/issues — it contains no passwords or keys.${R}"

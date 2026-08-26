@@ -38,10 +38,18 @@ If you already have the checkout, `sh doctor.sh` inside it does the same thing.
 
 ## Working with a coding agent instead
 
-If you have Claude Code or a similar agent, `skills/appliance-doctor` in this repository
-teaches it to do all of this for you and explain the result in plain words. It is written
-for exactly this situation: it assumes the appliance's own tools are unavailable, because
-if they worked you would not be reading this.
+If you have Claude Code or a similar agent, `skills/appliance-doctor` teaches it to do all
+of this for you and explain the result in plain words. It assumes the appliance's own tools
+are unavailable, because if they worked you would not be reading this — and it can be
+fetched without a checkout, since the install that would have made one is what failed:
+
+```bash
+mkdir -p ~/.claude/skills/appliance-doctor && curl -fsSL \
+  https://raw.githubusercontent.com/embabel-worlds/appliance/main/skills/appliance-doctor/SKILL.md \
+  -o ~/.claude/skills/appliance-doctor/SKILL.md
+```
+
+Then ask your agent to work out why Embabel will not start.
 
 ## The two logs, and why this matters more than anything else here
 
