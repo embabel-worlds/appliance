@@ -177,6 +177,52 @@ def cmd_sample(args) -> int:
     return 1
 
 
+def cmd_contract(args) -> int:
+    """Draft an ODCS data contract for a saved view.
+
+    Three escalating decisions, three flags, none of them the default. Reading a view's
+    declaration is free and changes nothing; --sample runs the view; --save writes a
+    document into the world; --bind puts it in front of the next person who queries.
+
+    Nothing here can produce an enforcing contract. The appliance drafts in `draft`
+    status and binds in `observe` mode, and promoting either is a human edit to a file —
+    deliberately, because the failure this whole feature guards against is a promise
+    nobody checked being believed by a machine.
+    """
+    if args.contract_command != "generate":
+        print("  embabel contract generate --view <name>")
+        return 1
+
+    base, auth = _sample_target(args)
+    if not base:
+        return 1
+
+    # --bind without --save would ask the view to pin a contract that was never written.
+    persist = args.save or args.bind
+    try:
+        result = s.contract_api(base, auth, args.view, {
+            "sample": args.sample,
+            "persist": persist,
+            "bind": args.bind,
+        })
+    except s.SetupError as e:
+        print("  " + s.warn(str(e)))
+        return 1
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(result.get("yaml", ""))
+        print(f"  {s.TICK} Wrote the contract to {s.bold(args.output)}")
+        s.describe_contract(result, persisted=persist, bound=result.get("bound", False))
+        return 0
+
+    s.describe_contract(result, persisted=persist, bound=result.get("bound", False))
+    if not persist:
+        print()
+        print(result.get("yaml", ""))
+    return 0
+
+
 def cmd_scenario(args) -> int:
     """Put the world in a named state, from wherever it is now.
 

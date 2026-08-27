@@ -12,7 +12,7 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import cmd_agents, cmd_realms, cmd_sample, cmd_scenario
+from .clidata import cmd_agents, cmd_contract, cmd_realms, cmd_sample, cmd_scenario
 from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
@@ -128,6 +128,19 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("-o", "--output", help="write here instead of stdout")
     a.set_defaults(func=cmd_sample)
     p.set_defaults(func=cmd_sample, sample_command=None)
+
+    p = sub.add_parser("contract", help="data contracts: draft one for a saved view")
+    cp = p.add_subparsers(dest="contract_command")
+    a = cp.add_parser("generate", help="draft an ODCS contract describing a view's output")
+    a.add_argument("--view", required=True, help="the saved view to describe")
+    a.add_argument("--sample", action="store_true",
+                   help="run the view once, under a row cap, to infer types (reads data)")
+    a.add_argument("--save", action="store_true", help="write the draft into the world")
+    a.add_argument("--bind", action="store_true",
+                   help="also pin the view to it in observe mode (implies --save)")
+    a.add_argument("--output", help="write the contract YAML to a file instead of printing it")
+    a.set_defaults(func=cmd_contract)
+    p.set_defaults(func=cmd_contract, contract_command=None)
 
     p = sub.add_parser("scenario", help="put the world in a named state")
     sc = p.add_subparsers(dest="scenario_command")

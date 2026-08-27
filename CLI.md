@@ -250,6 +250,46 @@ anywhere.
 What comes out is exactly what `embabel sample add` takes, so there is no conversion step
 between exporting and loading, and therefore none to get wrong.
 
+### `embabel contract generate --view <name>`
+
+Draft an ODCS v3.1 data contract describing what one of your saved views returns.
+
+```
+embabel contract generate --view account_health
+```
+
+That reads the view's declaration, runs nothing, writes nothing, and prints the contract
+for you to read. Three further flags each buy one more step, and none of them is on by
+default:
+
+| Flag | What it adds |
+|---|---|
+| `--sample` | runs the view once, under a row cap, to infer column types |
+| `--save` | writes the draft into the world's `config/contracts` |
+| `--bind` | pins the view to it in `observe` mode (implies `--save`) |
+| `--output <file>` | writes the YAML to a file instead of printing it |
+
+The listing marks every column with where its entry came from, because that is the
+distinction the whole thing turns on:
+
+```
+    ~ account                      string       sampled  suggests required, unique
+    ✓ last_seen                    —            declared
+```
+
+`✓ declared` was read from the view as written and is true of it. `~ sampled` was inferred
+from one run and might not hold tomorrow — which is why an inferred type is written into
+the contract but an inferred *constraint* is not. "This column was never null in 500 rows"
+becomes a suggestion a person confirms, never a promise the appliance starts enforcing.
+
+Nothing this command does can withhold anybody's rows. A generated contract is `draft`
+and a binding it creates is `observe`, which records verdicts and returns every row.
+Moving either to `active` / `enforce` is an edit you make by hand, once you believe it.
+
+It refuses rather than guesses. A view that returns `*`, a bare node, or two columns with
+the same name comes back as a refusal naming what to change — because a contract that is
+wrong and later enforced is worse than no contract at all.
+
 ### `embabel scenario`
 
 Put the world in a named state, from wherever it is now.

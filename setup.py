@@ -90,6 +90,7 @@ from embabel_setup.lifecycle import *    # noqa: F403 — up, down, and away
 from embabel_setup.realms import *       # noqa: F403 — realm checkouts and the world repo
 from embabel_setup.capacity import *     # noqa: F403 — what docker can actually give this
 from embabel_setup.samples import *      # noqa: F403 — fictional records, marked and removable
+from embabel_setup.contracts import *    # noqa: F403 — ODCS contracts drafted for saved views
 from embabel_setup.scenarios import *    # noqa: F403 — the world in a named state
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
