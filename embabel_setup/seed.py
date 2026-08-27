@@ -290,8 +290,8 @@ class Seeding:
             STATUS.stop("")
         shutil.rmtree(self._workspace, ignore_errors=True)
         if self._done:
-            print(f"  {TICK} Indexed {self._done} guide(s) — ask the world about itself, "
-                  + dim("no key needed."))
+            noun = "guide" if self._done == 1 else "guides"
+            print(f"  {TICK} Indexed {self._done} {noun} — ask the world about itself.")
         elif self._files:
             # Silent failure would be worse than none: somebody would search for a
             # thing the product implied was there.

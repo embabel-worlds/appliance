@@ -1,15 +1,7 @@
-Extend your world by installing realms.
-Realms extend your knowledge graph and add agents.
-Typically, they bring in external systems, data sources and applications.
-You can install realms from our realm store or author them yourself.
+Realms extend your world: they add to the knowledge graph, bring in external
+systems and data sources, and carry agents. Install them from the realm store or
+write your own.
 
-If you are writing your own, they live in a directory on this machine, which
-your world reads live so an edit shows up without reinstalling anything. One is
-already set up for you — the directory named below — so there is nothing to do
-here until you have a realm to put in it.
-
-To keep them somewhere else, say so whenever you like:
-
-    embabel realms link ~/dev
-
-That wants the directory your realms sit IN, not a realm itself.
+A directory for realm checkouts is already configured and shown below. Put each
+realm repository inside it. Once discovered, realm edits reach the appliance
+with no publish, push or restart.

@@ -1,9 +1,8 @@
-Realms are read live: edit one and the change reaches the appliance
-without a publish, push or restart.
-
-Load one into a world with a path entry in its config/realms.yml:
+Load a realm into a world with a path entry in config/realms.yml:
 
     path: /realms/<dir>
 
-    > embabel realms list        what the appliance can see
-    > embabel realms link <dir>  point it somewhere else
+    embabel realms list        what the appliance can see
+    embabel realms link ~/dev  keep your checkouts somewhere else — use the
+                               directory containing your realms, not a realm
+                               itself

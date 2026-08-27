@@ -633,8 +633,7 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
                 "or 'n' to skip: " if environment
                 else "\n  Paste your model-provider key, or 'n' to skip: ").strip()
             if asked.lower() in ("n", "no"):
-                print(f"\n  {TICK} Starting without a provider key. "
-                      + dim("Add one any time: `embabel up` asks again."))
+                print(f"\n  {TICK} Starting without a provider key.")
                 return {}
             if asked:
                 provider = provider_from_key(asked)
