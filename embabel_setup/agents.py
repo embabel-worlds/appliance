@@ -12,6 +12,7 @@ in this module can re-issue one — it can only register the one it is handed.
 from __future__ import annotations
 import os
 import re
+import shlex
 import shutil
 import subprocess
 
@@ -37,6 +38,42 @@ AGENTS_BLOCK_BEGIN = "<!-- BEGIN embabel appliance -->"
 
 
 AGENTS_BLOCK_END = "<!-- END embabel appliance -->"
+TOKEN_BLOCK_BEGIN = "# BEGIN embabel appliance MCP token"
+TOKEN_BLOCK_END = "# END embabel appliance MCP token"
+
+
+def shell_profile() -> str | None:
+    """The startup file for the current interactive shell."""
+    shell = os.path.basename(os.environ.get("SHELL", ""))
+    profiles = {
+        "zsh": "~/.zshrc",
+        "bash": "~/.bashrc",
+        "fish": "~/.config/fish/config.fish",
+    }
+    profile = profiles.get(shell)
+    return os.path.expanduser(profile) if profile else None
+
+
+def install_codex_token(token: str, target: str) -> None:
+    """Put the Codex token in one replaceable shell-profile block."""
+    export = (f"set -gx {CODEX_TOKEN_ENV} {shlex.quote(token)}"
+              if target.endswith("config.fish")
+              else f"export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
+    block = f"{TOKEN_BLOCK_BEGIN}\n{export}\n{TOKEN_BLOCK_END}\n"
+    existing = ""
+    if os.path.exists(target):
+        with open(target) as f:
+            existing = f.read()
+    pattern = re.compile(
+        rf"{re.escape(TOKEN_BLOCK_BEGIN)}.*?{re.escape(TOKEN_BLOCK_END)}\n?",
+        re.DOTALL,
+    )
+    updated = pattern.sub(block, existing) if pattern.search(existing) else (
+        existing + ("" if not existing or existing.endswith("\n") else "\n") + block
+    )
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "w") as f:
+        f.write(updated)
 
 
 def codex_agents_block() -> str:
@@ -283,9 +320,22 @@ def wire_coding_agents(result: dict) -> None:
                     capture_output=True, text=True, timeout=60,
                 )
                 if run.returncode == 0:
-                    print(f"  Codex wired as '{MCP_SERVER_NAME}'. ONE STEP REMAINS — Codex reads the")
-                    print(f"  token from ${CODEX_TOKEN_ENV}, so add this line to your shell profile:")
-                    print(f"    export {CODEX_TOKEN_ENV}=\"{token}\"")
+                    print(f"  Codex wired as '{MCP_SERVER_NAME}'.")
+                    profile = shell_profile()
+                    if profile:
+                        answer = prompt(f"  Add its token to {profile}? [Y/n]: ").strip().lower()
+                        if answer in ("", "y", "yes"):
+                            try:
+                                install_codex_token(token, profile)
+                                print(f"  Token added to {profile} — open a new terminal to use it.")
+                            except OSError as e:
+                                print(f"  Could not update {profile}: {e}")
+                        else:
+                            print(f"  Add this to {profile} before using Codex:")
+                            print(f"    export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
+                    else:
+                        print(f"  Set ${CODEX_TOKEN_ENV} in your shell before using Codex:")
+                        print(f"    export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
                     try:
                         install_codex_agents_block()
                         print(f"  Added appliance guidance to {CODEX_AGENTS_FILE} (a marked block; the rest of the file is untouched).")
@@ -309,7 +359,10 @@ def wire_coding_agents(result: dict) -> None:
     if chat_url != url:
         print(f"\n  For a chat client — Claude Desktop, Open WebUI, anything speaking MCP:")
         print(f"    URL:    {chat_url}")
-        print(f"    Header: Authorization: Bearer {token}")
+        if wired:
+            print("    Run `embabel agents` when you are ready to configure another client.")
+        else:
+            print(f"    Header: Authorization: Bearer {token}")
         print("  " + dim("Same token, the assistant's tools rather than the builder's."))
 
     if wired:
