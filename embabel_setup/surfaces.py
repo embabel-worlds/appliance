@@ -71,7 +71,13 @@ def print_worlds_surfaces(base: str) -> None:
     say("surfaces-worlds",
         console=bold("Console") + "        " + url(surface_urls()["console"]),
         start_here=accent(f"{ARROW} START HERE"),
-        api="API            " + url(base) + "  ",
+        # NOT PRESENTED AS A DESTINATION. Every line in this block is a URL in a
+        # terminal that makes URLs clickable, so the only thing separating "go here"
+        # from "this exists" is what the words around it say. Somebody followed this
+        # one and landed on the door's own legacy web UI, which is not where anyone
+        # should be — the console is the surface. The label carries that now instead
+        # of leaving it to the aside.
+        api="API (no UI)    " + url(base) + "  ",
         dashboards="Dashboards     " + url(surface_urls()["dashboards"]),
         metrics=url(surface_urls()["metrics"]),
         mcp="MCP servers    " + url(base + "/mcp/chat"),

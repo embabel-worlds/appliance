@@ -1,8 +1,8 @@
     {console}   {start_here}
-                   The Worlds console: realms, documents, keys, views, chat.
-                   Opens with the commissioning sequence.
+                   The Worlds console: realms, documents, views, apps, chat.
+                   Everything you need is here.
 
-    {api}   ((the server the console talks to))
+    {api}   ((what the console calls — a machine surface, not a page to visit))
     {dashboards}   ·   Metrics  {metrics}
 
     {mcp}         ((embabel-chat — chat clients, the assistant surface))
