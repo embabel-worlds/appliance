@@ -106,7 +106,7 @@ def provider_from_key(api_key: str | None) -> str | None:
 def provider_of(api_key: str | None) -> str:
     """Best available provider name for timeout messages."""
     provider = provider_from_key(api_key)
-    return provider.title() if provider else "your provider"
+    return {"openai": "OpenAI", "anthropic": "Anthropic"}.get(provider, "your provider")
 
 
 def _timed_out(base: str, seconds: int, waiting_on: str | None) -> Timeout:
@@ -658,8 +658,6 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
         # Cleared after one attempt: a REJECTED key must be asked for again, not
         # re-posted forever — the same rule the environment value already follows.
         forced = None
-        if prefilled and "provider" in prefilled and step["id"] != wizard.MCP:
-            print(f"\n  Using {PROVIDER_ENV[prefilled['provider']]} from your environment.")
         # `in`, not `or`: a value the caller supplied stands even when it is empty,
         # and a field it did not supply is the only one worth asking about.
         answers = {
