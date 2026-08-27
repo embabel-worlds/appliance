@@ -360,7 +360,7 @@ def wire_coding_agents(result: dict) -> None:
         print(f"\n  For a chat client — Claude Desktop, Open WebUI, anything speaking MCP:")
         print(f"    URL:    {chat_url}")
         if wired:
-            print("    Run `embabel agents` when you are ready to configure another client.")
+            print("    Run `embabel agents --show-token` when the client asks for its bearer token.")
         else:
             print(f"    Header: Authorization: Bearer {token}")
         print("  " + dim("Same token, the assistant's tools rather than the builder's."))
