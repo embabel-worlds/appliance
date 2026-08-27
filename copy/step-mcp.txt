@@ -1,9 +1,15 @@
-This appliance serves two MCP endpoints, and one token opens both:
+This appliance provides two MCP endpoints. They use the same token but expose
+different tools:
 
-    /mcp/chat    a chat client — the assistant's own tools, over your world's data
-    /mcp/code    a coding agent — realms, authoring, mining a system into one
+    /mcp/chat    For chat clients such as Claude Desktop and Open WebUI. It can
+                 search your graph and documents, use saved views, and access
+                 the assistant's memory.
 
-Plain /mcp is the chat door as well, and is what most clients fill in for you.
+    /mcp/code    For coding agents such as Claude Code and Codex. It can install
+                 and author realms, inspect connected systems, and create views
+                 and handlers.
 
-The token stays on this machine and becomes active when setup completes and the
-appliance restarts.
+Plain /mcp is the same as /mcp/chat and is the address most chat clients expect.
+
+The token stays on this machine and becomes active after setup restarts the
+appliance.

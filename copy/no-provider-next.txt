@@ -1,6 +1,6 @@
-No provider key, so chat and reasoning will say "no LLM configured" until you
-add one. Everything else is ready now: add documents and they are embedded on
-this machine, searchable immediately, costing nothing.
+Chat and reasoning will answer "no LLM configured" until you add a key.
+Everything else is ready: documents you add are embedded here and searchable
+at once.
 
-    embabel up                 asks for a key again, any time
-    docs/guide/local-models.md run the models on your own machine instead
+    embabel up                 add a key, any time
+    docs/guide/local-models.md run the models on this machine instead

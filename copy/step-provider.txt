@@ -1,2 +1,2 @@
-Paste a key and we work out whose it is. It is checked against the provider
-now, and stays on this machine.
+Paste a key for OpenAI or Anthropic. The appliance works out whose it is,
+checks it against that provider now, and keeps it on this machine.
