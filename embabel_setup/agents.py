@@ -54,14 +54,19 @@ def shell_profile() -> str | None:
     return os.path.expanduser(profile) if profile else None
 
 
+def codex_token_export(token: str, target: str | None = None) -> str:
+    """Shell command that exports the Codex token, including fish syntax when needed."""
+    return (f"set -gx {CODEX_TOKEN_ENV} {shlex.quote(token)}"
+            if target and target.endswith("config.fish")
+            else f"export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
+
+
 def install_codex_token(token: str, target: str) -> None:
     """Put the Codex token in one replaceable shell-profile block."""
-    export = (f"set -gx {CODEX_TOKEN_ENV} {shlex.quote(token)}"
-              if target.endswith("config.fish")
-              else f"export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
-    block = f"{TOKEN_BLOCK_BEGIN}\n{export}\n{TOKEN_BLOCK_END}\n"
+    block = f"{TOKEN_BLOCK_BEGIN}\n{codex_token_export(token, target)}\n{TOKEN_BLOCK_END}\n"
+    existed = os.path.exists(target)
     existing = ""
-    if os.path.exists(target):
+    if existed:
         with open(target) as f:
             existing = f.read()
     pattern = re.compile(
@@ -74,6 +79,8 @@ def install_codex_token(token: str, target: str) -> None:
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "w") as f:
         f.write(updated)
+    if not existed:
+        os.chmod(target, 0o600)
 
 
 def codex_agents_block() -> str:
@@ -330,12 +337,14 @@ def wire_coding_agents(result: dict) -> None:
                                 print(f"  Token added to {profile} — open a new terminal to use it.")
                             except OSError as e:
                                 print(f"  Could not update {profile}: {e}")
+                                print(f"  Add this to {profile} before using Codex:")
+                                print(f"    {codex_token_export(token, profile)}")
                         else:
                             print(f"  Add this to {profile} before using Codex:")
-                            print(f"    export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
+                            print(f"    {codex_token_export(token, profile)}")
                     else:
                         print(f"  Set ${CODEX_TOKEN_ENV} in your shell before using Codex:")
-                        print(f"    export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
+                        print(f"    {codex_token_export(token)}")
                     try:
                         install_codex_agents_block()
                         print(f"  Added appliance guidance to {CODEX_AGENTS_FILE} (a marked block; the rest of the file is untouched).")
