@@ -93,16 +93,20 @@ PROVIDER_ENV = {
 PREFERRED_DEFAULTS = {"provider": "openai"}
 
 
-def provider_of(api_key: str | None) -> str:
-    """Whose key this is, from the key itself — for the timeout message, and nothing else.
+def provider_from_key(api_key: str | None) -> str | None:
+    """Identify keys whose public prefix is unambiguous; let the operator classify the rest."""
+    key = api_key or ""
+    if key.startswith("sk-ant-"):
+        return "anthropic"
+    if key.startswith("sk-"):
+        return "openai"
+    return None
 
-    The SERVER is the authority on this (it detects the provider and validates against
-    it); this is only so a message can say "OpenAI" instead of "your provider", and it
-    has to work when the server never answered. Anthropic's keys announce themselves;
-    everything else is called OpenAI, which is both the common case and the default the
-    wizard offers.
-    """
-    return "Anthropic" if (api_key or "").startswith("sk-ant-") else "OpenAI"
+
+def provider_of(api_key: str | None) -> str:
+    """Best available provider name for timeout messages."""
+    provider = provider_from_key(api_key)
+    return provider.title() if provider else "your provider"
 
 
 def _timed_out(base: str, seconds: int, waiting_on: str | None) -> Timeout:
@@ -633,9 +637,11 @@ def run_step(base: str, token: str, step: dict, use_environment: bool = True) ->
                       + dim("Add one any time: `embabel up` asks again."))
                 return {}
             if asked:
-                # A pasted key IS the answer. The server detects whose it is — the
-                # provider field says so itself — so it is never asked for.
-                forced = {"apiKey": asked}
+                provider = provider_from_key(asked)
+                if provider is None:
+                    print("\n  This key does not identify its provider.")
+                    provider = ask(next(f for f in step["fields"] if f["name"] == "provider"))
+                forced = {"apiKey": asked, "provider": provider}
                 break
             if environment:
                 print(f"  Using {source}.")
