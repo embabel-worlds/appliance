@@ -150,6 +150,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_scenario, scenario_command=None, dry_run=False)
 
     p = sub.add_parser("agents", help="re-point Claude Code and Codex at this appliance")
+    p.add_argument("--show-token", action="store_true",
+                   help="print the MCP token for manual client configuration")
     p.set_defaults(func=cmd_agents)
 
     p = sub.add_parser("upgrade", help="pull newer images, keep your data")

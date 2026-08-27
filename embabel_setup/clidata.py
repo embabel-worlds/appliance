@@ -84,6 +84,10 @@ def cmd_agents(args) -> int:
         print("  " + s.dim("A token is minted during first-run setup and cannot be re-issued afterwards."))
         return 1
 
+    if args.show_token:
+        print(token)
+        return 0
+
     print(f"  Wiring agents to {base}/mcp" + (f" as {user}" if user else ""))
     s.wire_coding_agents({"token": token, "url": f"{base}/mcp", "user": user})
     return 0
