@@ -2,6 +2,6 @@ Realms extend your world: they add to the knowledge graph, bring in external
 systems and data sources, and carry agents. Install them from the realm store or
 write your own.
 
-Your own realms live in a directory on this machine, read live — an edit reaches
-the appliance with no publish, push or restart. The default directory is set up
-already, so there is nothing to do until you have a realm to put in it.
+A directory for realm checkouts is already configured and shown below. Put each
+realm repository inside it. Once discovered, realm edits reach the appliance
+with no publish, push or restart.

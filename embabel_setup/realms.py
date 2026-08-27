@@ -107,7 +107,7 @@ def announce_realms(path: str, realms: list[str], notes: list[str]) -> None:
         shown = ", ".join(realms[:6]) + (f" and {len(realms) - 6} more" if len(realms) > 6 else "")
         print(f"  {len(realms)} realm{'s' if len(realms) != 1 else ''} visible: {shown}")
     else:
-        print("  No realms there yet — clone one in and it is visible on the next start.")
+        print("  No realms there yet — clone one in and it will be discovered on the next start.")
     for note in notes:
         print(f"  {warn('!')} {note}")
     print()
