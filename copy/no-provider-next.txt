@@ -3,4 +3,4 @@ Everything else is ready: documents you add are embedded here and searchable
 at once.
 
     embabel up                 add a key, any time
-    docs/guide/local-models.md run the models on this machine instead
+    docs/guide/local-models.md run the models on your host machine instead
