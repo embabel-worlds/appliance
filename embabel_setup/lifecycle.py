@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 
-from .agents import MCP_SERVER_NAME, unwire_coding_agents
+from .agents import MCP_SERVER_NAME, shell_profile, unwire_coding_agents
 from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_COMPOSE, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
@@ -360,7 +360,7 @@ def remove_stray_sandboxes() -> None:
 
 
 def cli_shim_paths() -> list[str]:
-    """Every place install.sh could have written the `embabel` launcher.
+    """Every place setup could have written the `embabel` launcher.
 
     `$EMBABEL_BIN_DIR` first because an installer run with it set put the shim there, then the
     default. Both are checked rather than one, so an uninstall undoes an install that used either.
@@ -372,15 +372,75 @@ def cli_shim_paths() -> list[str]:
     return [os.path.join(d, "embabel") for d in seen]
 
 
+def write_cli_shim() -> str | None:
+    """Put this checkout's `embabel` forwarder on PATH without taking that name from anyone else.
+
+    The name is not rare, so an existing file must prove that this installation wrote it before
+    it is replaced. Uncertainty means refusal: leaving this appliance reachable by path is better
+    than silently destroying a different tool.
+    """
+    path = cli_shim_paths()[0]
+    directory = os.path.dirname(path)
+    checkout = os.path.abspath(APPLIANCE_DIR)
+    body = f'''#!/bin/sh
+# Forwards to the Embabel appliance in {checkout}. Written by install.sh.
+# Finds a Python 3.9+ each run, preferring newer. The CLI repeats this check
+# as a sentence.
+for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+  command -v "$cand" >/dev/null 2>&1 || continue
+  if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+    exec "$cand" "{checkout}/embabel" "$@"
+  fi
+done
+echo "embabel: Python 3.9+ not found (macOS: brew install python@3.12)" >&2
+exit 1
+'''
+    if os.path.lexists(path):
+        if not is_our_shim(path):
+            print(f"  Left {path} alone — it is not the launcher this installation wrote.")
+            return None
+        try:
+            with open(path) as f:
+                if f.read() == body and os.access(path, os.X_OK):
+                    return path
+        except OSError:
+            pass
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(body)
+        os.chmod(path, 0o755)
+    except OSError as e:
+        print(f"  Could not install the 'embabel' command to {path}: {e}")
+        return None
+
+    existing = shutil.which("embabel")
+    if existing and os.path.abspath(existing) != os.path.abspath(path):
+        print(f"  {warn('!!')} another \"embabel\" already comes first on your PATH:")
+        print("  " + dim(f"      {existing}"))
+        print("  " + dim(f"    To use this one, put {directory} ahead of it,"))
+        print("  " + dim(f"    or run it by path: {path}"))
+        print()
+
+    if directory in os.environ.get("PATH", "").split(os.pathsep):
+        print(f"  Installed the 'embabel' command to {directory}.")
+    else:
+        profile = shell_profile()
+        shown = profile.replace(os.path.expanduser("~"), "~", 1) if profile else "your shell profile"
+        print(f"  Installed the 'embabel' command to {directory}, which is NOT on your PATH.")
+        print(f'  Add it to {shown}:  export PATH="{directory}:$PATH"')
+    print()
+    return path
+
+
 def is_our_shim(path: str) -> bool:
-    """Whether [path] is the forwarder install.sh wrote for THIS installation.
+    """Whether [path] is the forwarder setup wrote for THIS installation.
 
     NEVER delete an `embabel` on PATH just because it is called `embabel`. It is not a rare name,
-    and install.sh warns when it finds one already ahead of ours. An uninstall that removed
-    somebody's other tool because the names matched would be a far worse bug than the one this
-    fixes.
+    and setup warns when it finds one already ahead of ours. An uninstall that removed somebody's
+    other tool because the names matched would be a far worse bug than the one this fixes.
 
-    So: it must be a small file, it must carry the line install.sh writes, and it must name the
+    So: it must be a small file, it must carry the installer's ownership line, and it must name the
     directory this script is running from. Anything else is left alone.
     """
     try:
@@ -390,20 +450,20 @@ def is_our_shim(path: str) -> bool:
             body = f.read()
     except OSError:
         return False
-    # APPLIANCE_DIR, not dirname(__file__). install.sh writes the shim pointing at
-    # the CHECKOUT, and this asks "is that us?" — from inside the package the two
-    # are different directories, the answer would always be no, and uninstall would
-    # quietly stop removing the command it put on PATH.
+    # APPLIANCE_DIR, not dirname(__file__). The shim points at the CHECKOUT, and
+    # this asks "is that us?" — from inside the package the two are different
+    # directories, the answer would always be no, and uninstall would quietly stop
+    # removing the command it put on PATH.
     here = os.path.abspath(APPLIANCE_DIR)
     return "Written by install.sh" in body and here in body
 
 
 def remove_cli_shim() -> None:
-    """Take the `embabel` command off PATH — the one install.sh put there.
+    """Take the `embabel` command off PATH — the one this installation put there.
 
-    Without this, uninstall left a live command pointing at a directory it had just emptied, so
-    `embabel status` failed in a way that read as a broken product rather than a completed
-    uninstall.
+    The checkout stays so `./worlds.py` can set up again, but uninstall promises to remove the
+    machine-wide command along with the machine-local configuration. Leaving it behind would make
+    the checkout look installed after the appliance and its configuration were gone.
     """
     removed = []
     for path in cli_shim_paths():
@@ -445,10 +505,10 @@ def uninstall() -> None:
     Realm checkouts are not touched either. They are their own repositories and
     somebody's work in progress; this script has no business deleting them.
 
-    The `embabel` COMMAND does go, though — see [remove_cli_shim]. install.sh puts a
-    launcher on PATH, so an uninstall that left it there left a live command pointing at a
-    directory it had just emptied. The installation DIRECTORY stays: this script is running
-    from it, and `./setup.py` sets up again from there.
+    The `embabel` COMMAND does go, though — see [remove_cli_shim]. Setup puts a launcher on
+    PATH, so an uninstall that left it there would leave machine-local installation state behind.
+    The installation DIRECTORY stays: this script is running from it, and `./setup.py` sets up
+    again from there.
     """
     if len(installed_instances()) > 1:
         print(f"  --uninstall removes the '{instance()}' appliance. Others here are untouched:")
@@ -462,7 +522,7 @@ def uninstall() -> None:
     print(f"    the '{MCP_SERVER_NAME}' MCP registration — only where it points at THIS appliance")
     for path in cli_shim_paths():
         if os.path.exists(path) and is_our_shim(path):
-            print(f"    {path} — the 'embabel' command install.sh put on your PATH")
+            print(f"    {path} — the 'embabel' command setup put on your PATH")
             break
     print("    any stray code-sandbox container (asked separately — a dev JVM may own one)")
     print("\n  KEPT:")

@@ -319,6 +319,10 @@ def main() -> int:
             STATUS.start("Restarting to pick up your provider key")
             wait_until_serving(container, base, started_before)
             STATUS.stop()
+        # Uninstall keeps this checkout as the way back but removes its machine-wide
+        # command. A successful setup must restore that command whichever door — the
+        # curl installer, ./me.py or ./worlds.py — brought the operator here.
+        write_cli_shim()
         print(f"\n  {TICK} Setup complete. Sign in at {url(where)}"
               + (f" as {bold(username)}" if username else ""))
         # Printed first and always — the address is the whole answer on a headless
