@@ -316,7 +316,8 @@ PY="$(find_python)" || die "Embabel needs Python 3.9 or newer — found $(python
 # ONE WRITER, reached from both paths. Setup owns the launcher because it also
 # has to restore it after uninstall; keeping a heredoc here made the curl entry
 # point work while the documented ./worlds.py entry point quietly did not.
-(cd "$HOME_DIR" && "$PY" -c 'from embabel_setup.lifecycle import write_cli_shim; write_cli_shim()')
+(cd "$HOME_DIR" && "$PY" -c 'from embabel_setup.lifecycle import write_cli_shim; write_cli_shim()' < /dev/null) ||
+  say "Could not put the 'embabel' command on your PATH — run $HOME_DIR/embabel by path."
 
 ok "Done. Starting setup — after this, use the 'embabel' command."
 echo

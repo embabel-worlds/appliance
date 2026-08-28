@@ -546,7 +546,7 @@ Undo the installation: the appliance's state, this machine's configuration —
 volume — and **the `embabel` command itself**, taken back off your PATH.
 
 That last one only removes the launcher THIS installation wrote. `embabel` is not a
-rare name, and install.sh warns when another one already comes first on your PATH;
+rare name, and setup warns when another one already comes first on your PATH;
 uninstall reads the file before deleting it and leaves anything it did not write
 alone. If another `embabel` still answers afterwards, it says so — otherwise the next
 `which embabel` finds a hit and the uninstall looks like it failed.

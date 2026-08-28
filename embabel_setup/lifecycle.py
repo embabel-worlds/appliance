@@ -52,6 +52,11 @@ SETUP_IS_DRIVING = re.compile(r"ACTION REQUIRED|Setup token:|worlds\.py|me\.py|s
 # message, short enough that a thirty-model inventory does not arrive twice.
 BOOT_LINE_MAX = 200
 
+# NEVER CHANGE THIS STRING. It is the ownership marker carried by every shim
+# this installer has ever written, including the old install.sh heredoc ones;
+# uninstall must continue to recognise those after the writer moves or changes.
+SHIM_OWNERSHIP_MARKER = "Written by install.sh"
+
 # What the boot warned about, collected by the follower and reported as one line
 # by [report_boot_warnings]. A plain list: appended from the pump thread and read
 # once it has stopped, and list.append is atomic under the GIL.
@@ -381,9 +386,11 @@ def write_cli_shim() -> str | None:
     """
     path = cli_shim_paths()[0]
     directory = os.path.dirname(path)
-    checkout = os.path.abspath(APPLIANCE_DIR)
+    checkout = os.path.realpath(APPLIANCE_DIR)
+    # A forwarder, not a copy: updating the checkout updates the command too,
+    # instead of leaving a second CLI version to drift.
     body = f'''#!/bin/sh
-# Forwards to the Embabel appliance in {checkout}. Written by install.sh.
+# Forwards to the Embabel appliance in {checkout}. {SHIM_OWNERSHIP_MARKER}.
 # Finds a Python 3.9+ each run, preferring newer. The CLI repeats this check
 # as a sentence.
 for cand in python3.13 python3.12 python3.11 python3.10 python3; do
@@ -398,6 +405,8 @@ exit 1
     if os.path.lexists(path):
         if not is_our_shim(path):
             print(f"  Left {path} alone — it is not the launcher this installation wrote.")
+            print("  " + dim(f"    Run this appliance by path: {checkout}/embabel"))
+            print("  " + dim("    Or set EMBABEL_BIN_DIR to your own directory and run setup again."))
             return None
         try:
             with open(path) as f:
@@ -414,17 +423,22 @@ exit 1
         print(f"  Could not install the 'embabel' command to {path}: {e}")
         return None
 
+    # Another command may legitimately win; report it rather than guessing how
+    # somebody else intended their PATH to be ordered.
     existing = shutil.which("embabel")
-    if existing and os.path.abspath(existing) != os.path.abspath(path):
+    if existing and os.path.realpath(existing) != os.path.realpath(path):
         print(f"  {warn('!!')} another \"embabel\" already comes first on your PATH:")
         print("  " + dim(f"      {existing}"))
         print("  " + dim(f"    To use this one, put {directory} ahead of it,"))
         print("  " + dim(f"    or run it by path: {path}"))
         print()
 
-    if directory in os.environ.get("PATH", "").split(os.pathsep):
+    if any(os.path.realpath(entry) == os.path.realpath(directory)
+           for entry in os.environ.get("PATH", "").split(os.pathsep) if entry):
         print(f"  Installed the 'embabel' command to {directory}.")
     else:
+        # Name the profile THEY use: sending a bash user to ~/.zshrc gives them
+        # no usable instruction at all.
         profile = shell_profile()
         shown = profile.replace(os.path.expanduser("~"), "~", 1) if profile else "your shell profile"
         print(f"  Installed the 'embabel' command to {directory}, which is NOT on your PATH.")
@@ -454,8 +468,8 @@ def is_our_shim(path: str) -> bool:
     # this asks "is that us?" — from inside the package the two are different
     # directories, the answer would always be no, and uninstall would quietly stop
     # removing the command it put on PATH.
-    here = os.path.abspath(APPLIANCE_DIR)
-    return "Written by install.sh" in body and here in body
+    here = os.path.realpath(APPLIANCE_DIR)
+    return SHIM_OWNERSHIP_MARKER in body and here in body
 
 
 def remove_cli_shim() -> None:
