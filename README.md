@@ -496,8 +496,9 @@ the next run never asks for a provider key, a timezone or a realms directory —
 exercises none of the path a new user walks. `--uninstall` removes the state *and* this
 machine's configuration: `.env`, `docker-compose.override.yml`, the MCP registration whose
 token died with the volume, and the marked Codex token block setup added to a supported shell
-profile. A token block is kept when Codex points at another appliance. What remains is what a
-fresh clone looks like, and `./worlds.py` starts over from it.
+profile when its registration belongs to this appliance. An unverified or different Codex
+registration and its token block are kept. What remains is what a fresh clone looks like, and
+`./worlds.py` starts over from it.
 
 It also offers to remove stray **code-sandbox containers**. Those are created by the app
 through the Docker socket as siblings of the appliance rather than as compose services,

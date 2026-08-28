@@ -26,9 +26,8 @@ with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home
                 f.write(b"after\xff\n")
 
     install_blocks()
-    with patch.object(agents.shutil, "which", return_value=None):
-        agents.unwire_coding_agents()
     for profile in profiles:
+        assert agents.remove_codex_token(profile)
         with open(profile, "rb") as f:
             assert f.read() == expected, f"token cleanup changed unrelated bytes in {profile}"
         assert not agents.remove_codex_token(profile), "token cleanup is not idempotent"
@@ -40,6 +39,14 @@ with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home
     for profile in profiles:
         with open(profile, "rb") as f:
             assert agents.TOKEN_BLOCK_BEGIN.encode() in f.read(), "foreign Codex registration lost its shared token"
+
+    output = io.StringIO()
+    with patch.object(agents.shutil, "which", return_value=None), contextlib.redirect_stdout(output):
+        agents.unwire_coding_agents()
+    assert "ownership could not be verified" in output.getvalue(), "missing Codex ownership was not reported"
+    for profile in profiles:
+        with open(profile, "rb") as f:
+            assert agents.TOKEN_BLOCK_BEGIN.encode() in f.read(), "unverifiable Codex registration lost its token"
 
     output = io.StringIO()
     with patch.object(agents.shutil, "which", side_effect=lambda name: "/fake/codex" if name == "codex" else None), \
@@ -90,7 +97,10 @@ with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home
     assert "incomplete" in output.getvalue().lower(), "malformed token block was not reported"
 
     output = io.StringIO()
-    with patch.object(agents.shutil, "which", return_value=None), \
+    owned_url = next(iter(agents.this_appliance_urls()))
+    with patch.object(agents.shutil, "which", side_effect=lambda name: "/fake/codex" if name == "codex" else None), \
+         patch.object(agents, "registered_mcp_url", return_value=owned_url), \
+         patch.object(agents.subprocess, "run", return_value=agents.subprocess.CompletedProcess([], 0)), \
          patch.object(agents, "shell_profiles", return_value=[profile]), \
          patch.object(agents, "remove_codex_token", side_effect=OSError("read failed")), \
          contextlib.redirect_stdout(output):

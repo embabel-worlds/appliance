@@ -460,7 +460,7 @@ def uninstall() -> None:
     print(f"    {env_file()} — your provider key, timezone, and realms directory")
     print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
     print(f"    the '{MCP_SERVER_NAME}' MCP registration — only where it points at THIS appliance")
-    print("    its marked Codex token block in supported shell profiles — unless another registration owns it")
+    print("    its marked Codex token block in supported shell profiles — only when registration ownership is verified")
     for path in cli_shim_paths():
         if os.path.exists(path) and is_our_shim(path):
             print(f"    {path} — the 'embabel' command install.sh put on your PATH")

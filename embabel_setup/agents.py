@@ -242,7 +242,9 @@ def unwire_coding_agents() -> None:
     """
     ours = this_appliance_urls()
     codex = shutil.which("codex")
-    remove_profile_token = codex is None
+    remove_profile_token = False
+    if codex is None:
+        print(warn("  Kept any Codex shell-profile token because registration ownership could not be verified."))
     for name, cli in (("Claude Code", shutil.which("claude")), ("Codex", codex)):
         if not cli:
             continue
