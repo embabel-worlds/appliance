@@ -88,8 +88,13 @@ def cmd_agents(args) -> int:
         print(token)
         return 0
 
-    print(f"  Wiring agents to {base}/mcp" + (f" as {user}" if user else ""))
-    s.wire_coding_agents({"token": token, "url": f"{base}/mcp", "user": user})
+    print(f"  Wiring agents to {base}/mcp/code" + (f" as {user}" if user else ""))
+    s.wire_coding_agents({
+        "token": token,
+        "url": f"{base}/mcp/chat",
+        "developerUrl": f"{base}/mcp/code",
+        "user": user,
+    })
     return 0
 
 
