@@ -40,18 +40,22 @@ AGENTS_BLOCK_BEGIN = "<!-- BEGIN embabel appliance -->"
 AGENTS_BLOCK_END = "<!-- END embabel appliance -->"
 TOKEN_BLOCK_BEGIN = "# BEGIN embabel appliance MCP token"
 TOKEN_BLOCK_END = "# END embabel appliance MCP token"
+SHELL_PROFILES = {
+    "zsh": "~/.zshrc",
+    "bash": "~/.bashrc",
+    "fish": "~/.config/fish/config.fish",
+}
 
 
 def shell_profile() -> str | None:
     """The startup file for the current interactive shell."""
-    shell = os.path.basename(os.environ.get("SHELL", ""))
-    profiles = {
-        "zsh": "~/.zshrc",
-        "bash": "~/.bashrc",
-        "fish": "~/.config/fish/config.fish",
-    }
-    profile = profiles.get(shell)
+    profile = SHELL_PROFILES.get(os.path.basename(os.environ.get("SHELL", "")))
     return os.path.expanduser(profile) if profile else None
+
+
+def shell_profiles() -> list[str]:
+    """Every shell profile setup may have added the appliance token to."""
+    return [os.path.expanduser(profile) for profile in SHELL_PROFILES.values()]
 
 
 def codex_token_export(token: str, target: str | None = None) -> str:
@@ -81,6 +85,25 @@ def install_codex_token(token: str, target: str) -> None:
         f.write(updated)
     if not existed:
         os.chmod(target, 0o600)
+
+
+def remove_codex_token(target: str) -> bool:
+    """Remove only the appliance-owned token block from a shell profile."""
+    if not os.path.exists(target):
+        return False
+    with open(target) as f:
+        existing = f.read()
+    updated = re.sub(
+        rf"{re.escape(TOKEN_BLOCK_BEGIN)}.*?{re.escape(TOKEN_BLOCK_END)}\n?",
+        "",
+        existing,
+        flags=re.DOTALL,
+    )
+    if updated == existing:
+        return False
+    with open(target, "w") as f:
+        f.write(updated)
+    return True
 
 
 def codex_agents_block() -> str:
@@ -239,6 +262,12 @@ def unwire_coding_agents() -> None:
             print(f"  Removed the appliance block from {CODEX_AGENTS_FILE}.")
     except OSError:
         pass
+    for profile in shell_profiles():
+        try:
+            if remove_codex_token(profile):
+                print(f"  Removed the appliance MCP token from {profile}.")
+        except OSError:
+            pass
 
 
 def wire_coding_agents(result: dict) -> None:
