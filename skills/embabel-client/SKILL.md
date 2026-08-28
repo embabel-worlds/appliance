@@ -22,6 +22,27 @@ local appliance is HTTP Basic with the operator account (the setup-created user)
 can use the bearer token (`EMBABEL_MCP_API_TOKEN`) instead. Credentials live in the caller's
 config, never in committed code.
 
+### Typed classes and generated clients
+
+Three artifacts give a TypeScript or Python dev real types to code against:
+
+- **The OpenAPI document generates the client.**
+  `npx openapi-typescript https://<appliance>/v3/api-docs -o embabel-api.d.ts` for TypeScript
+  types; `openapi-python-client generate --url https://<appliance>/v3/api-docs` for Python. The
+  spec covers the whole REST surface including the view envelope, so `status` / `outcome` /
+  `warnings` / `data` arrive typed.
+- **`GET /api/v1/apps-runtime/interfaces.ts`** is the typed TypeScript surface of every
+  `gateway.*` namespace — generated per user from the same pass that backs code-mode, served
+  for IDE inspection and build tooling. Save it into the project when the app calls world
+  tools rather than views; it is not in the OpenAPI spec, because it describes the tool
+  surface, not the REST controllers.
+- **View rows are typed by their contract, not by the spec.** The invoke envelope's `data` is
+  a generic array — the spec cannot know a view's columns. A contracted view can:
+  `embabel contract generate --view <name>` drafts the ODCS contract
+  (`POST /api/v1/admin/kg/views/{name}/contract`), and its schema section names each column
+  and type — the source to write or generate the row interface from, versioned with the view
+  instead of guessed from sample rows.
+
 ## 2. Saved views are the API your app should want
 
 A saved view is a named, parameterised, server-owned query: it encodes the joins and exclusions
