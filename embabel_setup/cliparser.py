@@ -12,7 +12,8 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import cmd_agents, cmd_contract, cmd_realms, cmd_sample, cmd_scenario
+from .clidata import (cmd_agents, cmd_contract, cmd_realms, cmd_sample, cmd_sandbox,
+                      cmd_scenario)
 from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
@@ -161,6 +162,19 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
     a.set_defaults(func=cmd_scenario)
     p.set_defaults(func=cmd_scenario, scenario_command=None, dry_run=False)
+
+    p = sub.add_parser("sandbox", help="the code-mode sandbox, and how to make it yours")
+    sb = p.add_subparsers(dest="sandbox_command")
+    a = sb.add_parser("show", help="which sandbox image this appliance uses, and why")
+    a.set_defaults(func=cmd_sandbox)
+    a = sb.add_parser("build", help="build sandbox/Dockerfile and use it")
+    a.add_argument("--file", help="a Dockerfile elsewhere")
+    a.add_argument("--tag", default="embabel-sandbox:local", help=argparse.SUPPRESS)
+    a.add_argument("--no-cache", action="store_true", help="rebuild every layer")
+    a.set_defaults(func=cmd_sandbox)
+    a = sb.add_parser("reset", help="go back to the shipped image")
+    a.set_defaults(func=cmd_sandbox)
+    p.set_defaults(func=cmd_sandbox, sandbox_command=None)
 
     p = sub.add_parser("agents", help="re-point Claude Code and Codex at this appliance")
     p.add_argument("--show-token", action="store_true",

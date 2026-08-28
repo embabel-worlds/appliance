@@ -32,6 +32,7 @@ embabel version       # tag, digest, the commit it was built from
 embabel bugreport     # one folder to attach to an issue, with no secrets in it
 embabel sample add …  # fictional records, marked so they can be taken back out
 embabel scenario run … # put the world in a named state, for a demo or a repro
+embabel sandbox build  # a code-mode sandbox with your own toolchain in it
 ```
 
 ---
@@ -349,6 +350,46 @@ before the ordinary rules apply, so a scenario and the data it needs travel toge
 This is not only for demos, which is why the verb is not `demo`: the same move puts a
 world into a fixed state to evaluate a realm before connecting an account, to reproduce a
 support case, or to start a test from somewhere known.
+
+### `embabel sandbox`
+
+The container code-mode runs in, and how to make it yours.
+
+```bash
+embabel sandbox show     # which image, why, and where it came from
+embabel sandbox build    # build sandbox/Dockerfile and use it
+embabel sandbox reset    # back to the shipped image
+```
+
+The shipped sandbox carries the runtimes code-mode executes — Python with the data
+stack, Node and TypeScript, git, jq, sqlite, graphviz — and nothing else. Every
+appliance downloads it before anybody has run a line of code, so a JDK, Maven, Prolog
+and PlantUML were removed: roughly 900MB that most installs never used.
+
+If your work needs them, the appliance builds a sandbox for you:
+
+```bash
+cp sandbox/Dockerfile.example sandbox/Dockerfile
+$EDITOR sandbox/Dockerfile          # uncomment the JDK block, add what you need
+embabel sandbox build
+embabel down && embabel up
+```
+
+**Extend, do not rewrite.** The example starts `FROM` the shipped image, so you inherit
+whatever it gains — a new runtime, a security update — instead of maintaining a fork
+that quietly falls behind. A full rewrite is still yours to make; it is just not what
+this encourages.
+
+The build writes `EMBABEL_SANDBOX_IMAGE` into `.env`, which is the one name that moves
+**both** halves: the pre-pull in `infra.yml` and the container the app launches for a
+session. Setting one without the other pulls a sandbox nobody uses and then fetches a
+different one mid-chat.
+
+Nothing is pushed anywhere — the image is tagged locally and stays on your machine.
+
+A single world can override this further with `sandboxDockerimage` in its
+`config/world.yml`, which wins over the appliance-wide setting: the narrower scope means
+it.
 
 ### `embabel backup [directory]`
 

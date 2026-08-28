@@ -1,0 +1,45 @@
+# A sandbox of your own.
+#
+#   cp sandbox/Dockerfile.example sandbox/Dockerfile
+#   $EDITOR sandbox/Dockerfile
+#   embabel sandbox build
+#   embabel down && embabel up
+#
+# EXTEND, DO NOT REWRITE. Starting FROM the shipped image means you inherit whatever it
+# gains — a new runtime, a security update — instead of maintaining a fork that quietly
+# falls behind. Everything code-mode executes is already in there: Python with the data
+# stack, Node and TypeScript, git, jq, sqlite, graphviz.
+#
+# What is deliberately NOT in the shipped image, because every appliance downloads it
+# before anybody runs a line of code: a JDK, Maven, Prolog, PlantUML. If your work needs
+# one, this file is where it goes — you pay the download, not everybody.
+FROM ghcr.io/embabel/assistant-sandbox:latest
+
+# ── Java and Maven ──────────────────────────────────────────────────────────
+# Roughly 700MB. Uncomment if code-mode has to build JVM projects.
+#
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     default-jdk maven \
+#     && rm -rf /var/lib/apt/lists/*
+
+# ── Other runtimes ──────────────────────────────────────────────────────────
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     swi-prolog r-base golang \
+#     && rm -rf /var/lib/apt/lists/*
+
+# ── Python packages ─────────────────────────────────────────────────────────
+# --break-system-packages because this is a container, not somebody's laptop, and
+# the system interpreter is the only one here.
+#
+# RUN pip3 install --no-cache-dir --break-system-packages \
+#     polars duckdb statsmodels
+
+# ── A private index ─────────────────────────────────────────────────────────
+# Build secrets, not ENV: an ARG or ENV holding a token is readable in the image
+# history by anybody who can pull it.
+#
+# RUN --mount=type=secret,id=pipconf,target=/etc/pip.conf \
+#     pip3 install --no-cache-dir --break-system-packages your-internal-package
+
+# The shipped image's WORKDIR and CMD still apply. Do not override CMD: the appliance
+# keeps the container alive itself and execs into it per call.

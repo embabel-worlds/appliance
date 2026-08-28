@@ -17,6 +17,7 @@ import subprocess
 import sys
 
 from .cli import _sample_target, current_mode, run_setup, s
+from .core import SetupError
 from .core import prompt
 
 def cmd_realms(args) -> int:
@@ -280,4 +281,30 @@ def cmd_scenario(args) -> int:
         return 0
 
     print("  embabel scenario list | run | next")
+    return 1
+
+
+def cmd_sandbox(args) -> int:
+    """The code-mode sandbox: what it is, and how to make it yours.
+
+    The shipped image is deliberately small — every appliance downloads it before
+    anybody runs a line of code, so it carries the runtimes code-mode executes and
+    nothing else. A Dockerfile here is how somebody who needs more pays for it
+    themselves.
+    """
+    if args.sandbox_command in (None, "show"):
+        s.describe_sandbox()
+        return 0
+
+    if args.sandbox_command == "build":
+        tag = s.build_sandbox(dockerfile=args.file, tag=args.tag, no_cache=args.no_cache)
+        print(f"  {s.TICK} Built {s.bold(tag)} and recorded it in .env")
+        print("  " + s.warn("Restart to use it: embabel down && embabel up"))
+        return 0
+
+    if args.sandbox_command == "reset":
+        s.reset_sandbox()
+        return 0
+
+    print("  embabel sandbox show | build | reset")
     return 1
