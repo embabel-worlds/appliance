@@ -79,6 +79,11 @@ services:
       # removes live sessions belonging to the other one.
       - EMBABEL_INSTANCE=${EMBABEL_INSTANCE:-appliance}
       - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:${WORLDS_PORT:-11043}}
+      # The code-mode sandbox image, so the app launches whatever the pre-pull in
+      # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
+      # value as unset, because a compose file forwarding an unset variable sets it
+      # to the empty string, and a set-but-empty value outranks every default.
+      - ASSISTANT_SANDBOX_IMAGE=${EMBABEL_SANDBOX_IMAGE:-}
       # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
       # (see application-appliance.yml) — the browser holds the encrypted blob and
       # nothing decryptable rests here — but WITHOUT this the server generates a key

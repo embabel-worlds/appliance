@@ -110,8 +110,14 @@ services:
   # daemon for (overridable per world via `sandboxDockerimage` in its config.yml).
   # On GHCR like every other Embabel image — the old unqualified name pointed at a
   # Docker Hub repository that was never public, so first pull failed for everyone.
+  # OVERRIDABLE, and by the same name the app reads. The shipped image carries the
+  # runtimes code-mode executes and nothing else; an operator who needs a JDK, Prolog
+  # or their own compiler builds an image and names it here rather than making every
+  # install download it. Set EMBABEL_SANDBOX_IMAGE in .env and both this pre-pull and
+  # the container the app launches follow it — a single world can still override it
+  # further with `sandboxDockerimage` in its config/world.yml.
   sandbox-image:
-    image: ghcr.io/embabel/assistant-sandbox:latest
+    image: ${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:latest}
     restart: "no"
     command: ["true"]
 
