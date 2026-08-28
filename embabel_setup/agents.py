@@ -40,6 +40,13 @@ AGENTS_BLOCK_BEGIN = "<!-- BEGIN embabel appliance -->"
 AGENTS_BLOCK_END = "<!-- END embabel appliance -->"
 TOKEN_BLOCK_BEGIN = "# BEGIN embabel appliance MCP token"
 TOKEN_BLOCK_END = "# END embabel appliance MCP token"
+_TOKEN_BLOCK_PATTERN = re.compile(
+    rb"(?m)^" + re.escape(TOKEN_BLOCK_BEGIN.encode()) + rb"\r?\n"
+    + rb"(?:export " + re.escape(CODEX_TOKEN_ENV.encode()) + rb"=|set -gx "
+    + re.escape(CODEX_TOKEN_ENV.encode()) + rb" )[^\r\n]*\r?\n"
+    + re.escape(TOKEN_BLOCK_END.encode()) + rb"(?:\r?\n|$)"
+)
+_TOKEN_BLOCK_BEGIN_LINE = re.compile(rb"(?m)^" + re.escape(TOKEN_BLOCK_BEGIN.encode()) + rb"\r?$")
 SHELL_PROFILES = {
     "zsh": "~/.zshrc",
     "bash": "~/.bashrc",
@@ -67,41 +74,34 @@ def codex_token_export(token: str, target: str | None = None) -> str:
 
 def install_codex_token(token: str, target: str) -> None:
     """Put the Codex token in one replaceable shell-profile block."""
-    block = f"{TOKEN_BLOCK_BEGIN}\n{codex_token_export(token, target)}\n{TOKEN_BLOCK_END}\n"
+    block = f"{TOKEN_BLOCK_BEGIN}\n{codex_token_export(token, target)}\n{TOKEN_BLOCK_END}\n".encode()
     existed = os.path.exists(target)
-    existing = ""
+    existing = b""
     if existed:
-        with open(target) as f:
+        with open(target, "rb") as f:
             existing = f.read()
-    pattern = re.compile(
-        rf"{re.escape(TOKEN_BLOCK_BEGIN)}.*?{re.escape(TOKEN_BLOCK_END)}\n?",
-        re.DOTALL,
-    )
-    updated = pattern.sub(block, existing) if pattern.search(existing) else (
-        existing + ("" if not existing or existing.endswith("\n") else "\n") + block
+    updated = _TOKEN_BLOCK_PATTERN.sub(lambda _: block, existing) if _TOKEN_BLOCK_PATTERN.search(existing) else (
+        existing + (b"" if not existing or existing.endswith(b"\n") else b"\n") + block
     )
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "w") as f:
+    with open(target, "wb") as f:
         f.write(updated)
     if not existed:
         os.chmod(target, 0o600)
 
 
 def remove_codex_token(target: str) -> bool:
-    """Remove only the appliance-owned token block from a shell profile."""
+    """Remove only complete appliance-owned token blocks from a shell profile."""
     if not os.path.exists(target):
         return False
-    with open(target) as f:
+    with open(target, "rb") as f:
         existing = f.read()
-    updated = re.sub(
-        rf"{re.escape(TOKEN_BLOCK_BEGIN)}.*?{re.escape(TOKEN_BLOCK_END)}\n?",
-        "",
-        existing,
-        flags=re.DOTALL,
-    )
+    updated = _TOKEN_BLOCK_PATTERN.sub(b"", existing)
+    if _TOKEN_BLOCK_BEGIN_LINE.search(updated):
+        print(warn(f"  Incomplete appliance MCP token block in {target}; the token may remain, so remove it manually."))
     if updated == existing:
         return False
-    with open(target, "w") as f:
+    with open(target, "wb") as f:
         f.write(updated)
     return True
 
@@ -241,15 +241,23 @@ def unwire_coding_agents() -> None:
     Must run while .env still exists: this install's ports live there.
     """
     ours = this_appliance_urls()
-    for name, cli in (("Claude Code", shutil.which("claude")), ("Codex", shutil.which("codex"))):
+    codex = shutil.which("codex")
+    remove_profile_token = codex is None
+    for name, cli in (("Claude Code", shutil.which("claude")), ("Codex", codex)):
         if not cli:
             continue
         url = registered_mcp_url(cli, MCP_SERVER_NAME)
         if url is None:
+            if name == "Codex":
+                print(warn("  Kept the Codex shell-profile token because its registration ownership could not be verified."))
             continue
         if url.rstrip("/").lower() not in ours:
             print(f"  Left {name}'s '{MCP_SERVER_NAME}' registration alone — it points at {url}, not this appliance.")
+            if name == "Codex":
+                print("  Kept its shell-profile token too.")
             continue
+        if name == "Codex":
+            remove_profile_token = True
         try:
             run = subprocess.run([cli, "mcp", "remove", MCP_SERVER_NAME],
                                  capture_output=True, text=True, timeout=30)
@@ -262,12 +270,13 @@ def unwire_coding_agents() -> None:
             print(f"  Removed the appliance block from {CODEX_AGENTS_FILE}.")
     except OSError:
         pass
-    for profile in shell_profiles():
-        try:
-            if remove_codex_token(profile):
-                print(f"  Removed the appliance MCP token from {profile}.")
-        except OSError:
-            pass
+    if remove_profile_token:
+        for profile in shell_profiles():
+            try:
+                if remove_codex_token(profile):
+                    print(f"  Removed the appliance MCP token from {profile}.")
+            except OSError as e:
+                print(warn(f"  Could not update {profile}: {e}"))
 
 
 def wire_coding_agents(result: dict) -> None:
