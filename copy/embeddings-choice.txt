@@ -1,0 +1,10 @@
+Documents are searched by meaning, not by keyword, which needs an embedding
+model. The appliance does not ship with one: the local model is about a
+gigabyte and needs Docker Model Runner, and an install should not spend that
+before you have decided you want it.
+
+Everything else works without it — the graph, realms, views, handlers, chat.
+Only uploading and searching documents wait on this, and they will say so
+rather than failing quietly.
+
+You can turn it on at any time with `embabel embeddings use local`.

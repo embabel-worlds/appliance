@@ -12,8 +12,8 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import (cmd_agents, cmd_contract, cmd_realms, cmd_sample, cmd_sandbox,
-                      cmd_scenario)
+from .clidata import (cmd_agents, cmd_contract, cmd_embeddings, cmd_realms, cmd_sample,
+                      cmd_sandbox, cmd_scenario)
 from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
@@ -162,6 +162,17 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
     a.set_defaults(func=cmd_scenario)
     p.set_defaults(func=cmd_scenario, scenario_command=None, dry_run=False)
+
+    p = sub.add_parser("embeddings", help="the embedding model — document features need one")
+    em = p.add_subparsers(dest="embeddings_command")
+    a = em.add_parser("show", help="whether document features are on, and with what")
+    a.set_defaults(func=cmd_embeddings)
+    a = em.add_parser("use", help="set the embedding model")
+    a.add_argument("choice", help="local, openai, or a model name")
+    a.set_defaults(func=cmd_embeddings)
+    a = em.add_parser("off", help="no embedding model; document features go off")
+    a.set_defaults(func=cmd_embeddings)
+    p.set_defaults(func=cmd_embeddings, embeddings_command=None)
 
     p = sub.add_parser("sandbox", help="the code-mode sandbox, and how to make it yours")
     sb = p.add_subparsers(dest="sandbox_command")

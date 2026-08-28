@@ -202,39 +202,17 @@ configs:
               labels:
                 application: embabel-worlds
 
-# ── Local embedding model ─────────────────────────────────────────────────────
-# Pulled like an image (an OCI artifact from Docker Hub, ~1.2GB) and served by
-# Docker Model Runner as a HOST-side process — on Apple silicon that means real
-# Metal GPU access, which a container in the VM can never have. This is why it is
-# a `models:` element and not a service.
+# ── Local embedding model: NOT HERE ───────────────────────────────────────────
+# It lives in embeddings-local.yml, composed in only when somebody chooses it with
+# `embabel embeddings use local`.
 #
-# ONE model for BOTH modes, and that is load-bearing, not tidiness: every vector
-# in the shared graph must come from the same embedding model.
+# It used to sit here, which meant every install downloaded ~1.1GB before anybody had
+# uploaded a document, and required Docker Model Runner — a Docker Desktop feature, so
+# on plain Docker Engine `docker model` is not a command and `docker compose up` failed
+# on a dependency most users never needed.
 #
-# REQUIRES Docker Model Runner: Docker Desktop 4.40+ with it enabled
-# (`docker desktop enable model-runner`, or Settings → AI), or on Linux Docker
-# Engine the `docker-model-plugin` package. `docker compose up` fails fast and
-# clearly without it. Compose v2.38+ for this element (v5.x current).
-#
-# The model choice is STICKY: vectors already in Neo4j were made by it, and
-# swapping models (ASSISTANT_EMBEDDING_MODEL) forces a re-embed of every chunk
-# and entity — an explicit action in Settings, not something a restart does.
-models:
-  embedder:
-    # Qwen3-Embedding 0.6B — the best small open embedding model going (MTEB),
-    # multilingual, 1024-dim. The app provisions its vector indexes from the
-    # model's reported dimensions, so nothing else states "1024" anywhere.
-    #
-    # The tag is DELIBERATELY exact, never `latest`: (a) on this repository
-    # `latest` is the 4B variant (2.5GB, 2560-dim) — a different model, not a
-    # newer build of this one; (b) embeddings are sticky (see above), so the
-    # model behind this name must never change out from under an install.
-    #
-    # This is the PULL name; the runner then serves it under the registry-
-    # qualified id docker.io/ai/qwen3-embedding:0.6B-F16, which is the form
-    # EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL must use. Check with:
-    #   curl -s localhost:12434/engines/v1/models
-    model: ai/qwen3-embedding:0.6B-F16
+# An appliance now starts with no embedding model. Document features report themselves
+# off, with the command that turns them on, and nothing else is affected.
 
 volumes:
   # Worlds on disk — documents, artifacts, apps, credentials. Shared by both

@@ -93,6 +93,7 @@ from embabel_setup.samples import *      # noqa: F403 — fictional records, mar
 from embabel_setup.contracts import *    # noqa: F403 — ODCS contracts drafted for saved views
 from embabel_setup.scenarios import *    # noqa: F403 — the world in a named state
 from embabel_setup.sandbox import *      # noqa: F403 — a code-mode sandbox of your own
+from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, if any
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
@@ -341,9 +342,26 @@ def main() -> int:
         # counted and the world does not have. So it runs here, after "Sign in
         # at …" has been printed and the door is open: the appliance is already
         # usable, and the guides arrive while somebody is looking at it.
+        # THE OFFER, after the appliance is up and before the guides would be indexed.
+        # Here rather than as a wizard step because it is not needed to have a working
+        # appliance, and the default is NO because the local model is a gigabyte and
+        # needs a Docker Desktop feature — somebody installing for the first time has
+        # not yet decided whether they care about documents. Offered at all so that
+        # nobody has to discover the capability by finding search returns nothing.
+        print("\n" + heading("Document search"))
+        say("embeddings-choice")
+        embedding_model = offer_embeddings()
+
         credential = seed_auth or seed_credential(api_token)
-        if credential:
+        if credential and embedding_model:
+            # The restart that applies the model has not happened yet, so this run
+            # cannot index. Say what will happen rather than uploading into a world
+            # that would drop every vector on the floor.
+            print(f"  {MIDDOT} " + dim("The guides will be indexed after the restart below."))
             seed_documentation(base, credential)
+        elif credential and not embedding_model:
+            print(f"  {MIDDOT} " + dim("No embedding model, so the guides are not indexed yet."))
+            print("  " + dim("  embabel embeddings use local   then   embabel sample add … "))
         else:
                 print(f"  {MIDDOT} " + dim("Documentation not re-indexed this run — "
                                            "add or refresh it from Documents."))

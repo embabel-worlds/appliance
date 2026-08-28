@@ -123,7 +123,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # Same embedding model as the Me mode, NON-NEGOTIABLY: both modes write
       # vectors into the same graph. See the models element in infra.yml.
-      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-docker.io/ai/qwen3-embedding:0.6B-F16}
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-}
       # Models the operator runs on their OWN machine, outside Docker. `localhost`
       # inside this container is the container, so an LM Studio or Ollama server
       # they can see in a browser is invisible here — it must be addressed as the
@@ -216,10 +216,6 @@ services:
       - ${EMBABEL_REALMS_DIR:-./realms}:/realms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    models:
-      # Same injection as the Me mode — see the comment there.
-      embedder:
-        endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
 
   # ── Console — the Worlds web face ───────────────────────────────────────────
   # Static app + nginx proxying /api to the server on the SAME ORIGIN, so the

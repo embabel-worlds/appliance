@@ -1,0 +1,42 @@
+# The local embedding model — composed in ONLY when somebody asks for it.
+#
+#   embabel embeddings use local
+#
+# WHY IT IS NOT IN THE DEFAULT INSTALL. This model is about 1.1GB and needs Docker Model
+# Runner, which is a Docker Desktop feature: requiring it made every first run download
+# it before anybody had uploaded a document, and ruled out plain Docker Engine entirely,
+# where `docker model` is not a command. An appliance now starts with no embedding model
+# and says so; document features switch on when one is chosen.
+#
+# ONE FILE PER MODE. An overlay naming a service the composition does not have does not
+# override it — it DEFINES it, and compose then rejects a service with no image. A single
+# file naming both `worlds` and `assistant` failed with exactly that against either mode.
+#
+# The model pin below MUST stay identical in both files: the two modes share one graph,
+# and every vector in it has to come from the same model.
+#
+# STICKY, which is why choosing is a deliberate act. Vectors already stored were made by
+# whichever model made them and the vector index is built at that model's width, so
+# changing this re-embeds everything — the server does that properly, and says how much
+# it is about to do.
+
+services:
+  worlds:
+    models:
+      embedder:
+        endpoint_var: EMBABEL_AGENT_MODELS_DOCKER_BASE_URL
+
+models:
+  embedder:
+    # Qwen3-Embedding 0.6B — the best small open embedding model going (MTEB),
+    # multilingual, 1024-dim. The app provisions its vector indexes from the model's
+    # reported dimensions, so nothing else states "1024" anywhere.
+    #
+    # The tag is DELIBERATELY exact, never `latest`: on this repository `latest` is the
+    # 4B variant (2.5GB, 2560-dim) — a different model, not a newer build of this one.
+    #
+    # This is the PULL name; the runner serves it under the registry-qualified id
+    # docker.io/ai/qwen3-embedding:0.6B-F16, which is the form
+    # EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL must use. Check with:
+    #   curl -s localhost:12434/engines/v1/models
+    model: ai/qwen3-embedding:0.6B-F16

@@ -33,6 +33,7 @@ embabel bugreport     # one folder to attach to an issue, with no secrets in it
 embabel sample add …  # fictional records, marked so they can be taken back out
 embabel scenario run … # put the world in a named state, for a demo or a repro
 embabel sandbox build  # a code-mode sandbox with your own toolchain in it
+embabel embeddings use local  # turn document search on
 ```
 
 ---
@@ -350,6 +351,39 @@ before the ordinary rules apply, so a scenario and the data it needs travel toge
 This is not only for demos, which is why the verb is not `demo`: the same move puts a
 world into a fixed state to evaluate a realm before connecting an account, to reproduce a
 support case, or to start a test from somewhere known.
+
+### `embabel embeddings`
+
+Whether documents can be indexed, and with what.
+
+```bash
+embabel embeddings show          # on or off, and why
+embabel embeddings use local     # ~1.1GB, runs here, nothing leaves the machine
+embabel embeddings use openai    # uses the provider key you already gave
+embabel embeddings off           # no model; document features go off
+```
+
+**An appliance ships without an embedding model.** The local one is about 1.1GB and needs
+Docker Model Runner, which is a Docker Desktop feature — so requiring it made every first
+run pay for a capability many people never touch, and ruled out plain Docker Engine
+entirely, where `docker model` is not a command at all.
+
+So document features are **off, not broken**, and the difference is the point: upload
+answers `409` with one sentence naming the command that fixes it, rather than accepting a
+document it cannot index or returning an empty search that looks like an empty world.
+Everything else — the graph, realms, views, handlers, chat — works untouched.
+
+First-run setup **offers** this and defaults to **no**, so knowing the capability exists
+costs nothing.
+
+**The choice is sticky.** Vectors already stored were made by whichever model made them,
+and a vector index is built at that model's width — so changing the model re-embeds
+everything already indexed. The appliance does that properly (drop the indexes, re-embed
+each store, rebuild at the new width, roll back on failure), but it is not free, and a
+first choice on an empty appliance is the cheap moment to make it.
+
+`use local` composes in `embeddings-local-<mode>.yml`, which is the only thing that
+requires Model Runner. Without it, nothing in the compose files mentions it.
 
 ### `embabel sandbox`
 

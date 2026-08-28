@@ -21,8 +21,8 @@ from .core import (
     SetupError, prompt,
 )
 from .settings import (
-    compose_project, configured_mode, env_path, instance, phone_home_on, port_base, ports_for,
-    resume_command, PHONE_HOME_ENDPOINT,
+    compose_project, configured_mode, env_file_value, env_path, instance, phone_home_on,
+    port_base, ports_for, resume_command, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
@@ -157,6 +157,24 @@ def announce_github_token() -> None:
         return
     print(f"  Found a GitHub token ({found[1]}) — private realms and world templates will clone.")
     print("  It is passed to the containers for this run only, never written to .env.\n")
+# The overlay that adds the local embedding model, and the .env answer that turns it on.
+def embeddings_local_file(mode: str) -> str:
+    """The overlay for this mode. One per mode — see the note in the files themselves."""
+    return f"embeddings-local-{mode}.yml"
+LOCAL_EMBEDDING_MODEL = "docker.io/ai/qwen3-embedding:0.6B-F16"
+
+
+def local_embeddings_wanted() -> bool:
+    """Whether this appliance runs the local embedder.
+
+    Keyed off the model NAME rather than a separate switch, so there is one answer to
+    "which embedding model" and no way for a flag and a name to disagree — which would
+    show up as a compose file pulling a model the app never asks for, or the reverse.
+    """
+    chosen = os.environ.get("ASSISTANT_EMBEDDING_MODEL") or env_file_value("ASSISTANT_EMBEDDING_MODEL")
+    return bool(chosen) and chosen.startswith(("docker.io/ai/", "ai/"))
+
+
 def _compose(mode: str, *argv: str, capture: bool = False):
     """docker compose against the mode's file, from the appliance directory.
     capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
@@ -176,6 +194,14 @@ def _compose(mode: str, *argv: str, capture: bool = False):
     cmd += ["-f", MODE_COMPOSE[mode]]
     if mode == "me" and os.path.exists(OVERRIDE_FILE):
         cmd += ["-f", OVERRIDE_FILE]
+    # THE LOCAL EMBEDDER IS AN OVERLAY, not a default. It needs Docker Model Runner,
+    # which is a Docker Desktop feature — requiring it made every install download
+    # ~1.1GB before anybody had uploaded a document, and failed outright on plain
+    # Docker Engine. Composed in only once somebody has asked for it, which is the
+    # one line in .env that `embabel embeddings use local` writes.
+    overlay = embeddings_local_file(mode)
+    if local_embeddings_wanted() and os.path.exists(overlay):
+        cmd += ["-f", overlay]
     cmd += argv
     try:
         return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env())

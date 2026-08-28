@@ -308,3 +308,32 @@ def cmd_sandbox(args) -> int:
 
     print("  embabel sandbox show | build | reset")
     return 1
+
+
+def cmd_embeddings(args) -> int:
+    """The embedding model, and whether document features are on.
+
+    An appliance ships without one — the local model is a gigabyte and needs Docker
+    Model Runner. Document features report themselves off until this is set, which is
+    a different thing from being broken.
+    """
+    if args.embeddings_command == "off":
+        s.clear_embeddings()
+        return 0
+
+    if args.embeddings_command == "use":
+        model = s.choose_embeddings(args.choice)
+        print(f"  {s.TICK} Embedding model set to {s.bold(model)}")
+        print("  " + s.warn("Restart to apply: embabel down && embabel up"))
+        return 0
+
+    # show: ask the appliance rather than infer from .env, because what is running is
+    # the thing that decides whether documents work.
+    base, auth = _sample_target(args)
+    if not base:
+        chosen = s.configured_embedding_model()
+        print(f"  {s.MIDDOT} " + s.dim(f"Not running. .env says: {chosen or 'no embedding model'}"))
+        return 0
+    s.describe_embeddings(s.embeddings_status(base, auth), s.configured_embedding_model())
+    return 0
+
