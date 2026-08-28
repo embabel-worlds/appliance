@@ -39,14 +39,23 @@ AGENTS_BLOCK_BEGIN = "<!-- BEGIN embabel appliance -->"
 
 AGENTS_BLOCK_END = "<!-- END embabel appliance -->"
 TOKEN_BLOCK_BEGIN = "# BEGIN embabel appliance MCP token"
+# This variant is proof that the preceding LF was added by setup, not owned by the profile.
+TOKEN_BLOCK_BEGIN_WITH_SEPARATOR = "# BEGIN embabel appliance MCP token (owns preceding newline)"
 TOKEN_BLOCK_END = "# END embabel appliance MCP token"
+_TOKEN_EXPORT_LINE = (rb"(?:export " + re.escape(CODEX_TOKEN_ENV.encode()) + rb"=|set -gx "
+                      + re.escape(CODEX_TOKEN_ENV.encode()) + rb" )[^\r\n]*\r?\n")
 _TOKEN_BLOCK_PATTERN = re.compile(
     rb"(?m)^" + re.escape(TOKEN_BLOCK_BEGIN.encode()) + rb"\r?\n"
-    + rb"(?:export " + re.escape(CODEX_TOKEN_ENV.encode()) + rb"=|set -gx "
-    + re.escape(CODEX_TOKEN_ENV.encode()) + rb" )[^\r\n]*\r?\n"
-    + re.escape(TOKEN_BLOCK_END.encode()) + rb"(?:\r?\n|$)"
+    + _TOKEN_EXPORT_LINE + re.escape(TOKEN_BLOCK_END.encode()) + rb"(?:\r?\n|$)"
 )
-_TOKEN_BLOCK_BEGIN_LINE = re.compile(rb"(?m)^" + re.escape(TOKEN_BLOCK_BEGIN.encode()) + rb"\r?$")
+_TOKEN_BLOCK_WITH_SEPARATOR_PATTERN = re.compile(
+    rb"(?m)\n^" + re.escape(TOKEN_BLOCK_BEGIN_WITH_SEPARATOR.encode()) + rb"\r?\n"
+    + _TOKEN_EXPORT_LINE + re.escape(TOKEN_BLOCK_END.encode()) + rb"(?:\r?\n|$)"
+)
+_TOKEN_BLOCK_BEGIN_LINE = re.compile(
+    rb"(?m)^(?:" + re.escape(TOKEN_BLOCK_BEGIN.encode()) + rb"|"
+    + re.escape(TOKEN_BLOCK_BEGIN_WITH_SEPARATOR.encode()) + rb")\r?$"
+)
 SHELL_PROFILES = {
     "zsh": "~/.zshrc",
     "bash": "~/.bashrc",
@@ -74,15 +83,20 @@ def codex_token_export(token: str, target: str | None = None) -> str:
 
 def install_codex_token(token: str, target: str) -> None:
     """Put the Codex token in one replaceable shell-profile block."""
-    block = f"{TOKEN_BLOCK_BEGIN}\n{codex_token_export(token, target)}\n{TOKEN_BLOCK_END}\n".encode()
+    export = codex_token_export(token, target)
+    block = f"{TOKEN_BLOCK_BEGIN}\n{export}\n{TOKEN_BLOCK_END}\n".encode()
+    separator_block = f"\n{TOKEN_BLOCK_BEGIN_WITH_SEPARATOR}\n{export}\n{TOKEN_BLOCK_END}\n".encode()
     existed = os.path.exists(target)
     existing = b""
     if existed:
         with open(target, "rb") as f:
             existing = f.read()
-    updated = _TOKEN_BLOCK_PATTERN.sub(lambda _: block, existing) if _TOKEN_BLOCK_PATTERN.search(existing) else (
-        existing + (b"" if not existing or existing.endswith(b"\n") else b"\n") + block
-    )
+    if _TOKEN_BLOCK_WITH_SEPARATOR_PATTERN.search(existing):
+        updated = _TOKEN_BLOCK_WITH_SEPARATOR_PATTERN.sub(lambda _: separator_block, existing)
+    elif _TOKEN_BLOCK_PATTERN.search(existing):
+        updated = _TOKEN_BLOCK_PATTERN.sub(lambda _: block, existing)
+    else:
+        updated = existing + (separator_block if existing and not existing.endswith(b"\n") else block)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "wb") as f:
         f.write(updated)
@@ -96,7 +110,7 @@ def remove_codex_token(target: str) -> bool:
         return False
     with open(target, "rb") as f:
         existing = f.read()
-    updated = _TOKEN_BLOCK_PATTERN.sub(b"", existing)
+    updated = _TOKEN_BLOCK_PATTERN.sub(b"", _TOKEN_BLOCK_WITH_SEPARATOR_PATTERN.sub(b"", existing))
     if _TOKEN_BLOCK_BEGIN_LINE.search(updated):
         print(warn(f"  Incomplete appliance MCP token block in {target}; the token may remain, so remove it manually."))
     if updated == existing:

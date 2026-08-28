@@ -68,6 +68,15 @@ with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home
             assert f.read() == expected, "owned Codex registration kept its stale token"
 
     profile = profiles[0]
+    no_trailing_newline = b"export USER_SETTING=kept"
+    with open(profile, "wb") as f:
+        f.write(no_trailing_newline)
+    agents.install_codex_token("not-a-real-token", profile)
+    agents.install_codex_token("replacement-not-a-real-token", profile)
+    assert agents.remove_codex_token(profile)
+    with open(profile, "rb") as f:
+        assert f.read() == no_trailing_newline, "install then removal left an appliance-owned separator"
+
     crlf = (b"before\r\n" + agents.TOKEN_BLOCK_BEGIN.encode() + b"\r\n"
             + f"export {agents.CODEX_TOKEN_ENV}=not-a-real-token".encode() + b"\r\n"
             + agents.TOKEN_BLOCK_END.encode() + b"\r\nafter\r\n")
