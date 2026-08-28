@@ -103,6 +103,12 @@ Report the app done only when it has answered its core question in front of you,
 An app that saves clean and shows an empty shell is not done — say so and fix the view or the
 data first.
 
+Done also includes the How-it-works page: the in-page section behind a discreet footer link
+explaining the data, each view's actual Cypher, what an empty panel means, and what the
+appliance did here that a conventional stack could not. `../how-it-works/` has the format.
+It is assembled from what §2 and §4 already made you verify, so it costs minutes — and no
+app is handed over without it.
+
 ## Voice
 
 Output follows `../VOICE.md` (the appliance's `skills/VOICE.md`) — its own register, not LLM English. The

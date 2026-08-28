@@ -123,6 +123,9 @@ URL serves for this user, and a new name is an independent fork; multi-file apps
 their stem siblings, references rewritten. Never rebuild a realm app from scratch to change
 it — fork it.
 
+Either lane, the app ships its How-it-works page — the in-page section `how-it-works` (the
+skill beside this one) specifies. Handover includes it.
+
 ## Testing, per lane
 
 A realm ships its battery: `tests/questions.yml` reconciled by a harness, per

@@ -64,6 +64,15 @@ Builds single-page apps served by the world and fed by its data through the app
 runtime. Its discipline: build the data before the chrome (run the views first),
 then verify like a user — open the served page and watch it answer on live rows.
 
+## how-it-works
+
+The page every app ships behind a discreet footer link: the data and where it comes from,
+each named view with the Cypher that actually runs, what an empty panel means, and — with
+VOICE.md enforced hard — what the appliance did that a conventional stack could not. It
+lives inside the app's own HTML, because a separate file detaches from every fork.
+Mandatory at handover and cheap by design: every fact on it is something vibe-apps and
+relentless-testing already made the builder verify.
+
 ## world-atlas
 
 Interrogates a world systematically — views, capabilities, schema, counts,
