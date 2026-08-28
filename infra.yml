@@ -36,9 +36,12 @@ services:
       # before credentials are even checked. The app services are unaffected: they
       # dial neo4j:7687 directly over the compose network.
       - NEO4J_server_bolt_advertised__address=localhost:${NEO4J_BOLT_PORT:-11046}
-      - NEO4J_PLUGINS=["apoc","graph-data-science"]
-      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
-      - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
+      # APOC only: the server uses apoc.refactor.mergeNodes for entity merging.
+      # Graph Data Science was installed but never called — dropping it saves
+      # the plugin download and its startup cost on every fresh boot.
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*
       - NEO4J_server_memory_heap_max__size=${NEO4J_HEAP:-2G}
     healthcheck:
       # The app's Drivine pool connects during startup; without this gate it
