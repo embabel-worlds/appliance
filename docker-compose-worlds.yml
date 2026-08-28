@@ -50,6 +50,11 @@ services:
         required: false
     environment:
       - SERVER_PORT=${WORLDS_PORT:-11043}
+      # Where the engine finds the dependency module store mounted below. Unset
+      # would mean no store, and every realm that declares wasm dependencies would
+      # refuse to load; pointing at the always-present (possibly empty) mount keeps
+      # the same fail-closed behaviour until the operator provisions modules.
+      - ASSISTANT_WASM_DEPENDENCIES_STOREPATH=/wasm-modules
       # TWO MCP DOORS from the one server, named for their SURFACES:
       #
       #   /mcp  (also /mcp/chat)  embabel-chat  a chat client — Cowork, Desktop —
@@ -209,6 +214,16 @@ services:
       # build runs inside cloneRepo, so it never fires for a local reference;
       # a realm that needs npm must be built on the host first.
       - ${EMBABEL_REALMS_DIR:-./realms}:/realms:ro
+      # The operator's wasm dependency module store: content-addressed module bytes
+      # (<sha256>.wasm) beside an allowlist.json naming what may load and as which
+      # capability kind. Same shape as the realms mount above: ./wasm-modules in this
+      # checkout exists and is empty, so the mount is always valid and inert until an
+      # operator provisions it (the engine repo ships
+      # scripts/wasm/provision-dependency-store.py, which hashes module bytes in and
+      # stamps realm manifests to match; digests are computed, never typed).
+      # Read-only for the same reason as /realms: placing bytes and an allowlist
+      # entry here IS the authorization decision, and the appliance only ever reads.
+      - ${EMBABEL_WASM_MODULES_DIR:-./wasm-modules}:/wasm-modules:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     models:
