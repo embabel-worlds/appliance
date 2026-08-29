@@ -28,6 +28,7 @@ const api = {
   tourExport: (settings: Settings, id: string) => ipcRenderer.invoke('tours:export', settings, id),
   tourImport: (settings: Settings, yaml: string) => ipcRenderer.invoke('tours:import', settings, yaml),
   tourDelete: (settings: Settings, id: string) => ipcRenderer.invoke('tours:delete', settings, id),
+  tourAsset: (settings: Settings, path: string) => ipcRenderer.invoke('tours:asset', settings, path),
   vcGenerate: (settings: Settings, question: string) => ipcRenderer.invoke('vc:generate', settings, question),
   vcRefine: (settings: Settings, cypher: string, instruction: string) => ipcRenderer.invoke('vc:refine', settings, cypher, instruction),
   vcViews: (settings: Settings) => ipcRenderer.invoke('vc:views', settings),

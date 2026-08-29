@@ -531,6 +531,38 @@ async function tourExport(settings: Settings, id: string) {
 }
 
 /**
+ * Fetch an image a tour's narration names, and hand it back as a data URL.
+ *
+ * WHY THIS EXISTS AT ALL. The console can write `<img src="/apps/world/x.svg">` and be done: it is
+ * served by the appliance, so the browser sends the session with the request. This app's windows
+ * load over `file://` and authenticate with a header, and an `<img>` tag cannot carry one — the
+ * same asset would come back 401 and render as a broken icon. So the fetch happens here, where the
+ * credentials are, and the renderer gets bytes it can display.
+ *
+ * ONLY `/apps/`, and only a rooted path. A tour is a file people exchange; the point of serving
+ * its images ourselves is that naming one cannot become a request to somebody else's host. This
+ * function is the last place that could be subverted into making that request, so it refuses
+ * anything that is not a path into the appliance's own app store — the kit's `resolveTourImages`
+ * has already dropped the rest, and this does not take its word for it.
+ */
+async function tourAsset(settings: Settings, path: string) {
+  if (!path.startsWith('/apps/') || path.startsWith('//')) return { ok: false, message: 'not an app asset' }
+  try {
+    const res = await fetch(`${settings.baseUrl}${path}`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const type = res.headers.get('content-type') ?? 'application/octet-stream'
+    if (!type.startsWith('image/')) return { ok: false, message: `not an image (${type})` }
+    const bytes = Buffer.from(await res.arrayBuffer())
+    return { ok: true, dataUrl: `data:${type};base64,${bytes.toString('base64')}` }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
  * Store a tour file — one somebody exported, or one just recorded here.
  *
  * A 409 is the interesting case and gets the server's own sentence: a realm
@@ -1063,7 +1095,7 @@ export {
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute, realmUpdates,
   kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation, hintRandom,
-  toursList, tourStepStatus, tourExport, tourImport, tourDelete,
+  toursList, tourStepStatus, tourExport, tourImport, tourDelete, tourAsset,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }

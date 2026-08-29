@@ -817,6 +817,7 @@ handle('tours:import', (settings: Settings, yaml: string) => {
   return api.tourImport(settings, yaml)
 })
 handle('tours:delete', (settings: Settings, id: string) => api.tourDelete(settings, id))
+handle('tours:asset', (settings: Settings, path: string) => api.tourAsset(settings, path))
 handle('vc:generate', (settings: Settings, question: string) => {
   log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
   return api.kgGenerate(settings, question)

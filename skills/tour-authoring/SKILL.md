@@ -116,6 +116,38 @@ layout, so:
 Check before you ship: read the surface's dictionary rather than guessing. The Me app builds
 its own from `data-panel`, `data-field` and `data-control` in `me-app/index.html`.
 
+## Pictures, for the steps that happen somewhere else
+
+Narration is markdown, and markdown image syntax works — but **only for an asset this appliance
+serves**, named by a rooted path:
+
+```yaml
+- say: |
+    One terminal window, and you are done. Roughly what it looks like:
+
+    ![A terminal running claude against this world](/apps/world/tour-claude-code.svg)
+```
+
+Anything else — `https://…`, `//host/…`, a bare relative name, a `data:` blob — is **deleted**
+before the caption is painted. That is not a limitation to work around. A tour is a file people
+exchange, so an image on a host its author controls is a beacon: it reports that the tour was
+opened, when, and from where, before the reader has agreed to anything.
+
+Put the file in the world's `config/apps/` (served at `/apps/world/<name>`) or a realm's `apps/`
+(served at `/apps/<realm>/<name>`). SVG, PNG, WEBP and friends all serve.
+
+**Use one only where the app cannot show the thing itself.** The step that hands over to a
+terminal is the case that earns a picture. A screenshot of a panel the user is already looking at
+is worse than the panel — the tour drives the real UI, and that is the whole point of it.
+
+**Put it on a `say:` step of its own, before the hand-over.** A `say:` attached to a `by: user`
+step lands *after* the user comes back, and a `hint:` is painted as plain text on purpose, so
+neither will show a picture at the moment it would have helped.
+
+**Draw, do not fake.** An illustration of a session is honest and stays true; a mocked-up
+screenshot additionally claims a version, a theme and a working directory, and is wrong the week
+any of those change. Say "roughly what it looks like" in the narration.
+
 ## Refusals — things not to do
 
 **Do not write a tour that only narrates.** If every step is `say:`, you have written a

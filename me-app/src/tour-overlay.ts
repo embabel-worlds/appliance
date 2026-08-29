@@ -19,7 +19,7 @@
  */
 
 import { maybe } from './dom'
-import { paint } from './markdown'
+import { paintTour } from './markdown'
 import {
   TourRun,
   type Tour,
@@ -268,7 +268,21 @@ export class TourOverlay {
   private say(markdown: string): void {
     // Through the same sanitizing pipeline as every other authored string here. A tour can come
     // from a realm somebody else wrote, so this is not a formality.
-    paint(this.caption, markdown)
+    //
+    // The TOUR policy, which differs from the rest of the app in one way: narration may show an
+    // image, and only one this appliance serves. Not awaited — the words go up now and a picture
+    // arrives when it arrives.
+    void paintTour(this.caption, markdown, (path) => this.asset(path))
+  }
+
+  /** Fetch a narration image through the bridge; null if it is missing or unreachable. */
+  private async asset(path: string): Promise<string | null> {
+    try {
+      const got = await window.me.tourAsset(this.options.settings(), path)
+      return got?.ok ? (got.dataUrl as string) : null
+    } catch {
+      return null
+    }
   }
 
   private showRows(name: string, rows: Record<string, unknown>[]): void {

@@ -32,7 +32,7 @@
 
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { MARKDOWN_OPTIONS, MARKDOWN_SANITIZE } from '@embabel/appliance-kit/studio-kit'
+import { MARKDOWN_OPTIONS, MARKDOWN_SANITIZE, TOUR_SANITIZE, resolveTourImages } from '@embabel/appliance-kit/studio-kit'
 
 /* A FRAGMENT, not the kit's HTML string: the two steps below walk nodes — link
    rewiring needs the anchors, citation chips need the text nodes. The console
@@ -96,4 +96,34 @@ function paint(el: HTMLElement, text: string, decorate?: (text: string) => Node[
   el.replaceChildren(render(text, decorate))
 }
 
-export { render, paint }
+/**
+ * Paint TOUR narration, which is the one place here that may show an image.
+ *
+ * Two differences from [paint], and both are about where the picture comes from. The policy is the
+ * kit's `TOUR_SANITIZE` — images allowed — and `resolveTourImages` then deletes any whose source is
+ * not a rooted path into this appliance, because a tour is a file people exchange and an image on
+ * somebody else's host is a beacon that reports when it was opened.
+ *
+ * Then the surviving ones are FETCHED rather than linked. These windows load over `file://`, so a
+ * rooted `src` is a path on the user's disk and not the appliance; and the appliance wants a
+ * credential an `<img>` cannot send. [load] does it with the ones the app already holds and returns
+ * the bytes. Asynchronous, so the caption paints immediately and each image lands when it arrives —
+ * a tour that stalled waiting on a picture would be a worse tour than one without it.
+ */
+async function paintTour(el: HTMLElement, text: string, load: (path: string) => Promise<string | null>) {
+  const frag = DOMPurify.sanitize(marked.parse(String(text ?? ''), MARKDOWN_OPTIONS) as string,
+    { ...TOUR_SANITIZE, RETURN_DOM_FRAGMENT: true }) as unknown as DocumentFragment
+  for (const a of frag.querySelectorAll('a')) externalize(a)
+  resolveTourImages(frag)
+  const images = Array.from(frag.querySelectorAll('img'))
+  el.replaceChildren(frag)
+  await Promise.all(images.map(async (img) => {
+    const path = img.getAttribute('src')
+    const data = path ? await load(path) : null
+    // A picture that could not be fetched leaves no broken icon behind: the words stand alone.
+    if (data) img.setAttribute('src', data)
+    else img.remove()
+  }))
+}
+
+export { render, paint, paintTour }

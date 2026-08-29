@@ -185,7 +185,11 @@
       .tour-progress { flex: 0 1 160px; min-width: 40px; height: 2px; border-radius: 2px;
         background: var(--line); overflow: hidden; }
       .tour-progress > span { display: block; height: 100%; background: currentColor; transition: width .45s ease; }
-      .tour-caption { margin-top: 10px; font-size: 15px; line-height: 1.55; max-height: 24vh; overflow-y: auto; }
+      .tour-caption { margin-top: 10px; font-size: 15px; line-height: 1.55; max-height: 40vh; overflow-y: auto; }
+      /* Narration may show one picture, for a step that happens outside this window. Bounded by
+         the bar, not by itself — the words are still the thing being read. */
+      .tour-caption img { display: block; max-width: min(100%, 660px); max-height: 24vh;
+        margin: 10px 0; border-radius: 8px; border: 1px solid var(--rule); }
       .tour-caption > :first-child { margin-top: 0 } .tour-caption > :last-child { margin-bottom: 0 }
       .tour-question { margin: 0 0 10px; font-size: 15px; line-height: 1.5; }
       .tour-answer { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
