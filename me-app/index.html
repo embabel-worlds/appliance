@@ -146,6 +146,22 @@
     .tile.has-icon { background: none; border: none; padding: 0; overflow: hidden; }
     .tile.has-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
     .tile.lg.has-icon img { border-radius: 10px; }
+
+      /* Tours. The synopsis is deliberately a <pre> of plain text: it is the sentence somebody
+         decides on, so it must be exactly what the kit derived from the file — never something a
+         tour's author could style, link, or dress up as part of the app. */
+      .tour-list { display: grid; gap: 12px; margin-top: 12px; }
+      .tour-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+      .tour-card h3 { margin: 0 0 6px; font-size: 14px; }
+      .tour-synopsis { margin: 0 0 10px; white-space: pre-wrap; font: inherit; color: var(--muted); }
+      .tour-actions { display: flex; gap: 8px; }
+      .tour-transcript { margin-top: 12px; display: grid; gap: 10px; max-height: 46vh; overflow-y: auto; }
+      .tour-say { line-height: 1.5; }
+      .tour-ask, .tour-handover { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .tour-ask label { color: var(--muted); }
+      .tour-rows { border-collapse: collapse; font-size: 12px; }
+      .tour-rows th, .tour-rows td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; }
+      .subhead { margin: 14px 0 4px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -203,6 +219,7 @@
       <button class="tab" role="tab" data-tab="apps">Apps</button>
       <button class="tab" role="tab" data-tab="chat">Chat</button>
       <button class="tab" role="tab" data-tab="models">Models</button>
+      <button class="tab" role="tab" data-tab="tours">Tours</button>
     </nav>
 
 
@@ -290,7 +307,7 @@
       <h2>Scan</h2>
       <div class="panel-body">
         <div class="row">
-          <button id="scan" class="primary">Scan this Mac</button>
+          <button id="scan" data-control="scan" class="primary">Scan this Mac</button>
           <label class="check">
             <input type="checkbox" id="history-toggle" />
             Include browser history (top sites, news, searches)
@@ -317,9 +334,9 @@
           can open: local files reveal in Finder, web sources open where they came from.
         </p>
         <div class="row">
-          <input type="text" id="ask-question" class="grow"
+          <input type="text" id="ask-question" data-field="question" class="grow"
                  placeholder="What do the renewal terms say?" />
-          <button id="ask" class="primary">Ask</button>
+          <button id="ask" data-control="ask" class="primary">Ask</button>
         </div>
         <div class="row">
           <label class="field">Date
@@ -365,9 +382,9 @@
         <div class="row" id="doc-ingest-row" hidden>
           <span id="doc-ingest-files" class="status"></span>
           <label class="field grow">Tags — comma-separated
-            <input type="text" id="doc-ingest-tags" placeholder="e.g. papers, renewal" />
+            <input type="text" id="doc-ingest-tags" data-field="ingest-tags" placeholder="e.g. papers, renewal" />
           </label>
-          <button id="doc-ingest" class="primary">Ingest</button>
+          <button id="doc-ingest" data-control="index-documents" class="primary">Ingest</button>
           <button id="doc-ingest-cancel">Cancel</button>
         </div>
         <div id="doc-ingest-status" class="status"></div>
@@ -412,7 +429,7 @@
           data, a scope the appliance enforces, not the query.
         </p>
         <div class="row">
-          <button id="vc-open" class="primary">Open Query Studio ⧉</button>
+          <button id="vc-open" data-control="open-query-studio" class="primary">Open Query Studio ⧉</button>
         </div>
       </div>
     </section>
@@ -427,7 +444,7 @@
           recent signal — before anything is enabled to act.
         </p>
         <div class="row">
-          <button id="handlers-open" class="primary">Open Handler Studio ⧉</button>
+          <button id="handlers-open" data-control="open-handler-studio" class="primary">Open Handler Studio ⧉</button>
         </div>
       </div>
     </section>
@@ -448,8 +465,8 @@
                doesn't. A realm's checkout is never pulled on startup (that would
                make every boot wait on GitHub), so pushing a realm changes nothing
                here until someone asks for it. -->
-          <button id="realm-refresh">Refresh</button>
-          <button id="realm-update-all">Update all</button>
+          <button id="realm-refresh" data-control="refresh-realms">Refresh</button>
+          <button id="realm-update-all" data-control="update-realms">Update all</button>
           <span id="realm-status" class="status"></span>
         </div>
         <p class="hint">
@@ -471,6 +488,32 @@
       </div>
     </section>
     </div><!-- /realms -->
+
+    <div class="tabpanel" data-panel="tours" hidden>
+    <section class="panel">
+      <h2>Tours</h2>
+      <div class="panel-body">
+        <p class="muted">
+          A tour is a guided walk through this app, shipped as content: a realm can bring one,
+          somebody can send you one, and you can record what you just did and hand that back.
+          Every tour says what it will do before it does any of it — and you can pause or stop
+          at any step.
+        </p>
+        <div class="row">
+          <button id="tour-refresh" type="button">Refresh</button>
+          <button id="tour-import" type="button">Import a file…</button>
+          <button id="tour-record" type="button">Record</button>
+          <span id="tour-status" class="muted"></span>
+        </div>
+        <div id="tour-list" class="tour-list"></div>
+        <div id="tour-stage" hidden>
+          <div id="tour-controls" class="row"></div>
+          <div id="tour-transcript" class="tour-transcript"></div>
+        </div>
+      </div>
+    </section>
+    </div><!-- /tours -->
+
 
     <div class="tabpanel" data-panel="connect" hidden>
     <section class="panel">
@@ -528,8 +571,8 @@
                 </label>
               </div>
               <div class="row">
-                <button id="wire-claude" class="primary">Wire Claude Code</button>
-                <button id="wire-codex">Wire Codex</button>
+                <button id="wire-claude" data-control="wire-claude" class="primary">Wire Claude Code</button>
+                <button id="wire-codex" data-control="wire-codex">Wire Codex</button>
                 <span id="wire-status" class="status"></span>
               </div>
               <p class="hint">Or wire anything else by hand:</p>
@@ -560,7 +603,7 @@
         </p>
         <div id="app-grid" class="card-grid"></div>
         <div class="row">
-          <button id="apps-refresh">Refresh</button>
+          <button id="apps-refresh" data-control="refresh-apps">Refresh</button>
           <span id="apps-status" class="status"></span>
         </div>
       </div>
@@ -579,7 +622,7 @@
           models at boot, so restart it to pick one up.
         </p>
         <div class="row">
-          <button id="models-refresh">Refresh</button>
+          <button id="models-refresh" data-control="refresh-models">Refresh</button>
           <span id="models-status" class="status"></span>
         </div>
         <div class="role">

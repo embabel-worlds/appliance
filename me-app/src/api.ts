@@ -466,6 +466,104 @@ async function hintRandom(settings: Settings, exclude: string[]) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Tours — guided walks the appliance holds as content: shipped with the world,
+// contributed by installed realms, or imported by this user. The app fetches
+// them and RUNS them; what a step means is the kit's business (see
+// `@embabel/appliance-kit/tour`) and what a step's precondition answers is the
+// appliance's. Nothing here interprets a step.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every tour this world offers. Empty on any failure — a tour panel that cannot
+ * reach the appliance shows nothing, which the panel itself explains.
+ * @param {Settings} settings
+ */
+async function toursList(settings: Settings) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/tours`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return []
+    const body = await readJson(res)
+    return Array.isArray(body?.tours) ? body.tours : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Is step [index] already satisfied? Asked when the step is REACHED, never at
+ * load: a tour changes the world as it walks through it.
+ *
+ * UNKNOWN on any failure, which the runner treats as "run it". The direction is
+ * deliberate — repeating a step is visible and recoverable, silently skipping
+ * one means the user never learns what they missed.
+ * @param {Settings} settings @param {string} id @param {number} index
+ * @param {object} params what the tour has collected so far
+ */
+async function tourStepStatus(settings: Settings, id: string, index: number, params: object) {
+  try {
+    const path = `/api/v1/tours/${encodeURIComponent(id)}/steps/${index}/status`
+    // A POST for a read: the parameters the tour has collected are the body, and they are what let
+    // a precondition ask about the thing the user just named.
+    const res = await post(settings, path, { params: params ?? {} }, 30000)
+    if (!res.ok) return { status: 'UNKNOWN', detail: `HTTP ${res.status}` }
+    return (await readJson(res)) ?? { status: 'UNKNOWN', detail: 'no answer' }
+  } catch (e) {
+    return { status: 'UNKNOWN', detail: errorMessage(e) }
+  }
+}
+
+/** One tour as the file it would be — what the user hands to somebody else. */
+async function tourExport(settings: Settings, id: string) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/tours/${encodeURIComponent(id)}/export`, {
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    return { ok: true, yaml: await res.text() }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/**
+ * Store a tour file — one somebody exported, or one just recorded here.
+ *
+ * A 409 is the interesting case and gets the server's own sentence: a realm
+ * already ships a tour of that name, so this write would never load.
+ */
+async function tourImport(settings: Settings, yaml: string) {
+  try {
+    const res = await post(settings, '/api/v1/tours/import', { yaml }, 30000)
+    if (res.status === 404) return { ok: false, message: 'this appliance cannot store tours — it needs a newer image' }
+    const body = await readJson(res)
+    if (!res.ok) return { ok: false, message: body?.message ?? body?.error ?? `HTTP ${res.status}` }
+    return { ok: true, tours: body?.tours ?? [] }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
+/** Delete a tour this user saved. A realm's is not theirs to remove; the server says so. */
+async function tourDelete(settings: Settings, id: string) {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/tours/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: auth(settings) },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
+    const body = await readJson(res)
+    return { ok: true, deleted: body?.deleted === true }
+  } catch (e) {
+    return { ok: false, message: errorMessage(e) }
+  }
+}
+
 /**
  * The engine's strict preflight WITHOUT execution — the editor's validator.
  * @param {Settings} settings
@@ -965,6 +1063,7 @@ export {
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute, realmUpdates,
   kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation, hintRandom,
+  toursList, tourStepStatus, tourExport, tourImport, tourDelete,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }

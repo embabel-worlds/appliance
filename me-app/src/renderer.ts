@@ -11,6 +11,7 @@ import { $ } from './dom'
 import { restoreTheme } from './theme'
 import { paint } from './markdown'
 import { TipRotation, renderTipCard } from '@embabel/appliance-kit/tips'
+import { mountTours } from './tours'
 import { ok } from '@embabel/appliance-kit'
 import './graph'
 import type { Control } from './dom'
@@ -409,16 +410,29 @@ function setPill(ok: boolean, text: string) {
   connPillText.textContent = text
 }
 
-for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
-  tab.addEventListener('click', () => {
-    for (const t of document.querySelectorAll<HTMLElement>('.tab')) t.classList.toggle('is-on', t === tab)
-    for (const panel of document.querySelectorAll<HTMLElement>('.tabpanel')) {
-      panel.hidden = panel.dataset['panel'] !== tab.dataset['tab']
-    }
-    // Chat wakes on first visit — no stream, no polling until someone looks.
-    if (tab.dataset['tab'] === 'chat') startChat()
-  })
+/**
+ * Switch to a tab, by name.
+ *
+ * Extracted from the click handler because a TOUR needs to do exactly this — `open: panel.query` is
+ * the same act, arriving from a script rather than a pointer — and a tour that simulated a click on
+ * the tab would be scripting the chrome instead of the app.
+ */
+function showTab(name: string): void {
+  for (const t of document.querySelectorAll<HTMLElement>('.tab')) t.classList.toggle('is-on', t.dataset['tab'] === name)
+  for (const panel of document.querySelectorAll<HTMLElement>('.tabpanel')) {
+    panel.hidden = panel.dataset['panel'] !== name
+  }
+  // Chat wakes on first visit — no stream, no polling until someone looks.
+  if (name === 'chat') startChat()
 }
+
+for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
+  tab.addEventListener('click', () => showTab(tab.dataset['tab'] ?? ''))
+}
+
+// Tours: the list and the runner. The kit owns what a step means; this app supplies its own panels,
+// fields and controls, and the tab switch above.
+mountTours({ settings: currentSettings, showTab })
 
 // ---------------------------------------------------------------------------
 // Chat — deliberately the simplest possible surface over the real protocol,
@@ -1112,7 +1126,7 @@ function paintIcon(tile: HTMLElement, settings: Settings, iconUrl: string | unde
   })
 }
 
-function realmRow(entry: RealmSummary & { meta?: string }, action?: HTMLElement) {
+function realmRow(entry: RealmSummary & { meta?: string }, ...actions: (HTMLElement | undefined)[]) {
   const row = document.createElement('div')
   row.className = 'card realm'
   const tile = document.createElement('div')
@@ -1163,9 +1177,12 @@ function realmRow(entry: RealmSummary & { meta?: string }, action?: HTMLElement)
     body.append(summary, full)
   }
   row.append(tile, body)
-  if (action) row.append(action)
+  row.append(...actions.filter((a): a is HTMLElement => a !== undefined))
   return row
 }
+
+/** Which installed realms ship a tour, by realm name. Filled beside the realm list. */
+const realmToursByName = new Map<string, { id: string; name: string }[]>()
 
 async function loadRealms() {
   setStatus(realmStatus, null, 'loading…')
@@ -1193,6 +1210,15 @@ async function loadRealms() {
     realmInstalledEl.textContent = 'No realms installed yet — pick one below.'
     setStatus(realmStatus, null, '')
   } else {
+    // Which realms ship a tour — one call, read for a label only; the Tours panel owns running
+    // them. Failure is silent because a missing label is not worth an error surface.
+    realmToursByName.clear()
+    const tours = (await window.me.toursList(settings)) as { id: string; source?: string; presentation?: Record<string, unknown> }[]
+    for (const t of tours ?? []) {
+      if (!t.source) continue
+      const name = typeof t.presentation?.['name'] === 'string' ? (t.presentation['name'] as string) : t.id
+      realmToursByName.set(t.source, [...(realmToursByName.get(t.source) ?? []), { id: t.id, name }])
+    }
     for (const realm of installed.realms) {
       /* The server's summary is the receipt and it differs in kind: a pulled
        * checkout reports what moved, a local `path:` reference reports that it
@@ -1216,6 +1242,18 @@ async function loadRealms() {
           update.textContent = 'Update'
         }
       })
+      const tour = realmToursByName.get(realm.name)?.[0]
+      const takeTour =
+        tour ?
+          (() => {
+            const b = document.createElement('button')
+            b.type = 'button'
+            b.textContent = 'Take the tour'
+            b.title = tour.name
+            b.addEventListener('click', () => showTab('tours'))
+            return b
+          })()
+        : undefined
       realmInstalledEl.append(realmRow({
         name: realm.name,
         description: realm.description,
@@ -1224,7 +1262,7 @@ async function loadRealms() {
         // nobody has cloned yet, so those keep their letters.
         iconUrl: realm.iconUrl,
         meta: [realm.version ? `v${realm.version}` : '', (realm.tags ?? []).join(' ')].filter(Boolean).join(' · '),
-      }, update))
+      }, update, takeTour))
     }
     setStatus(realmStatus, true, `${installed.realms.length} installed`)
   }

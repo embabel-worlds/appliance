@@ -808,6 +808,15 @@ handle('docs:upload', (settings: Settings, filename: string, bytes: ArrayBuffer,
 handle('vc:schema', (settings: Settings) => api.kgSchema(settings))
 handle('vc:validate', (settings: Settings, cypher: string) => api.kgValidate(settings, cypher))
 handle('hints:random', (settings: Settings, exclude: string[]) => api.hintRandom(settings, exclude))
+handle('tours:list', (settings: Settings) => api.toursList(settings))
+handle('tours:step-status', (settings: Settings, id: string, index: number, params: object) =>
+  api.tourStepStatus(settings, id, index, params))
+handle('tours:export', (settings: Settings, id: string) => api.tourExport(settings, id))
+handle('tours:import', (settings: Settings, yaml: string) => {
+  log(`[me-app] importing a tour (${yaml.length} bytes)`)
+  return api.tourImport(settings, yaml)
+})
+handle('tours:delete', (settings: Settings, id: string) => api.tourDelete(settings, id))
 handle('vc:generate', (settings: Settings, question: string) => {
   log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
   return api.kgGenerate(settings, question)

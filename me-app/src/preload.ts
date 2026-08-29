@@ -22,6 +22,12 @@ const api = {
   vcSchema: (settings: Settings) => ipcRenderer.invoke('vc:schema', settings),
   vcValidate: (settings: Settings, cypher: string) => ipcRenderer.invoke('vc:validate', settings, cypher),
   hintRandom: (settings: Settings, exclude: string[]) => ipcRenderer.invoke('hints:random', settings, exclude),
+  toursList: (settings: Settings) => ipcRenderer.invoke('tours:list', settings),
+  tourStepStatus: (settings: Settings, id: string, index: number, params: object) =>
+    ipcRenderer.invoke('tours:step-status', settings, id, index, params),
+  tourExport: (settings: Settings, id: string) => ipcRenderer.invoke('tours:export', settings, id),
+  tourImport: (settings: Settings, yaml: string) => ipcRenderer.invoke('tours:import', settings, yaml),
+  tourDelete: (settings: Settings, id: string) => ipcRenderer.invoke('tours:delete', settings, id),
   vcGenerate: (settings: Settings, question: string) => ipcRenderer.invoke('vc:generate', settings, question),
   vcRefine: (settings: Settings, cypher: string, instruction: string) => ipcRenderer.invoke('vc:refine', settings, cypher, instruction),
   vcViews: (settings: Settings) => ipcRenderer.invoke('vc:views', settings),
