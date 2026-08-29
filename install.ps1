@@ -30,6 +30,20 @@
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 
+# Force UTF-8 on the console so em-dashes, box borders, and other non-ASCII
+# characters in wizard prompts (from setup.py, the appliance's own logs) render
+# as intended. The Windows console codepage defaults to OEM 437/850 in most
+# shells, and Python 3 emits UTF-8 by default -- displayed in cp437, "--"
+# appears as "ù", box rules turn into scrambled shapes, and typed input can
+# lose characters at codepage boundaries. Setting both channels fixes this
+# session; the .cmd shim written below does the same via `chcp 65001` for
+# later runs. Silent if the current host does not surface Console (e.g. a
+# service context) -- setup will just look the way it did before.
+try {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+} catch { }
+
 # ---- Config ------------------------------------------------------------------
 $Repo = if ($env:EMBABEL_REPO) { $env:EMBABEL_REPO } else { 'embabel-worlds/appliance' }
 $Ref  = if ($env:EMBABEL_REF)  { $env:EMBABEL_REF  } else { 'main' }
@@ -253,6 +267,11 @@ $Shim = @"
 @echo off
 rem Forwards to the Embabel appliance in $HomeDir. Written by install.ps1.
 rem Prefers the Python launcher; falls back to python.exe on PATH.
+rem chcp 65001: force the console to UTF-8 so em-dashes and box borders in
+rem wizard prompts render as intended -- default OEM 437/850 turns them into
+rem "ù" and other garbage, and setup becomes unreadable. >nul silences the
+rem "Active code page: 65001" line every invocation would otherwise print.
+chcp 65001 >nul
 where py >nul 2>nul
 if not errorlevel 1 (
   py -3 "$HomeDir\embabel" %*
