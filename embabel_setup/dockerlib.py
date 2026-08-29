@@ -50,7 +50,18 @@ BOOT_WAIT_SECONDS = 120
 GITHUB_TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN")
 def _docker(*argv: str, timeout: int = 30) -> subprocess.CompletedProcess | None:
     try:
-        return subprocess.run(["docker", *argv], capture_output=True, text=True, timeout=timeout)
+        # encoding + errors: on Windows, text=True without encoding uses the
+        # system ANSI codepage (cp1252 in en-US), and docker log output routinely
+        # contains UTF-8 bytes -- container banners, log lines, escape sequences.
+        # A single non-decodable byte took down setup on the first boot when
+        # token_from_logs concatenated a stdout that had come back None from a
+        # dead reader thread. errors="replace" is safe here: every caller either
+        # regex-matches or string-searches the output, and non-decodable bytes
+        # would never have matched anyway.
+        return subprocess.run(
+            ["docker", *argv], capture_output=True, text=True, timeout=timeout,
+            encoding="utf-8", errors="replace",
+        )
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return None
 def running_modes() -> dict[str, str]:
@@ -121,7 +132,8 @@ def github_token() -> tuple[str, str] | None:
         if value:
             return value, f"${var}"
     try:
-        run = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10)
+        run = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10,
+                             encoding="utf-8", errors="replace")
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return None  # no gh, or it misbehaved — a public-realm install is unaffected
     token = run.stdout.strip() if run.returncode == 0 else ""
@@ -204,7 +216,8 @@ def _compose(mode: str, *argv: str, capture: bool = False):
         cmd += ["-f", overlay]
     cmd += argv
     try:
-        return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env())
+        return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env(),
+                              encoding="utf-8", errors="replace")
     except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
         raise SetupError(f"docker compose failed: {e}")
 def take_everything_down() -> None:
@@ -227,7 +240,7 @@ def take_everything_down() -> None:
         cmd += ["--env-file", env_path()]
     cmd += ["-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
             "down", "--volumes", "--remove-orphans"]
-    run = subprocess.run(cmd, capture_output=True, text=True)
+    run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     # BY PROJECT LABEL, not by name. Matching "embabel-" caught embabel-assistant-neo4j
     # and embabel-assistant-docling — a developer's own stack from the assistant repo,
