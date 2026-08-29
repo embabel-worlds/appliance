@@ -9,6 +9,10 @@
  * That split is the whole point of the exercise: the console implements the same interface against
  * its own tabs, and one tour file runs on both or is refused by name.
  *
+ * THE RUN IS NOT HERE. Starting a tour hands it to `TourOverlay`, a bar outside every panel, so
+ * the panels can MOVE behind it. A run owned by this panel could only paint a transcript beside
+ * itself, which is a document about the app rather than a walk through it.
+ *
  * THE CONSENT SCREEN IS NOT DECORATION. A tour can arrive from a realm somebody else wrote, so
  * before anything runs, the user sees what it will do — every line of it DERIVED from the file by
  * the kit rather than written by its author. That is the property that makes trying a stranger's
@@ -16,42 +20,21 @@
  */
 
 import { $, maybe } from './dom'
-import { paint } from './markdown'
 import { readDictionary } from './tour-dictionary'
+import { TourOverlay } from './tour-overlay'
 import {
   TourRecorder,
-  TourRun,
   describe,
   parseTour,
   refusal,
   type RecordedAction,
   type Tour,
-  type TourHost,
-  type TourProgress,
-  type TourStep,
-  type TourStepStatus,
-  type TourTarget,
   type WireTour,
 } from '@embabel/appliance-kit/tour'
 import type { Settings } from './types'
 
 /** Whatever the app already uses to read its settings — supplied by the renderer, not read here. */
 type SettingsSource = () => Settings
-
-const POLL_MS = 500
-
-/**
- * The named conditions this surface can answer.
- *
- * Deliberately SHORT. A state is a promise that a tour can wait on something and be told the truth,
- * and a state nobody implements properly is worse than one that does not exist — a tour waits, the
- * probe never becomes true, and the user watches a spinner for ten minutes. Each is one line, and
- * each is observable from the page rather than inferred.
- */
-const STATE_PROBES: Record<string, () => boolean> = {
-  'connection.ok': () => maybe('conn-pill')?.classList.contains('ok') === true,
-  'documents.answered': () => (maybe('ask-answer')?.textContent?.trim().length ?? 0) > 0,
-}
 
 export interface TourSurfaceOptions {
   settings: SettingsSource
@@ -65,14 +48,13 @@ export function mountTours(options: TourSurfaceOptions): void {
 
 class TourSurface {
   private readonly list = $('tour-list')
-  private readonly stage = $('tour-stage')
-  private readonly transcript = $('tour-transcript')
-  private readonly controls = $('tour-controls')
   private readonly status = $('tour-status')
-  private running?: TourRun
+  private readonly overlay: TourOverlay
   private recorder?: TourRecorder
 
-  constructor(private readonly options: TourSurfaceOptions) {}
+  constructor(private readonly options: TourSurfaceOptions) {
+    this.overlay = new TourOverlay({ settings: options.settings, showTab: options.showTab })
+  }
 
   mount(): void {
     maybe('tour-refresh')?.addEventListener('click', () => void this.refresh())
@@ -114,7 +96,7 @@ class TourSurface {
       const synopsis = describe(tour, dictionary)
       const blocked = refusal(tour, dictionary)
       const actions: HTMLElement[] = []
-      if (!blocked) actions.push(button('Start', () => void this.start(tour)))
+      if (!blocked) actions.push(button('Start', () => this.overlay.start(tour)))
       actions.push(button('Export', () => void this.exportOne(tour)))
       if (tour.deletable) actions.push(button('Delete', () => void this.deleteOne(tour)))
       const heading =
@@ -142,218 +124,6 @@ class TourSurface {
         ),
       )
     }
-  }
-
-  // --- Running one ---------------------------------------------------------------------------
-
-  private async start(tour: Tour): Promise<void> {
-    this.transcript.replaceChildren()
-    this.stage.hidden = false
-    this.say(`**${tour.name}**`)
-
-    const run = new TourRun(tour, {
-      host: this.hostFor(tour),
-      onProgress: (progress) => this.renderProgress(progress),
-    })
-    this.running = run
-    this.renderControls(run)
-
-    const end = await run.start()
-    this.renderProgress(end)
-    // Say how it ended IN THE TRANSCRIPT, not only in a status line: somebody who looked away
-    // should be able to scroll back and find out what happened without re-running anything.
-    if (end.state === 'done') this.say(end.skipped ? `Finished. ${end.skipped} step(s) were already done.` : 'Finished.')
-    if (end.state === 'stopped') this.say('Stopped.')
-    if (end.state === 'failed') this.say(`Stopped: ${end.error ?? 'something went wrong'}.`)
-    this.controls.replaceChildren()
-    this.running = undefined
-  }
-
-  private renderControls(run: TourRun): void {
-    const pause = button('Pause', () => {
-      run.pause()
-      this.renderControls(run)
-    })
-    const resume = button('Resume', () => {
-      run.resume()
-      this.renderControls(run)
-    })
-    const stop = button('Stop', () => run.stop())
-    this.controls.replaceChildren(run.state === 'paused' ? resume : pause, stop)
-  }
-
-  private renderProgress(progress: TourProgress): void {
-    const total = progress.total
-    const at = Math.min(progress.index + 1, total)
-    this.status.textContent =
-      progress.state === 'running' ? `Step ${at} of ${total}`
-      : progress.state === 'pausing' ? `Pausing after step ${at}…`
-      : progress.state === 'paused' ? `Paused at step ${at} of ${total}`
-      : progress.state === 'done' ? 'Done'
-      : progress.state
-    if (this.running) this.renderControls(this.running)
-  }
-
-  /**
-   * The Me app, as a tour host.
-   *
-   * Every method is one DOM act or one bridge call. Anything longer than that belongs in the kit,
-   * where the console gets it too.
-   */
-  private hostFor(tour: Tour): TourHost {
-    const settings = this.options.settings
-    return {
-      open: (target) => this.options.showTab(target.name),
-
-      set: (target, value) => {
-        const field = document.querySelector<HTMLInputElement>(`[data-field="${cssEscape(target.name)}"]`)
-        if (!field) throw new Error(`no field ${target.text} on this surface`)
-        field.value = value
-        // Both events, because a UI may listen for either — and a value set without them is a value
-        // the app does not know about, which is the classic way a scripted fill silently does nothing.
-        field.dispatchEvent(new Event('input', { bubbles: true }))
-        field.dispatchEvent(new Event('change', { bubbles: true }))
-      },
-
-      invoke: (target) => {
-        const control = document.querySelector<HTMLElement>(`[data-control="${cssEscape(target.name)}"]`)
-        if (!control) throw new Error(`no control ${target.text} on this surface`)
-        control.click()
-      },
-
-      run: async (target, params) => {
-        if (target.kind !== 'view') throw new Error(`this surface can only run views, not ${target.kind}`)
-        const invocation = await window.me.vcViewInvocation(settings(), target.name, params)
-        if (!invocation?.ok) throw new Error(invocation?.message ?? `could not prepare ${target.text}`)
-        const result = await window.me.vcExecute(settings(), invocation.cypher)
-        if (!result?.ok) throw new Error(result?.message ?? `could not run ${target.text}`)
-        this.showRows(target.name, result.rows ?? [])
-      },
-
-      waitFor: (target, timeoutMs) => this.until(target, timeoutMs ?? 120_000),
-
-      check: async (target) => this.probe(target),
-
-      say: (markdown) => this.say(markdown),
-
-      ask: (name, question) => this.askUser(name, question),
-
-      handOver: (step) => this.handOver(step),
-
-      stepStatus: async (index, params) => {
-        const answer = await window.me.tourStepStatus(settings(), tour.id, index, params)
-        return (answer?.status ?? 'UNKNOWN') as TourStepStatus
-      },
-    }
-  }
-
-  private probe(target: TourTarget): boolean {
-    const probe = STATE_PROBES[target.name]
-    if (!probe) throw new Error(`this surface cannot answer ${target.text}`)
-    return probe()
-  }
-
-  /** Poll until the state holds or the clock runs out. False on timeout — the runner says so. */
-  private until(target: TourTarget, timeoutMs: number): Promise<boolean> {
-    const probe = STATE_PROBES[target.name]
-    if (!probe) return Promise.reject(new Error(`this surface cannot answer ${target.text}`))
-    return new Promise((resolve) => {
-      const deadline = Date.now() + timeoutMs
-      const tick = () => {
-        if (probe()) return resolve(true)
-        if (Date.now() >= deadline) return resolve(false)
-        setTimeout(tick, POLL_MS)
-      }
-      tick()
-    })
-  }
-
-  // --- The transcript ------------------------------------------------------------------------
-
-  private say(markdown: string): void {
-    const line = document.createElement('div')
-    line.className = 'tour-say md'
-    // Through the same sanitizing pipeline as every other authored string in this app. A tour can
-    // come from a realm somebody else wrote, so this is not a formality.
-    paint(line, markdown)
-    this.transcript.append(line)
-    line.scrollIntoView({ block: 'nearest' })
-  }
-
-  private askUser(name: string, question: string): Promise<string | undefined> {
-    return new Promise((resolve) => {
-      const row = document.createElement('div')
-      row.className = 'tour-ask'
-      const label = document.createElement('label')
-      label.textContent = question
-      const input = document.createElement('input')
-      input.type = 'text'
-      input.name = name
-      const ok = button('OK', () => {
-        row.replaceChildren(text(`${question} ${input.value}`))
-        resolve(input.value)
-      })
-      const cancel = button('Not now', () => {
-        row.replaceChildren(text('Stopped here.'))
-        resolve(undefined)
-      })
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') ok.click()
-      })
-      row.append(label, input, ok, cancel)
-      this.transcript.append(row)
-      input.focus()
-    })
-  }
-
-  /** The walkthrough half: point, wait, and let them say when they are done — or skip it. */
-  private handOver(step: TourStep): Promise<boolean> {
-    return new Promise((resolve) => {
-      const row = document.createElement('div')
-      row.className = 'tour-handover'
-      row.append(text(step.hint ?? `Your turn: ${step.target?.text ?? step.verb}`))
-      const done = button('Done', () => {
-        row.replaceChildren(text('Done.'))
-        resolve(true)
-      })
-      const skip = button('Skip', () => {
-        row.replaceChildren(text('Skipped.'))
-        resolve(false)
-      })
-      row.append(done, skip)
-      this.transcript.append(row)
-      row.scrollIntoView({ block: 'nearest' })
-    })
-  }
-
-  private showRows(name: string, rows: Record<string, unknown>[]): void {
-    if (!rows.length) {
-      this.say(`\`${name}\` returned no rows.`)
-      return
-    }
-    const table = document.createElement('table')
-    table.className = 'tour-rows'
-    const columns = Object.keys(rows[0])
-    const head = document.createElement('tr')
-    for (const c of columns) {
-      const th = document.createElement('th')
-      th.textContent = c
-      head.append(th)
-    }
-    table.append(head)
-    // A transcript is not a results grid: enough to see that something real came back, and where
-    // to go for the rest. Query Studio is one tab away and is built for this.
-    for (const row of rows.slice(0, 10)) {
-      const tr = document.createElement('tr')
-      for (const c of columns) {
-        const td = document.createElement('td')
-        td.textContent = String(row[c] ?? '')
-        tr.append(td)
-      }
-      table.append(tr)
-    }
-    this.transcript.append(table)
-    if (rows.length > 10) this.say(`…and ${rows.length - 10} more.`)
   }
 
   // --- Import, export, record -----------------------------------------------------------------
