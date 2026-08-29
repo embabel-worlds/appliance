@@ -386,7 +386,13 @@ def is_our_shim(path: str) -> bool:
     try:
         if os.path.getsize(path) > 4096:
             return False
-        with open(path) as f:
+        # errors="replace" rather than a bare open(): on Windows the default
+        # encoding is the system ANSI codepage (cp1252 for en-US), and any
+        # sibling `embabel` on PATH written by another tool — a compiled .exe,
+        # a UTF-8 script, anything with a non-cp1252 byte — killed uninstall
+        # here with a UnicodeDecodeError. We only look for two ASCII strings
+        # below, so decoding losses on unrelated files are harmless.
+        with open(path, encoding="utf-8", errors="replace") as f:
             body = f.read()
     except OSError:
         return False
