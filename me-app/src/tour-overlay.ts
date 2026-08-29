@@ -153,8 +153,19 @@ export class TourOverlay {
     const settings = this.options.settings
     return {
       open: async (target) => {
-        this.options.showTab(target.name)
-        this.pointAgain(() => flash(document.querySelector(`.tab[data-tab="${cssEscape(target.name)}"]`)))
+        // An APP is a different kind from a panel, and this surface can only get you as far as the
+        // Apps panel — it has no route to one app in particular the way the console does. Best
+        // effort and honest about it: the panel opens, the narration names the app, and the step
+        // after this one is usually a hand-over anyway.
+        const tab = target.kind === 'app' ? 'apps' : target.name
+        // REFUSE AN UNKNOWN PANEL rather than switching to it. `showTab` hides every panel whose
+        // name does not match, so a target this surface does not have would blank the window and
+        // leave the user staring at nothing — a tour failing loudly is very much better.
+        if (!document.querySelector(`.tabpanel[data-panel="${cssEscape(tab)}"]`)) {
+          throw new Error(`no ${target.text} on this surface`)
+        }
+        this.options.showTab(tab)
+        this.pointAgain(() => flash(document.querySelector(`.tab[data-tab="${cssEscape(tab)}"]`)))
         await wait(BEAT_MS)
       },
 

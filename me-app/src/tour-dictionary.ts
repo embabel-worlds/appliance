@@ -30,7 +30,7 @@ import type { TourDictionary } from '@embabel/appliance-kit/tour'
 export const TOUR_STATES = ['connection.ok', 'documents.answered'] as const
 
 /** Kinds whose names come from the WORLD rather than the layout — checked when the step runs. */
-const DYNAMIC_KINDS = ['view', 'verb']
+const DYNAMIC_KINDS = ['view', 'verb', 'app']
 
 /**
  * Read the dictionary out of the live document.

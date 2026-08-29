@@ -424,6 +424,9 @@ function showTab(name: string): void {
   }
   // Chat wakes on first visit — no stream, no polling until someone looks.
   if (name === 'chat') startChat()
+  // Tours load on visit for a duller reason: at mount the settings have not been read off disk yet,
+  // so a fetch then goes nowhere and the panel stays empty for the session.
+  if (name === 'tours') tours.show()
 }
 
 for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
@@ -432,7 +435,7 @@ for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
 
 // Tours: the list and the runner. The kit owns what a step means; this app supplies its own panels,
 // fields and controls, and the tab switch above.
-mountTours({ settings: currentSettings, showTab })
+const tours = mountTours({ settings: currentSettings, showTab })
 
 // ---------------------------------------------------------------------------
 // Chat — deliberately the simplest possible surface over the real protocol,

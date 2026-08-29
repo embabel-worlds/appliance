@@ -42,8 +42,18 @@ export interface TourSurfaceOptions {
   showTab: (tab: string) => void
 }
 
-export function mountTours(options: TourSurfaceOptions): void {
-  new TourSurface(options).mount()
+/**
+ * Wire the panel up, and hand back the one thing the renderer needs to call: `show`.
+ *
+ * The list is NOT fetched at mount. Mounting happens while the renderer is still starting, before
+ * the settings have been read off disk — so the one fetch went out with no appliance URL, came back
+ * empty, and the panel said "No tours yet" for the rest of the session however many tours the world
+ * had. Found by launching the app and looking at it, which is the only way it could have been.
+ */
+export function mountTours(options: TourSurfaceOptions): { show(): void } {
+  const surface = new TourSurface(options)
+  surface.mount()
+  return { show: () => surface.show() }
 }
 
 class TourSurface {
@@ -60,6 +70,10 @@ class TourSurface {
     maybe('tour-refresh')?.addEventListener('click', () => void this.refresh())
     maybe('tour-import')?.addEventListener('click', () => void this.importFile())
     maybe('tour-record')?.addEventListener('click', () => this.toggleRecording())
+  }
+
+  /** Called when the panel is opened — the first moment settings are certainly loaded. */
+  show(): void {
     void this.refresh()
   }
 
