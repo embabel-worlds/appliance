@@ -90,8 +90,18 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
         # (typically the box-rule glyphs the app itself uses to frame the
         # setup-token block). errors="replace" is safe: the pump only looks
         # for ASCII substrings and Unicode borders that arrive intact in UTF-8.
+        # stdin=DEVNULL because the follower does not read stdin, but on Windows
+        # a Popen without an explicit stdin inherits the parent's console handle
+        # and does not release it cleanly on terminate(). The wizard then asked
+        # for the username with the console handle still contended, and the
+        # characters somebody typed echoed back mid-prompt (observed: "to sign in"
+        # rendered as "toaeign in" after typing "ae") while the newline leaked
+        # to the parent shell, which read it as a command. DEVNULL costs the
+        # follower nothing -- it never reads stdin -- and keeps the terminal
+        # single-owner throughout, on every platform.
         proc = subprocess.Popen(
             ["docker", "logs", "-f", "--tail", "0", container],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
             encoding="utf-8", errors="replace",
         )
