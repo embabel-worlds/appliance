@@ -1,1 +1,6 @@
 The account you will sign in with. Nobody can sign in until it exists.
+
+Give your full name rather than a first name. The world uses it to recognise
+you in what it reads — a document that mentions you, mail you were copied on, a
+memory about a meeting. "Rod" matches half the correspondence in a company; a
+full name resolves to a person.

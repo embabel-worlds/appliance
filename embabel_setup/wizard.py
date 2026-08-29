@@ -56,7 +56,11 @@ def steps(facts: dict) -> list[dict]:
             "satisfied": bool(facts.get("hasAccount")),
             "fields": [
                 {"name": "username", "label": "Username", "type": "STRING"},
-                {"name": "displayName", "label": "Your name", "type": "STRING",
+                # FULL NAME, asked for by name. This is not decoration: it is what the
+                # world matches you against when it reads a document, an email or a
+                # memory and has to decide whether a mention is you. "Rod" matches half
+                # the correspondence in a company; a full name resolves.
+                {"name": "displayName", "label": "Your full name", "type": "STRING",
                  "required": False},
                 {"name": "password",
                  "label": f"Password (min {min_password} characters)",

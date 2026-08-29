@@ -43,7 +43,9 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ANSWERS = [
     (r"Type 'yes' to wipe:", "yes"),
     (r"Username:", "{username}"),
-    (r"Your name:", "{display}"),
+    # "Your FULL name" since the entity-resolution guidance was added — matched loosely so a
+    # future rewording of the label does not silently stall the run at a prompt nobody answers.
+    (r"Your (full )?name:", "{display}"),
     (r"Password \(min \d+ characters\):", "{password}"),
     # The step summary: Enter accepts, a number re-asks that one field.
     (r"Enter to continue, or a number to change:", ""),
