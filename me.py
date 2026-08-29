@@ -13,7 +13,18 @@ straight to that offer. This file exists so the new-user instruction is one
 typeable word long. See worlds.py for the other mode.
 """
 import os
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-os.execv(sys.executable, [sys.executable, os.path.join(HERE, "setup.py"), "me", *sys.argv[1:]])
+ARGV = [sys.executable, os.path.join(HERE, "setup.py"), "me", *sys.argv[1:]]
+
+# Windows: see worlds.py for why os.execv is not safe on Windows for an
+# interactive hand-off (console ownership flips to the parent shell as
+# the exec-parent exits, and the child inherits a console the shell has
+# already started reading from). subprocess.call keeps the parent alive
+# throughout and keeps the console single-owner.
+if os.name == "nt":
+    sys.exit(subprocess.call(ARGV))
+else:
+    os.execv(sys.executable, ARGV)
