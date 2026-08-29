@@ -1,0 +1,4 @@
+Your full name, not the short one. This is what the world matches you against
+when it reads a document, an email or a memory and has to decide whether a
+mention is you. "Rod" matches half the correspondence in a company; a full name
+resolves to a person.

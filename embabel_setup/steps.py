@@ -35,7 +35,7 @@ from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, console_url,
                        phone_home_on, resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
-from .words import say
+from .words import copy_text, say
 from .seed import account_username, remember_account, remember_provider_key
 from . import wizard
 
@@ -433,6 +433,12 @@ def yes_no_options(options: list) -> tuple[str, str] | None:
 
 def ask(field: dict) -> str:
     label = field.get("label") or field["name"]
+    # A field may carry its own prose, printed HERE — beside the question it explains
+    # rather than in the step header, where a reader takes it as being about whichever
+    # prompt appears first. Same rule as a step's own copy: the words live in copy/.
+    if field.get("copy"):
+        print()
+        print(dim(copy_text(field["copy"])))
     default = field.get("default")
     options = field.get("options") or []
     required = field.get("required", True)

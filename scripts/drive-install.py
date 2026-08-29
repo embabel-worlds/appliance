@@ -42,10 +42,13 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # scripted run should exercise.
 ANSWERS = [
     (r"Type 'yes' to wipe:", "yes"),
-    (r"Username:", "{username}"),
-    # "Your FULL name" since the entity-resolution guidance was added — matched loosely so a
-    # future rewording of the label does not silently stall the run at a prompt nobody answers.
-    (r"Your (full )?name:", "{display}"),
+    # MATCHED ON THE STEM, up to the colon. Both of these labels have been reworded once
+    # already — "Your name" became "Your full name", then "Username" grew a parenthetical —
+    # and each time this script stopped answering and the run died at the 900s timeout with
+    # no clue as to why. A label is copy and copy gets edited; the field it belongs to does
+    # not. Anchor on the part that is the field's name.
+    (r"Username[^:\n]*:", "{username}"),
+    (r"Your (full )?name[^:\n]*:", "{display}"),
     (r"Password \(min \d+ characters\):", "{password}"),
     # The step summary: Enter accepts, a number re-asks that one field.
     (r"Enter to continue, or a number to change:", ""),

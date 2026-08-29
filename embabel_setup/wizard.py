@@ -55,13 +55,18 @@ def steps(facts: dict) -> list[dict]:
             "copy": "step-account",
             "satisfied": bool(facts.get("hasAccount")),
             "fields": [
-                {"name": "username", "label": "Username", "type": "STRING"},
-                # FULL NAME, asked for by name. This is not decoration: it is what the
-                # world matches you against when it reads a document, an email or a
-                # memory and has to decide whether a mention is you. "Rod" matches half
-                # the correspondence in a company; a full name resolves.
+                # SHORT, AND SAID SO IN THE LABEL. The full-name guidance used to sit in
+                # this step's header, above every field — so it read as advice about the
+                # FIRST prompt, and people dutifully typed "Rod Johnson" as their username.
+                # (The scripted install driver made the same mistake, which is how sure a
+                # reader can be.) The guidance now belongs to the field it is about.
+                {"name": "username", "label": "Username (short — you type it to sign in)",
+                 "type": "STRING"},
+                # Its own copy, printed at the moment it is asked. This is not decoration:
+                # it is what the world matches you against when it reads a document, an
+                # email or a memory and has to decide whether a mention is you.
                 {"name": "displayName", "label": "Your full name", "type": "STRING",
-                 "required": False},
+                 "copy": "field-full-name", "required": False},
                 {"name": "password",
                  "label": f"Password (min {min_password} characters)",
                  "type": "SECRET"},
