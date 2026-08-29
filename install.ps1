@@ -44,6 +44,16 @@ try {
   [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
 } catch { }
 
+# PYTHONUTF8=1 forces Python's default text encoding to UTF-8 for FILES and
+# SUBPROCESS pipes -- a separate context from console I/O. Without it, on
+# Windows Python 3 defaults to locale.getpreferredencoding() (cp1252 in en-US)
+# for open() and subprocess.run(text=True), which crashes with UnicodeDecodeError
+# on any UTF-8 byte in a docker log, an .env file, or a sibling on PATH written
+# by another tool. Individual encoding="utf-8" arguments on hot call sites remain
+# as backstops for callers that bypass this launcher, but this covers the whole
+# process at once.
+$env:PYTHONUTF8 = "1"
+
 # ---- Config ------------------------------------------------------------------
 $Repo = if ($env:EMBABEL_REPO) { $env:EMBABEL_REPO } else { 'embabel-worlds/appliance' }
 $Ref  = if ($env:EMBABEL_REF)  { $env:EMBABEL_REF  } else { 'main' }
@@ -271,7 +281,13 @@ rem chcp 65001: force the console to UTF-8 so em-dashes and box borders in
 rem wizard prompts render as intended -- default OEM 437/850 turns them into
 rem "ù" and other garbage, and setup becomes unreadable. >nul silences the
 rem "Active code page: 65001" line every invocation would otherwise print.
+rem PYTHONUTF8=1: force Python's default text encoding to UTF-8 for files
+rem and subprocess pipes (a separate context from the console codepage).
+rem Without it, docker log reads and .env file reads default to cp1252 and
+rem die on any UTF-8 byte -- see install.ps1's own comment for the whole
+rem story. Set as a session env var so it applies only to this invocation.
 chcp 65001 >nul
+set PYTHONUTF8=1
 where py >nul 2>nul
 if not errorlevel 1 (
   py -3 "$HomeDir\embabel" %*
