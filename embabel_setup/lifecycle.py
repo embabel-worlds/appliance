@@ -84,9 +84,16 @@ def follow_boot_log(container: str) -> subprocess.Popen | None:
     able to flood a terminal somebody is trying to read.
     """
     try:
+        # encoding + errors: same reason as _docker() in dockerlib.py -- on
+        # Windows, text=True without encoding decodes the container log stream
+        # as cp1252 and the pump thread dies on the first non-cp1252 byte
+        # (typically the box-rule glyphs the app itself uses to frame the
+        # setup-token block). errors="replace" is safe: the pump only looks
+        # for ASCII substrings and Unicode borders that arrive intact in UTF-8.
         proc = subprocess.Popen(
             ["docker", "logs", "-f", "--tail", "0", container],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            encoding="utf-8", errors="replace",
         )
     except (subprocess.SubprocessError, OSError):
         return None  # the log is a nicety; setup does not depend on it
