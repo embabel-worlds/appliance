@@ -117,6 +117,33 @@ customer-specific one is a three-line repo over your catalog.
 - **A user's data.** Templates decide capabilities; `data/` should say why it
   is empty.
 
+## The shadowing rule, and why it decides where content goes
+
+A world is **cloned** from its template — `--world` sets `ASSISTANT_BOOTSTRAP_WORLD` and
+`ensureWorldExists` git-clones that repo into the new world's directory, then re-inits it
+as the user's own. Two consequences follow, and the second one surprises people:
+
+**A template's files ARE the user tier.** They are not a tier beneath it, so nothing
+shadows them. A template's `config/tours/`, `config/realms.yml` and the rest land directly
+in the world. This is why `--world` is the whole install story for a preconfigured
+appliance.
+
+**A file that existed at clone time is frozen for that world, forever.** The clone put a
+copy of it in the user tier, and the user tier wins by filename. So editing a file in
+default-world reaches new installs and **no existing appliance** — while ADDING a file
+reaches everything, because a new name has nothing to shadow it.
+
+That is a content rule, not a bug to route around:
+
+> Ship new shared content as a **new file**. Edit an existing one only when the audience
+> is genuinely new worlds alone.
+
+It bit the tour offer: the step was added to `config/next-steps/getting-started.yml`, was
+invisible on the machine it was written on, and only worked once it moved to
+`take-the-tour.yml`. It is also the reason "copies of default-world" is the first entry in
+the list above — a template that copies a file it did not need to change freezes that file
+for every world it creates.
+
 ## Caveats, honestly
 
 - A **private** template repo clones only when a GitHub token reaches the

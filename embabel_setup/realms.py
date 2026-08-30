@@ -40,7 +40,12 @@ def resolve_world_repo(spec: str) -> str:
         return spec
     if "/" in spec:
         return f"https://github.com/{spec}.git"
-    return f"https://github.com/embabel/{spec}.git"
+    # `embabel-worlds`, not `embabel`. The templates live in the renamed org, and the old
+    # name only still works because GitHub 301s the rename and git follows it — so a bare
+    # name resolved to a repo that does not exist and nobody noticed. The same mistake was
+    # in the assistant's Dockerfile. It matters most here: this is the path a one-line
+    # install from a public post takes, and it fails the day that redirect stops.
+    return f"https://github.com/embabel-worlds/{spec}.git"
 
 
 def set_bootstrap_world(spec: str) -> None:
