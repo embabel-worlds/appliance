@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""Share a tour the way a person does, and check it survives the appliance restarting.
+"""Both halves of tours, driven the way a person meets them, across a restart.
 
     python3 scripts/drive-tour-share.py --password <yours>
     python3 scripts/drive-tour-share.py --no-restart      # quick pass, skips the slow half
 
-WHAT THIS IS FOR. Somebody likes what their world does, exports the walk that shows
-it, and sends the file to a colleague who imports it. Every part of that is an
-HTTP call this script makes in order, so a break anywhere in the chain fails here
-rather than in front of the colleague.
+TWO MECHANISMS, one script, because they fail independently and both fail quietly.
+
+SHARING. Somebody likes what their world does, exports the walk that shows it, and
+sends the file to a colleague who imports it. Every part of that is an HTTP call
+this script makes in order, so a break anywhere in the chain fails here rather than
+in front of the colleague.
+
+ARRIVAL. Somebody who has just installed lands on a panel, not on the Tours tab, so
+the offer has to reach them there — a next-step naming a tour. The server passes
+that field through without understanding it, which is the right design and also
+means nothing server-side would notice if the client stopped reading it: the button
+would simply vanish. Hence a test.
 
 WHY THE RESTART IS THE POINT. A tour that imports fine and vanishes on the next
 `embabel restart` is worse than one that never imported: the user has already told
@@ -128,7 +136,20 @@ def main():
     check(on_disk.returncode == 0 and on_disk.stdout.strip() != "0",
           f"written to {SAVED}")
 
-    print("\n4. a shared tour cannot write to your graph")
+    print("\n4. arrival — a new world offers its tour rather than hiding it")
+    # The other half of the same feature. Somebody who has just installed lands on a panel,
+    # not on the Tours tab, so the offer has to reach them there. The server passes a
+    # next-step's `tour` field through untouched; if that ever stops, the button vanishes and
+    # nothing else breaks, which is the kind of silent regression worth a test.
+    offered = [s for s in me.call("/api/v1/next-steps").get("steps", [])
+               if ((s.get("presentation") or {}).get("action") or {}).get("tour")]
+    check(bool(offered), f"a next-step offers a tour ({', '.join(s['id'] for s in offered) or 'none'})")
+    named = ((offered[0].get("presentation") or {}).get("action") or {}).get("tour") if offered else None
+    declared = {t["declaredId"] for t in me.tours()}
+    check(named in declared,
+          f"and names a tour this world actually has ({named})")
+
+    print("\n5. a shared tour cannot write to your graph")
     # An imported tour is a file a stranger wrote, and `doneWhen` runs as you. The surface
     # refuses writes before executing them; UNKNOWN then means "run the step", which is the
     # right fail-soft. A CONFIRMED status here would mean the CREATE went through.
@@ -149,22 +170,26 @@ def main():
         me.call(f"/api/v1/tours/{probe_id}", method="DELETE")
 
     if not args.no_restart:
-        print("\n5. RESTART the appliance")
+        print("\n6. RESTART the appliance")
         subprocess.run(["docker", "restart", args.container], check=True, capture_output=True)
         check(me.up(), "came back up")
         after = me.find(SHARED_ID)
         check(after is not None, "the shared tour survived the restart")
         check(after and len(after["steps"]) == len(got["steps"]), "with all its steps")
 
-        print("\n6. and it still runs")
+        print("\n7. and it still runs")
         guarded = next((i for i, s in enumerate(after["steps"]) if s.get("watchable")), 0)
         verdict = me.call(f"/api/v1/tours/{after['id']}/steps/{guarded}/status", {"params": {}})
         check(verdict.get("status") in ("DONE", "PENDING", "UNKNOWN"),
               f"step {guarded} evaluates after the restart ({verdict.get('status')})")
-    else:
-        print("\n5. restart skipped (--no-restart)")
 
-    print("\n7. the recipient changes their mind")
+        still = [s for s in me.call("/api/v1/next-steps").get("steps", [])
+                 if ((s.get("presentation") or {}).get("action") or {}).get("tour")]
+        check(bool(still), "the arrival offer survived the restart too")
+    else:
+        print("\n6. restart skipped (--no-restart)")
+
+    print("\n8. the recipient changes their mind")
     me.call(f"/api/v1/tours/{me.find(SHARED_ID)['id']}", method="DELETE")
     check(me.find(SHARED_ID) is None, "deleted, and gone from the list")
 
