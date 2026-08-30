@@ -55,8 +55,16 @@ Three files is a complete template.
 ```
 README.md            what this world is, and the install one-liner
 config/realms.yml    ONLY the realms this profile adds
+config/tours/*.yml   OPTIONAL — the walk that explains this world
 data/README.md       starting content (usually: empty on purpose)
 ```
+
+`config/tours/` rides the tier cascade like everything else, so a template can ship
+the demonstration of the world it just built. Its tours arrive marked as the world's
+own — not deletable by the user, and gone if the world is ever rebuilt from a
+different template. That is what makes a preconfigured appliance explain itself
+instead of landing somebody on an empty Realms tab. See
+[the tours guide](docs/guide/tours.md).
 
 The whole ceremony:
 
@@ -74,11 +82,25 @@ git init -q && git add -A && git commit -q -m "Legal world template"
 gh repo create embabel/legal-world --public --source . --push
 ```
 
-The shareable instruction is then one line:
+The shareable instruction is then one line. For somebody who already has a checkout:
 
 ```bash
 git clone https://github.com/embabel-worlds/appliance.git && cd appliance && ./me.py --world legal-world
 ```
+
+For somebody who has nothing — the form that fits in a post — `install.sh` passes its
+arguments straight through to the same flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh \
+  | sh -s -- --world legal-world
+```
+
+Two things to know before sending that to strangers. A **bare name resolves only inside
+the embabel org**, so a short name in a public post cannot be squatted — but `owner/repo`
+and full URLs also work, and those are somebody else's realms running on the reader's
+machine. And the template you feature had better need **no credentials**: a demo that
+stops to ask for an API key dies in front of the audience it was written for.
 
 Compose profiles instead of enumerating them: a `media-world` that is
 `extends: [music-world, film-world]` plus a README is a real template, and a

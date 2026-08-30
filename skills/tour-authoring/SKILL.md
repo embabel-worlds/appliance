@@ -116,6 +116,31 @@ layout, so:
 Check before you ship: read the surface's dictionary rather than guessing. The Me app builds
 its own from `data-panel`, `data-field` and `data-control` in `me-app/index.html`.
 
+### `requires:` — say what the tour needs
+
+A tour may list targets it needs but does not `open:` directly, and a surface refuses the
+whole tour up front rather than dying at step 6:
+
+```yaml
+- id: HandlerWalk
+  requires:
+    - panel.handlers
+    - control.handler-new
+```
+
+Refusal names what is missing and which surface is missing it, which is a better failure
+than a tour that starts confidently and stops halfway.
+
+**What `requires:` does NOT cover, and this is the trap.** `view`, `verb` and `app` are
+*dynamic* kinds — a world's views come from its realms, so a surface cannot know at load
+time whether one exists, and it declines to refuse rather than block a tour that would
+have worked. That means a tour naming `view.PlaceDossier` imports cleanly into a world
+without `realm-uk-streets` and then stops when it reaches that step.
+
+So a tour whose steps run a realm's views should **ship inside that realm**, where the
+question cannot arise. Send a standalone file only when every `run:` target is one the
+recipient's world already has.
+
 ## Pictures, for the steps that happen somewhere else
 
 Narration is markdown, and markdown image syntax works — but **only for an asset this appliance

@@ -46,6 +46,9 @@ returns to whichever you set up.
 - **[Working with a coding agent](coding-agents.md)** — the appliance is designed to be
   operated by Claude Code or a similar agent, not just by clicking. This is the part
   most people underestimate.
+- **[Showing somebody what your world does](tours.md)** — tours drive the real app on
+  your real data. How to record one, how to send it to somebody, and what a tour you were
+  sent is and is not allowed to do.
 - **[Making your own realm](realms.md)** — connecting a system nobody has connected yet,
   including the version where you describe it and an agent builds it.
 - **[Running your own models](local-models.md)** — LM Studio and Ollama, what they cost
