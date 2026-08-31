@@ -494,8 +494,10 @@ sets up, which is the usual way back to an empty appliance.
 are testing the experience rather than the software. `--fresh` leaves `.env` behind, so
 the next run never asks for a provider key, a timezone or a realms directory — it
 exercises none of the path a new user walks. `--uninstall` removes the state *and* this
-machine's configuration: `.env`, `docker-compose.override.yml`, and the MCP registration
-whose token died with the volume. What is left is what a fresh clone looks like, and
+machine's configuration: `.env`, `docker-compose.override.yml`, the MCP registration whose
+token died with the volume, and the marked Codex token block setup added to a supported shell
+profile when its registration belongs to this appliance. An unverified or different Codex
+registration and its token block are kept. What remains is what a fresh clone looks like, and
 `./worlds.py` starts over from it.
 
 It also offers to remove stray **code-sandbox containers**. Those are created by the app
