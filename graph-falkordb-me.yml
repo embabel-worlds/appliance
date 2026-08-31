@@ -1,0 +1,70 @@
+# The FalkorDB graph engine — composed in ONLY when somebody asks for it:
+#
+#   GRAPH_TYPE=FALKORDB in .env
+#
+# WHY IT IS AN OVERLAY AND NOT A SWITCH INSIDE infra.yml. The default appliance is
+# Neo4j and stays byte-identical when this file is absent from the composition —
+# the same posture as embeddings-local-*.yml. Composed in, it adds the falkordb
+# service, points the app at it, and parks the neo4j service behind a profile the
+# composition never activates, all without editing a line of the default files.
+#
+# ONE FILE PER MODE, same reason as the embeddings overlays: an overlay naming a
+# service the composition does not have DEFINES it, and compose then rejects a
+# service with no image.
+#
+# THE ENGINES DO NOT SHARE DATA. Each keeps its own volume; switching engines is
+# choosing which graph you are talking to, not migrating one into the other. The
+# Neo4j volume is untouched by running FalkorDB and vice versa — switch back and
+# your old graph is still there.
+#
+# AOF IS NOT OPTIONAL. FalkorDB's durability is Redis persistence, and the image's
+# defaults are RDB-snapshot-only: a hard kill loses everything since the last
+# snapshot (measured: 0/1000 nodes survive). With appendonly on, the same kill
+# loses nothing measured, and the cost on the write path is noise — the app's
+# batched statements mean one fsync per batch, not per row. `everysec` bounds loss
+# at ~1s; set FALKORDB_APPENDFSYNC=always for fsync-per-statement.
+services:
+
+  falkordb:
+    # The engine profile decision (embabel/me#1005) owns the version pin; until it
+    # lands, this follows the conformance rig's policy of measuring today's engine.
+    image: falkordb/falkordb:${FALKORDB_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      # redis-cli / FalkorDB browser access from the host, localhost-only like
+      # every other appliance port.
+      - "127.0.0.1:${FALKORDB_PORT:-11049}:6379"
+    environment:
+      - TZ=${TZ:-Etc/UTC}
+      - BROWSER=0
+      - REDIS_ARGS=--appendonly yes --appendfsync ${FALKORDB_APPENDFSYNC:-everysec}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    volumes:
+      - embabel_appliance_falkordb_data:/var/lib/falkordb/data
+
+  assistant:
+    environment:
+      # GRAPH_TYPE selects the engine inside the app (Drivine's connection type,
+      # the raw-Cypher runner, constraint DDL routing, the id() identity idiom —
+      # see FalkorDbEngineConfiguration in the assistant). The NEO4J_* names stay
+      # the generic graph-connection variables the app already reads.
+      - GRAPH_TYPE=FALKORDB
+      - NEO4J_HOST=falkordb
+      - NEO4J_PORT=6379
+    depends_on: !override
+      falkordb:
+        condition: service_healthy
+
+  # Parked, not removed: assigning a profile the composition never activates keeps
+  # the default graph out of this run without editing infra.yml. Its volume — and
+  # your Neo4j data — remain exactly where they were.
+  neo4j:
+    profiles: ["parked-by-falkordb"]
+
+volumes:
+  embabel_appliance_falkordb_data:
