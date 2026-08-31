@@ -56,6 +56,11 @@ services:
       - GRAPH_TYPE=FALKORDB
       - NEO4J_HOST=falkordb
       - NEO4J_PORT=6379
+      # Set as ENVIRONMENT, not just in-app config, deliberately: statement text baked
+      # into companion-object vals freezes at class load, and only a variable that
+      # exists before the JVM does beats every load order. Without this, a class loaded
+      # early can bake Neo4j's elementId() spelling into Cypher this engine refuses.
+      - VC_NODEID=toString-id
     depends_on: !override
       falkordb:
         condition: service_healthy
