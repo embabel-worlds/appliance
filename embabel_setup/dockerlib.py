@@ -176,6 +176,17 @@ def embeddings_local_file(mode: str) -> str:
 LOCAL_EMBEDDING_MODEL = "docker.io/ai/qwen3-embedding:0.6B-F16"
 
 
+def graph_falkordb_file(mode: str) -> str:
+    """The FalkorDB engine overlay for this mode. One per mode — see the note in the files."""
+    return f"graph-falkordb-{mode}.yml"
+
+
+def falkordb_wanted() -> bool:
+    """Whether this appliance runs FalkorDB instead of Neo4j — GRAPH_TYPE in .env."""
+    chosen = os.environ.get("GRAPH_TYPE") or env_file_value("GRAPH_TYPE")
+    return (chosen or "").strip().upper() == "FALKORDB"
+
+
 def local_embeddings_wanted() -> bool:
     """Whether this appliance runs the local embedder.
 
@@ -214,6 +225,13 @@ def _compose(mode: str, *argv: str, capture: bool = False):
     overlay = embeddings_local_file(mode)
     if local_embeddings_wanted() and os.path.exists(overlay):
         cmd += ["-f", overlay]
+    # THE GRAPH ENGINE IS AN OVERLAY TOO, same posture as the embedder: the default
+    # composition is Neo4j and stays byte-identical unless .env says otherwise. One
+    # answer — GRAPH_TYPE — selects the engine for compose AND inside the app, so a
+    # flag and the app's connection type can never disagree.
+    graph_overlay = graph_falkordb_file(mode)
+    if falkordb_wanted() and os.path.exists(graph_overlay):
+        cmd += ["-f", graph_overlay]
     cmd += argv
     try:
         return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env(),
