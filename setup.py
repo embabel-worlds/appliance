@@ -178,6 +178,12 @@ def main() -> int:
             uninstall()
             return 0
 
+        # BEFORE EVERY VERB, as install.sh originally was. A configured appliance
+        # raises AlreadySetUp before the success path, and an interrupted run tells
+        # the operator to resume with this command, so either route must have restored
+        # the forwarder before the wizard or its outcome can stop us.
+        write_cli_shim()
+
         # What a bare `./setup.py --fresh` means: the door this machine was last
         # set up as, not a guess. Wiping a worlds appliance and bringing back the
         # Me door on top of its graph is not what anybody typing --fresh meant.

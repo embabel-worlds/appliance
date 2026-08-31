@@ -292,62 +292,6 @@ tar xzf "$TARBALL" -C "$HOME_DIR" --strip-components=1 || die "Could not unpack 
 
 chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" "$HOME_DIR/embabel" 2>/dev/null || true
 
-# --- 2b. Put `embabel` on PATH --------------------------------------------
-# So that everything after this is a verb rather than a directory. Without it the
-# instructions are `cd ~/embabel/worlds && ./worlds.py`, and the user has to remember
-# where the product lives and which compose file today's mode uses.
-#
-# A two-line forwarder, not a copy: it execs the checkout's own CLI, so an update
-# to this directory updates the command, and there is no second version to drift.
-BIN_DIR="${EMBABEL_BIN_DIR:-$HOME/.local/bin}"
-if mkdir -p "$BIN_DIR" 2>/dev/null; then
-  cat > "$BIN_DIR/embabel" <<SHIM
-#!/bin/sh
-# Forwards to the Embabel appliance in $HOME_DIR. Written by install.sh.
-# Finds a Python 3.9+ each run, preferring newer. The CLI repeats this check
-# as a sentence.
-for cand in python3.13 python3.12 python3.11 python3.10 python3; do
-  command -v "\$cand" >/dev/null 2>&1 || continue
-  if "\$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
-    exec "\$cand" "$HOME_DIR/embabel" "\$@"
-  fi
-done
-echo "embabel: Python 3.9+ not found (macOS: brew install python@3.12)" >&2
-exit 1
-SHIM
-  chmod +x "$BIN_DIR/embabel"
-
-  # ANOTHER `embabel` MAY ALREADY WIN. It is not a rare name, and if the directory
-  # holding the other one comes first on PATH then typing `embabel` runs that
-  # instead and nothing here is reachable — which reads as this install having
-  # silently failed. Say so; guessing at somebody's PATH order is not ours to do.
-  EXISTING="$(command -v embabel 2>/dev/null || true)"
-  if [ -n "$EXISTING" ] && [ "$EXISTING" != "$BIN_DIR/embabel" ]; then
-    printf '  %s!!%s another "embabel" already comes first on your PATH:\n' "$C_YELLOW" "$C_RESET"
-    note "        $EXISTING"
-    note "      To use this one, put $BIN_DIR ahead of it,"
-    note "      or run it by path: $BIN_DIR/embabel"
-    echo
-  fi
-
-  case ":$PATH:" in
-    *":$BIN_DIR:"*) say "Installed the 'embabel' command to $BIN_DIR." ;;
-    *)
-      say "Installed the 'embabel' command to $BIN_DIR, which is NOT on your PATH."
-      # Name the file THEY use. macOS defaults to zsh and most Linux shells to
-      # bash, and telling a bash user to edit ~/.zshrc is telling them nothing.
-      case "${SHELL##*/}" in
-        zsh)  PROFILE="~/.zshrc" ;;
-        bash) PROFILE="~/.bashrc" ;;
-        fish) PROFILE="~/.config/fish/config.fish" ;;
-        *)    PROFILE="your shell profile" ;;
-      esac
-      say "Add it to $PROFILE:  export PATH=\"$BIN_DIR:\$PATH\""
-      ;;
-  esac
-  echo
-fi
-
 # --- 3. Hand off ----------------------------------------------------------
 # setup.py owns the real flow — starting the mode, streaming the first boot,
 # the account and model-provider key, and the offer to open the Me app. There
@@ -368,6 +312,12 @@ find_python() {
 PY="$(find_python)" || die "Embabel needs Python 3.9 or newer — found $(python3 -V 2>/dev/null || echo 'no python3').
   macOS:  brew install python@3.12   (then rerun this installer)
   Linux:  apt install python3.10  ·  dnf install python3.12"
+
+# ONE WRITER, reached from both paths. Setup owns the launcher because it also
+# has to restore it after uninstall; keeping a heredoc here made the curl entry
+# point work while the documented ./worlds.py entry point quietly did not.
+(cd "$HOME_DIR" && "$PY" -c 'from embabel_setup.lifecycle import write_cli_shim; write_cli_shim()' < /dev/null) ||
+  say "Could not put the 'embabel' command on your PATH — run $HOME_DIR/embabel by path."
 
 ok "Done. Starting setup — after this, use the 'embabel' command."
 echo
