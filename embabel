@@ -46,6 +46,7 @@ sys.path.insert(0, HERE)
 # clothes.
 from embabel_setup.cli import resolve_instance, s  # noqa: E402
 from embabel_setup.cliparser import build_parser  # noqa: E402
+from embabel_setup.clirun import cmd_status  # noqa: E402  (the bare-invocation verb)
 
 
 
