@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory() as root:
             format_string = argv[argv.index("--format") + 1]
             if "project.environment_file" in format_string:
                 output = (
-                    f"ui-id\tembabel-ui-review\t{ui_env}\t{other}\n"
+                    f"ui-id\tembabel-ui-review\t.env.ui-review\t{other}\n"
                     f"dogfood-id\tembabel-photoquest-dogfood\t{deleted_env}\t{os.path.dirname(deleted_env)}\n"
                     f"current-id\tembabel-new-review\t\t{root}\n"
                 )

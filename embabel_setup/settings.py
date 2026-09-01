@@ -362,9 +362,11 @@ def _docker_port_bases() -> set[int]:
                 and os.path.realpath(working_dir) == os.path.realpath(APPLIANCE_DIR)):
             continue
         ids.append(container_id)
-        # Compose records the absolute settings source, while its working directory
-        # identifies the conventional .env used when no --env-file was passed.
+        # Compose records the settings source; its working directory resolves a
+        # relative --env-file and identifies conventional .env when none was passed.
         path = environment_file or (os.path.join(working_dir, ENV_FILE) if working_dir else "")
+        if path and not os.path.isabs(path):
+            path = os.path.join(working_dir, path)
         try:
             value = _env_file_value(path, "EMBABEL_PORT_BASE") if path else None
             used.add(int(value))
