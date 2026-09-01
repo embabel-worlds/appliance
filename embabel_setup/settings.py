@@ -338,6 +338,7 @@ def ensure_port_block() -> int:
     return base
 def _docker_port_bases() -> set[int]:
     """Port blocks owned by appliance containers, including other checkouts."""
+    # Late for the settings <-> dockerlib cycle documented in installed_instances().
     from .dockerlib import _docker
     labels = (
         '{{.ID}}\t{{.Label "com.docker.compose.project"}}\t'
@@ -354,8 +355,15 @@ def _docker_port_bases() -> set[int]:
         fields = line.split("\t")
         if len(fields) != 4 or not fields[1].startswith("embabel-"):
             continue
-        container_id, _, environment_file, working_dir = fields
+        container_id, project, environment_file, working_dir = fields
+        # A missing settings file can bring the current project through this path.
+        # It must be free to reclaim its own block, not reserve that block from itself.
+        if (project == compose_project() and working_dir
+                and os.path.realpath(working_dir) == os.path.realpath(APPLIANCE_DIR)):
+            continue
         ids.append(container_id)
+        # Compose records the absolute settings source, while its working directory
+        # identifies the conventional .env used when no --env-file was passed.
         path = environment_file or (os.path.join(working_dir, ENV_FILE) if working_dir else "")
         try:
             value = _env_file_value(path, "EMBABEL_PORT_BASE") if path else None
@@ -364,6 +372,8 @@ def _docker_port_bases() -> set[int]:
             pass
     if not ids:
         return used
+    # HostConfig keeps published bindings for stopped containers and is the fallback
+    # when Compose's recorded settings path no longer exists.
     run = _docker("inspect", "--format", "{{json .HostConfig.PortBindings}}", *ids, timeout=20)
     if not run:
         return used
