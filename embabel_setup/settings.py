@@ -7,6 +7,7 @@ from a constant into a question, and the answers all come from the same place.
 """
 
 from __future__ import annotations
+import json
 import os
 import shutil
 import re
@@ -335,11 +336,63 @@ def ensure_port_block() -> int:
     if instance() != DEFAULT_INSTANCE or base != DEFAULT_PORT_BASE:
         print(f"  Instance '{instance()}' uses ports {base}-{base + PORT_BLOCK - 1}.")
     return base
+def _docker_port_bases() -> set[int]:
+    """Port blocks owned by appliance containers, including other checkouts."""
+    from .dockerlib import _docker
+    labels = (
+        '{{.ID}}\t{{.Label "com.docker.compose.project"}}\t'
+        '{{.Label "com.docker.compose.project.environment_file"}}\t'
+        '{{.Label "com.docker.compose.project.working_dir"}}'
+    )
+    run = _docker("ps", "-a", "--filter", "label=com.docker.compose.project",
+                  "--format", labels, timeout=20)
+    if not run or run.returncode != 0:
+        return set()
+    ids = []
+    used = set()
+    for line in run.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 4 or not fields[1].startswith("embabel-"):
+            continue
+        container_id, _, environment_file, working_dir = fields
+        ids.append(container_id)
+        path = environment_file or (os.path.join(working_dir, ENV_FILE) if working_dir else "")
+        try:
+            value = _env_file_value(path, "EMBABEL_PORT_BASE") if path else None
+            used.add(int(value))
+        except (OSError, TypeError, ValueError):
+            pass
+    if not ids:
+        return used
+    run = _docker("inspect", "--format", "{{json .HostConfig.PortBindings}}", *ids, timeout=20)
+    if not run:
+        return used
+    limit = DEFAULT_PORT_BASE + (MAX_INSTANCES + 1) * PORT_BLOCK
+    for line in run.stdout.splitlines():
+        try:
+            bindings = json.loads(line)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(bindings, dict):
+            continue
+        for published in bindings.values():
+            for binding in published or ():
+                try:
+                    port = int(binding["HostPort"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if DEFAULT_PORT_BASE <= port < limit:
+                    used.add(DEFAULT_PORT_BASE
+                             + ((port - DEFAULT_PORT_BASE) // PORT_BLOCK) * PORT_BLOCK)
+    return used
+
+
 def free_port_base() -> int:
     """The next unused block. Bases in use are read from the instances that
     exist rather than counted, so removing the second of three instances frees
     its block instead of stranding it."""
     used = {port_base(name) for name in installed_instances() if name != instance()}
+    used.update(_docker_port_bases())
     used.add(DEFAULT_PORT_BASE)  # reserved for the default instance, always
     for n in range(MAX_INSTANCES + 1):
         candidate = DEFAULT_PORT_BASE + n * PORT_BLOCK
@@ -355,12 +408,7 @@ def volume_name(key: str) -> str:
 def volume_exists(key: str) -> bool:
     run = _docker("volume", "inspect", volume_name(key), timeout=15)
     return run is not None and run.returncode == 0
-def env_file_value(key: str, name: str | None = None) -> str | None:
-    """One value from an instance's settings, or None. Defaults to the current
-    instance; `name` is for reading ANOTHER one, which is how the port allocator
-    finds out which blocks are already spoken for. The file may already be gone
-    during teardown."""
-    path = env_path(name)
+def _env_file_value(path: str, key: str) -> str | None:
     if not os.path.exists(path):
         return None
     with open(path) as f:
@@ -372,6 +420,14 @@ def env_file_value(key: str, name: str | None = None) -> str | None:
                 raw = stripped.split("=", 1)[1].strip()
                 return raw.replace("$$", "$") or None
     return None
+
+
+def env_file_value(key: str, name: str | None = None) -> str | None:
+    """One value from an instance's settings, or None. Defaults to the current
+    instance; `name` is for reading ANOTHER one, which is how the port allocator
+    finds out which blocks are already spoken for. The file may already be gone
+    during teardown."""
+    return _env_file_value(env_path(name), key)
 
 
 def resume_command() -> str:
