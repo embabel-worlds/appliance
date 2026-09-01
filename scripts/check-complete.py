@@ -100,7 +100,7 @@ def provider_step_has_its_own_clock():
     assert step.get("waitsOnProvider"), "the provider step no longer declares that it waits on a provider"
     assert steps.provider_of("sk-ant-abc") == "Anthropic", "an Anthropic key is named as OpenAI"
     assert steps.provider_of("sk-abc") == "OpenAI"
-    assert steps.provider_of(None) == "OpenAI", "no key at all must still name somebody"
+    assert steps.provider_of(None) == "your provider", "an absent key must not guess a provider"
     assert steps.PROVIDER_TIMEOUT_SECONDS > steps.CALL_TIMEOUT_SECONDS, (
         f"{steps.PROVIDER_TIMEOUT_SECONDS}s is no longer than the {steps.CALL_TIMEOUT_SECONDS}s "
         "budget it exists to widen")
