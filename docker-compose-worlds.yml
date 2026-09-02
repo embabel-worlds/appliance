@@ -66,6 +66,12 @@ services:
       - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
       # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
       - TZ=${TZ:-Etc/UTC}
+      # The appliance's engine is a SET default, not an inherited one: the app
+      # image now defaults to its in-process engine when GRAPH_TYPE is absent
+      # (embabel/me#1061), and an appliance composition must not change engines
+      # because the app's default moved. NEO4J unless .env says otherwise; the
+      # graph-memory/falkordb overlays override this explicitly.
+      - GRAPH_TYPE=${GRAPH_TYPE:-NEO4J}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j
