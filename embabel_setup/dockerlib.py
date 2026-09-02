@@ -176,15 +176,34 @@ def embeddings_local_file(mode: str) -> str:
 LOCAL_EMBEDDING_MODEL = "docker.io/ai/qwen3-embedding:0.6B-F16"
 
 
-def graph_falkordb_file(mode: str) -> str:
-    """The FalkorDB engine overlay for this mode. One per mode — see the note in the files."""
-    return f"graph-falkordb-{mode}.yml"
+def core_services(mode: str) -> tuple[str, ...]:
+    """MODE_CORE, adjusted for the graph engine. `compose up <name>` force-activates
+    a service even when an overlay parks it behind a profile, so the bring-up list
+    itself must know the engine: FalkorDB swaps the graph service, MEMORY brings
+    none at all — the engine lives inside the app."""
+    engine = graph_engine()
+    base = MODE_CORE[mode]
+    if engine == "NEO4J":
+        return base
+    rest = tuple(s for s in base if s != "neo4j")
+    return ("falkordb",) + rest if engine == "FALKORDB" else rest
 
 
-def falkordb_wanted() -> bool:
-    """Whether this appliance runs FalkorDB instead of Neo4j — GRAPH_TYPE in .env."""
+def graph_engine() -> str:
+    """The engine this appliance runs — GRAPH_TYPE in .env; NEO4J when unset."""
     chosen = os.environ.get("GRAPH_TYPE") or env_file_value("GRAPH_TYPE")
-    return (chosen or "").strip().upper() == "FALKORDB"
+    return (chosen or "NEO4J").strip().upper()
+
+
+def graph_overlay_file(mode: str) -> str | None:
+    """The engine overlay for this mode, or None for the default engine.
+    One file per mode per engine — see the note in the files."""
+    engine = graph_engine()
+    if engine == "FALKORDB":
+        return f"graph-falkordb-{mode}.yml"
+    if engine == "MEMORY":
+        return f"graph-memory-{mode}.yml"
+    return None
 
 
 def local_embeddings_wanted() -> bool:
@@ -229,8 +248,8 @@ def _compose(mode: str, *argv: str, capture: bool = False):
     # composition is Neo4j and stays byte-identical unless .env says otherwise. One
     # answer — GRAPH_TYPE — selects the engine for compose AND inside the app, so a
     # flag and the app's connection type can never disagree.
-    graph_overlay = graph_falkordb_file(mode)
-    if falkordb_wanted() and os.path.exists(graph_overlay):
+    graph_overlay = graph_overlay_file(mode)
+    if graph_overlay and os.path.exists(graph_overlay):
         cmd += ["-f", graph_overlay]
     cmd += argv
     try:
