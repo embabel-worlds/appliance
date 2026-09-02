@@ -26,7 +26,7 @@ from .agents import MCP_SERVER_NAME, shell_profile, unwire_coding_agents
 from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_COMPOSE, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
-from .dockerlib import (DEFERRED_SERVICES, DEFERRED_WHY, _compose, _docker,
+from .dockerlib import (DEFERRED_SERVICES, DEFERRED_WHY, _compose, _docker, core_services,
                         announce_github_token, appliance_containers, compose_env,
                         find_mode_container, running_modes, stray_sandbox_containers,
                         other_running_appliances, take_everything_down)
@@ -666,7 +666,7 @@ def ensure_mode(mode: str) -> bool:
         print()
         return False
     print(f"  Starting the {mode} mode — pulling what it needs to answer.\n")
-    run = _compose(mode, "up", "-d", *MODE_CORE[mode])
+    run = _compose(mode, "up", "-d", *core_services(mode))
     if run.returncode != 0:
         # The message names docker, because the failure is docker's and the reason is
         # already on screen above this line. Pointing at `doctor` rather than restating

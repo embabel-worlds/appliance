@@ -35,6 +35,9 @@ services:
       - DRIVINE_GRAPH_TYPE=NEO4J
       - VC_MEMORY_JOURNAL=/data/graph/memory.journal
       - VC_MEMORY_FSYNC=${VC_MEMORY_FSYNC:-everysec}
+      # Drivine's schema startup runner would dial the wire graph and fail the
+      # application; the engine applies its own constraints from the journal.
+      - DRIVINE_SCHEMA_ENABLED=false
     # No graph service to wait for: the graph starts when the app does.
     depends_on: !override []
 

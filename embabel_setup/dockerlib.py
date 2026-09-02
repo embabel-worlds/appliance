@@ -176,6 +176,19 @@ def embeddings_local_file(mode: str) -> str:
 LOCAL_EMBEDDING_MODEL = "docker.io/ai/qwen3-embedding:0.6B-F16"
 
 
+def core_services(mode: str) -> tuple[str, ...]:
+    """MODE_CORE, adjusted for the graph engine. `compose up <name>` force-activates
+    a service even when an overlay parks it behind a profile, so the bring-up list
+    itself must know the engine: FalkorDB swaps the graph service, MEMORY brings
+    none at all — the engine lives inside the app."""
+    engine = graph_engine()
+    base = MODE_CORE[mode]
+    if engine == "NEO4J":
+        return base
+    rest = tuple(s for s in base if s != "neo4j")
+    return ("falkordb",) + rest if engine == "FALKORDB" else rest
+
+
 def graph_engine() -> str:
     """The engine this appliance runs — GRAPH_TYPE in .env; NEO4J when unset."""
     chosen = os.environ.get("GRAPH_TYPE") or env_file_value("GRAPH_TYPE")
