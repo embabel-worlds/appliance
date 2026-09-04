@@ -22,6 +22,22 @@ def console_url() -> str:
     worlds server also serves the old Vaadin UI, and sending a new operator there
     instead of to the console makes their first impression a surface on its way out."""
     return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}"
+def api_address(base: str) -> str:
+    """The appliance's API as a DIAGNOSTIC, deliberately not as a link.
+
+    Worlds mode has two ports and only one of them is a place to go: the console is the
+    surface, and the worlds door beside it also serves the legacy Vaadin UI. `console_url`
+    already keeps new operators away from that door on the success path — but the failure
+    path handed the same address out as a bare `http://…`, in a terminal that makes URLs
+    clickable, next to the words "could not reach". Somebody following it lands on the
+    surface everything else is careful to steer them off.
+
+    Dropping the scheme is what stops it linkifying, and the surrounding words say what it
+    is. Which port failed is worth knowing; it is just not an invitation.
+    """
+    return base.split("://", 1)[-1].rstrip("/")
+
+
 def surface_urls() -> dict:
     """Every address this instance publishes, by the name a person uses for it."""
     p = ports_for(port_base())

@@ -100,7 +100,10 @@ def provider_step_has_its_own_clock():
     assert step.get("waitsOnProvider"), "the provider step no longer declares that it waits on a provider"
     assert steps.provider_of("sk-ant-abc") == "Anthropic", "an Anthropic key is named as OpenAI"
     assert steps.provider_of("sk-abc") == "OpenAI"
-    assert steps.provider_of(None) == "OpenAI", "no key at all must still name somebody"
+    # "your provider", not "OpenAI": naming a vendor the user never chose is a guess
+    # presented as a fact, in the one message whose job is saying who we are waiting on.
+    # The assertion said OpenAI and the code stopped agreeing; the code is right.
+    assert steps.provider_of(None) == "your provider", "no key at all must still name somebody"
     assert steps.PROVIDER_TIMEOUT_SECONDS > steps.CALL_TIMEOUT_SECONDS, (
         f"{steps.PROVIDER_TIMEOUT_SECONDS}s is no longer than the {steps.CALL_TIMEOUT_SECONDS}s "
         "budget it exists to widen")

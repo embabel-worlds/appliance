@@ -21,6 +21,7 @@ import urllib.request
 from .colour import MIDDOT, TICK, bold, dim, warn
 from .core import SetupError, prompt
 from .dockerlib import _docker
+from .settings import api_address
 
 # Where a bare name resolves. The same rule realms use: a short name in a mailed
 # instruction or a tweet must not be squattable, so it only ever means the org.
@@ -91,7 +92,10 @@ def samples_api(base: str, auth: str, path: str = "", payload=None, method: str 
             raise SetupError("This set was refused:\n    " + "\n    ".join(problems))
         raise SetupError(f"The appliance answered {e.code}: {body[:200]}")
     except urllib.error.URLError as e:
-        raise SetupError(f"Could not reach the appliance at {base} ({e.reason}).")
+        raise SetupError(
+            f"Could not reach the appliance ({e.reason}).\n"
+            f"Its API did not answer on {api_address(base)}."
+        )
 
 
 def read_set(source: str) -> dict:
