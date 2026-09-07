@@ -1,0 +1,113 @@
+package com.embabel.lab;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.calcite.DataContext;
+import org.apache.calcite.linq4j.Enumerable;
+import org.apache.calcite.linq4j.Linq4j;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.schema.ScannableTable;
+import org.apache.calcite.schema.impl.AbstractTable;
+import org.apache.calcite.sql.type.SqlTypeName;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.function.Supplier;
+
+/*
+ * One Calcite table over one bundle of JSON rows.
+ *
+ * Deliberately the dumbest possible implementation: everything is fetched once
+ * and held. There is no filter pushdown, no lateral join, no streaming — this
+ * lab is asking whether the SHAPE is useful, and pushdown is a separate and
+ * later question that the design note already argues should be deferred.
+ *
+ * Types are inferred from the data rather than declared, because the appliance's
+ * schema endpoint reports `any` for every realm-projected property. That is a
+ * finding, not a shortcut: a door that must guess its own column types has no
+ * contract to offer a client.
+ */
+public final class RowsTable extends AbstractTable implements ScannableTable {
+
+    private final Supplier<JsonNode> fetch;
+    private List<String> columns;
+    private List<SqlTypeName> types;
+    private List<Object[]> rows;
+    private long lastFetchMillis = -1;
+
+    public RowsTable(Supplier<JsonNode> fetch) {
+        this.fetch = fetch;
+    }
+
+    public long lastFetchMillis() {
+        return lastFetchMillis;
+    }
+
+    public List<String> columns() {
+        materialize();
+        return columns;
+    }
+
+    private synchronized void materialize() {
+        if (rows != null) return;
+        long t0 = System.currentTimeMillis();
+        JsonNode result = fetch.get();
+        lastFetchMillis = System.currentTimeMillis() - t0;
+
+        JsonNode rowsNode = result.path("rows");
+        LinkedHashSet<String> cols = new LinkedHashSet<>();
+        for (JsonNode r : rowsNode) r.fieldNames().forEachRemaining(cols::add);
+        columns = new ArrayList<>(cols);
+
+        types = new ArrayList<>();
+        for (String c : columns) types.add(inferType(rowsNode, c));
+
+        rows = new ArrayList<>();
+        for (JsonNode r : rowsNode) {
+            Object[] out = new Object[columns.size()];
+            for (int i = 0; i < columns.size(); i++) out[i] = coerce(r.get(columns.get(i)), types.get(i));
+            rows.add(out);
+        }
+    }
+
+    /* First non-null value across the whole batch wins; all-null columns become VARCHAR. */
+    private static SqlTypeName inferType(JsonNode rowsNode, String col) {
+        for (JsonNode r : rowsNode) {
+            JsonNode v = r.get(col);
+            if (v == null || v.isNull()) continue;
+            if (v.isBoolean()) return SqlTypeName.BOOLEAN;
+            if (v.isIntegralNumber()) return SqlTypeName.BIGINT;
+            if (v.isNumber()) return SqlTypeName.DOUBLE;
+            return SqlTypeName.VARCHAR;
+        }
+        return SqlTypeName.VARCHAR;
+    }
+
+    private static Object coerce(JsonNode v, SqlTypeName t) {
+        if (v == null || v.isNull()) return null;
+        return switch (t) {
+            case BOOLEAN -> v.asBoolean();
+            case BIGINT -> v.asLong();
+            case DOUBLE -> v.asDouble();
+            default -> v.isValueNode() ? v.asText() : v.toString();
+        };
+    }
+
+    @Override
+    public RelDataType getRowType(RelDataTypeFactory typeFactory) {
+        materialize();
+        RelDataTypeFactory.Builder b = typeFactory.builder();
+        for (int i = 0; i < columns.size(); i++) {
+            RelDataType t = typeFactory.createSqlType(types.get(i));
+            b.add(columns.get(i), typeFactory.createTypeWithNullability(t, true));
+        }
+        return b.build();
+    }
+
+    @Override
+    public Enumerable<Object[]> scan(DataContext root) {
+        materialize();
+        return Linq4j.asEnumerable(rows);
+    }
+}
