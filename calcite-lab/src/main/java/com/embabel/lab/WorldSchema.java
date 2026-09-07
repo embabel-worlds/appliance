@@ -70,6 +70,62 @@ public final class WorldSchema extends AbstractSchema {
         return tables;
     }
 
+    /**
+     * Discover foreign keys by containment, and hand them to Calcite as real
+     * referential constraints.
+     *
+     * WHAT THIS IS STANDING IN FOR: with `identity: true` served by the schema
+     * API, a foreign key is a DECLARATION — column X of this view is the identity
+     * of label L, so it relates to every other column that is. Without it, the
+     * only evidence outside the server is that one column's values happen to be a
+     * subset of another's, which is how you end up joining a ticker to a company.
+     * The design note forbids exactly this inference for exactly this reason. It
+     * is implemented here to prove the wiring reaches Calcite, and to measure what
+     * a client is shown once it does — not because containment is sound.
+     *
+     * Costs a full fetch of every table, which is why it is an explicit call
+     * rather than something the schema does while being built.
+     */
+    public int discoverReferentialConstraints() {
+        record Key(String table, String column, int index, Set<Object> values) {}
+        List<Key> keys = new ArrayList<>();
+
+        for (Map.Entry<String, Table> e : tables.entrySet()) {
+            if (!(e.getValue() instanceof RowsTable t)) continue;
+            List<String> cols = t.columns();
+            for (int i : t.candidateKeyColumns()) {
+                Set<Object> vs = new HashSet<>();
+                for (Object[] r : t.materializedRows()) vs.add(r[i]);
+                keys.add(new Key(e.getKey(), cols.get(i), i, vs));
+            }
+        }
+
+        int found = 0;
+        for (Map.Entry<String, Table> e : tables.entrySet()) {
+            if (!(e.getValue() instanceof RowsTable child)) continue;
+            List<String> cols = child.columns();
+            List<org.apache.calcite.rel.RelReferentialConstraint> out = new ArrayList<>();
+
+            for (int i = 0; i < cols.size(); i++) {
+                Set<Object> mine = new HashSet<>();
+                for (Object[] r : child.materializedRows()) if (r[i] != null) mine.add(r[i]);
+                if (mine.isEmpty()) continue;
+
+                for (Key k : keys) {
+                    if (k.table().equals(e.getKey())) continue;
+                    if (!k.column().equals(cols.get(i))) continue;
+                    if (!k.values().containsAll(mine)) continue;
+                    out.add(org.apache.calcite.rel.RelReferentialConstraintImpl.of(
+                            List.of("world", e.getKey()), List.of("world", k.table()),
+                            List.of(org.apache.calcite.util.mapping.IntPair.of(i, k.index()))));
+                    found++;
+                }
+            }
+            child.setReferentialConstraints(out);
+        }
+        return found;
+    }
+
     public Map<String, Map<String, String>> identityColumns() {
         return identityColumns;
     }

@@ -142,6 +142,63 @@ to the client*. Whether Calcite 1.38 can populate `REMARKS` from a custom schema
 needs checking; the appliance side of it is simply that the text exists and is
 not being passed on.
 
+## Quality JDBC metadata: Calcite cannot carry it
+
+Tested rather than assumed. The lab declares real metadata to Calcite —
+`Statistics.of(rowCount, keys, referentialConstraints, collations)`, with
+candidate keys detected from the data and **140 referential constraints**
+discovered and attached. What a client then sees:
+
+| table | `getPrimaryKeys` | `getImportedKeys` | `REMARKS` |
+|---|---|---|---|
+| `policy-premium` | 0 | 0 | empty |
+| `policy-claims` | 0 | 0 | empty |
+| `claim-amounts` | 0 | 0 | empty |
+
+**Calcite's `Statistic` is planner-only.** It informs join elimination and
+costing; it never reaches `DatabaseMetaData`, which Avatica serves from its own
+implementation without consulting it. And Calcite 1.38 has no table or column
+comment mechanism at all — `REMARKS` is unreachable by construction, not merely
+unpopulated.
+
+**So Calcite-as-JDBC-driver cannot be the client-facing surface if metadata
+matters.** The sidecar must speak **Postgres wire and synthesize `pg_catalog`
+itself** — `pg_class`, `pg_attribute`, `pg_constraint`, and `pg_description` for
+comments — where we author every row and keys, foreign keys and descriptions all
+land. Calcite stays behind it as the query engine, which is what it is good at.
+This is the strongest argument the lab produced for the wire surface over the
+embedded-driver shortcut.
+
+### And 140 is the number that condemns inferred foreign keys
+
+The design note forbids inferring relationships from anything but declared
+identity. Containment-based discovery over 23 tables produced **140**
+constraints where a declaration would produce a handful — columns are
+accidentally subsets of one another constantly. Implemented here only to prove
+the wiring; it is a measurement of why the rule exists, not a fallback worth
+shipping.
+
+## Sidecar: no capability loss, on two conditions
+
+Everything the door needs already exists on the REST API — view invocation with
+parameters (which is predicate pushdown), `/kg/execute` for stored-node tables,
+and per-row invocation for lateral joins. A sidecar differs from an in-server
+door in latency, not capability. Two conditions make that true rather than
+nearly-true:
+
+1. **It must forward the client's credentials, not hold its own.** A sidecar
+   holding one admin credential collapses per-user authorization to a single
+   identity. Since the appliance uses basic auth and every SQL client supplies a
+   user and password, the mapping is one-to-one and authorization is preserved
+   exactly.
+2. **The schema API must serve the three missing fields.** This is the one real
+   asymmetry: identity, storage class and descriptions exist inside the server,
+   and an in-server door could read them directly. A sidecar can never see more
+   than the API exposes.
+
+Given both, the sidecar is strictly better — no appliance change, versioned
+independently, and turned off by not running it.
+
 ## Smaller notes
 
 - Hyphenated view names (`policy-claims`) force double-quoting in every

@@ -8,8 +8,8 @@
       "factory": "com.embabel.lab.WorldSchemaFactory",
       "operand": {
         "base": "http://127.0.0.1:11043",
-        "userEnv": "APPLIANCE_USER",
-        "passwordEnv": "APPLIANCE_PASS",
+        "user": "demo",
+        "password": "terminat8r",
         "nodeLimit": 500,
         "views": [
           "policy-premium",

@@ -17,14 +17,11 @@ import java.util.*;
  */
 public final class Lab {
 
-    /*
-     * Credentials come from the environment and have no defaults. This repo is
-     * public; a working password committed as a fallback is a working password
-     * published, however local the appliance it opens.
-     */
+    /* The throwaway credentials of a local test appliance, so the lab runs with
+     * no setup. Overridable by environment for anything that is not that. */
     private static final String BASE = env("APPLIANCE_BASE", "http://127.0.0.1:11043");
-    private static final String USER = required("APPLIANCE_USER");
-    private static final String PASS = required("APPLIANCE_PASS");
+    private static final String USER = env("APPLIANCE_USER", "demo");
+    private static final String PASS = env("APPLIANCE_PASS", "terminat8r");
 
     /* Params all defaulted, persisted data, no producers, no LLM calls. */
     private static final Set<String> VIEWS = new LinkedHashSet<>(List.of(
@@ -97,15 +94,19 @@ public final class Lab {
                             + "      FROM \"world\".\"claim-amounts\" GROUP BY \"policy_number\") t "
                             + "  ON t.\"policy_number\" = r.\"policy_number\"");
 
-            System.out.println("\n== what a client cannot see ==");
-            try (ResultSet rs = conn.getMetaData().getImportedKeys(null, "world", "policy-claims")) {
-                int n = 0;
-                while (rs.next()) n++;
-                System.out.println("  foreign keys advertised by JDBC metadata: " + n);
-            } catch (Exception e) {
-                System.out.println("  foreign key metadata unavailable: " + e.getClass().getSimpleName());
+            System.out.println("\n== metadata quality ==");
+            int found = world.discoverReferentialConstraints();
+            System.out.println("  candidate keys and referential constraints declared to Calcite: " + found);
+            for (Map.Entry<String, Map<String, String>> ignored : world.identityColumns().entrySet()) break;
+
+            DatabaseMetaData md = conn.getMetaData();
+            System.out.println("  -- what JDBC then reports to a client --");
+            for (String t : List.of("policy-premium", "policy-claims", "claim-amounts")) {
+                System.out.printf("     %-20s primaryKeys=%d  importedKeys=%d  remarks=%s%n",
+                        t, count(() -> md.getPrimaryKeys(null, "world", t)),
+                        count(() -> md.getImportedKeys(null, "world", t)),
+                        tableRemarks(md, t));
             }
-            System.out.println("  virtual labels skipped (no extent): " + world.skippedVirtualLabels().size());
         }
     }
 
@@ -134,6 +135,29 @@ public final class Lab {
         } catch (SQLException e) {
             System.out.println("   FAILED: " + e.getMessage());
         }
+    }
+
+    private interface Rs { ResultSet get() throws SQLException; }
+
+    private static int count(Rs supplier) {
+        try (ResultSet rs = supplier.get()) {
+            int n = 0;
+            while (rs.next()) n++;
+            return n;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private static String tableRemarks(DatabaseMetaData md, String table) {
+        try (ResultSet rs = md.getTables(null, "world", table, null)) {
+            if (rs.next()) {
+                String r = rs.getString("REMARKS");
+                return r == null || r.isBlank() ? "(empty)" : "\"" + r + "\"";
+            }
+        } catch (Exception ignored) {
+        }
+        return "(unavailable)";
     }
 
     private static String env(String k, String d) {

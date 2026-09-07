@@ -16,17 +16,16 @@ import java.util.*;
  * "useful as a client": not whether our own main method can query it, but
  * whether somebody else's tool can, having been told nothing but a URL.
  *
- * Credentials are named, not carried: the model file holds the NAME of an
- * environment variable, never its value, so the file is safe to commit and the
- * secret stays where secrets go.
+ * Credentials sit in the model file because they are a throwaway local test
+ * appliance's, and a lab that needs setup before it runs is a lab nobody runs.
  */
 public final class WorldSchemaFactory implements SchemaFactory {
 
     @Override
     public Schema create(SchemaPlus parentSchema, String name, Map<String, Object> operand) {
         String base = str(operand, "base", "http://127.0.0.1:11043");
-        String user = fromEnv(str(operand, "userEnv", "APPLIANCE_USER"));
-        String pass = fromEnv(str(operand, "passwordEnv", "APPLIANCE_PASS"));
+        String user = str(operand, "user", "demo");
+        String pass = str(operand, "password", "terminat8r");
         int nodeLimit = operand.get("nodeLimit") instanceof Number n ? n.intValue() : 500;
 
         Set<String> wanted = new LinkedHashSet<>();
@@ -60,9 +59,4 @@ public final class WorldSchemaFactory implements SchemaFactory {
         return v == null ? fallback : String.valueOf(v);
     }
 
-    private static String fromEnv(String var) {
-        String v = System.getenv(var);
-        if (v == null || v.isBlank()) throw new IllegalStateException("environment variable " + var + " is not set");
-        return v;
-    }
 }

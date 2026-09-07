@@ -36,8 +36,52 @@ public final class RowsTable extends AbstractTable implements ScannableTable {
     private List<Object[]> rows;
     private long lastFetchMillis = -1;
 
+    private List<org.apache.calcite.rel.RelReferentialConstraint> constraints = List.of();
+
     public RowsTable(Supplier<JsonNode> fetch) {
         this.fetch = fetch;
+    }
+
+    public void setReferentialConstraints(List<org.apache.calcite.rel.RelReferentialConstraint> c) {
+        this.constraints = c;
+    }
+
+    public List<Object[]> materializedRows() {
+        materialize();
+        return rows;
+    }
+
+    /**
+     * Columns whose values are non-null and distinct across every row fetched.
+     *
+     * THIS IS A FALLBACK AND SHOULD LOSE TO A DECLARATION. The schema API does not
+     * serve the `identity: true` that realm types declare, so the only key
+     * evidence available to a door outside the server is the data itself. A column
+     * can be accidentally unique in a sample and is then a candidate key that is
+     * not a key — which is exactly the confident-nonsense failure the design note
+     * warns about, arrived at by a different road. Useful to prove the plumbing,
+     * not to trust.
+     */
+    public List<Integer> candidateKeyColumns() {
+        materialize();
+        List<Integer> keys = new ArrayList<>();
+        for (int i = 0; i < columns.size(); i++) {
+            java.util.Set<Object> seen = new java.util.HashSet<>();
+            boolean unique = !rows.isEmpty();
+            for (Object[] r : rows) {
+                if (r[i] == null || !seen.add(r[i])) { unique = false; break; }
+            }
+            if (unique) keys.add(i);
+        }
+        return keys;
+    }
+
+    @Override
+    public org.apache.calcite.schema.Statistic getStatistic() {
+        materialize();
+        List<org.apache.calcite.util.ImmutableBitSet> keys = new ArrayList<>();
+        for (int i : candidateKeyColumns()) keys.add(org.apache.calcite.util.ImmutableBitSet.of(i));
+        return org.apache.calcite.schema.Statistics.of((double) rows.size(), keys, constraints, List.of());
     }
 
     public long lastFetchMillis() {
