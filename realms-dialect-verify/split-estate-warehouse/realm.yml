@@ -1,0 +1,6 @@
+name: split-estate-warehouse
+description: >-
+  The split-estate benchmark fixture as a governed realm. Four systems of record —
+  policy administration, claims, party/CRM and a catastrophe service — all consolidated into ONE store. This is the condition a metrics layer assumes someone has already paid for, and the condition dbt's own sql and semantic_layer arms both run in. Read-only.
+version: "0.1.0"
+tags: [benchmark, insurance, federation]
