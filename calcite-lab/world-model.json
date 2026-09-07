@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "defaultSchema": "world",
+  "schemas": [
+    {
+      "name": "world",
+      "type": "custom",
+      "factory": "com.embabel.lab.WorldSchemaFactory",
+      "operand": {
+        "base": "http://127.0.0.1:11043",
+        "userEnv": "APPLIANCE_USER",
+        "passwordEnv": "APPLIANCE_PASS",
+        "nodeLimit": 500,
+        "views": [
+          "policy-premium",
+          "policy-claims",
+          "policy-loss-ratio",
+          "claim-amounts",
+          "claim-total-loss",
+          "claim-catastrophe",
+          "coverage-premium"
+        ]
+      }
+    }
+  ]
+}

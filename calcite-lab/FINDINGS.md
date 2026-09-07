@@ -96,6 +96,52 @@ aggregation lives in the view and is tested once. An open SQL door hands users
 the ability to redefine a business measure by accident. Whatever ships should
 lead people to the views rather than around them.
 
+## From a client's side: a model file is enough
+
+The stronger test is not whether our own `main` can query the world, but whether
+somebody else's tool can, having been told only a URL. It can.
+
+`WorldSchemaFactory` plus `world-model.json` make the world reachable from any
+Calcite JDBC client with **no code at all**. Driving it from sqlline — an
+external SQL shell that knows nothing about appliances:
+
+```
+sqlline -u "jdbc:calcite:model=world-model.json"
+> SELECT p."policy_number", p."premium", c."claims", r."loss_ratio"
+    FROM "policy-premium" p
+    JOIN "policy-claims"  c ON p."policy_number" = c."policy_number"
+    JOIN "policy-loss-ratio" r ON r."policy_number" = p."policy_number"
+   ORDER BY r."loss_ratio" DESC;
+```
+
+Twelve correct rows, a three-way join across three saved views of a realm, from a
+client that was handed a JDBC URL and nothing else. **That is the answer to "is
+it useful as a client": yes.** The model file names an environment variable for
+the password rather than carrying one, so it is safe to commit.
+
+Column metadata is clean, too — a browsing tool sees real types rather than a
+wall of strings:
+
+| column | DATA_TYPE | TYPE_NAME | NULLABLE |
+|---|---|---|---|
+| `policy_number` | 12 | VARCHAR | 1 |
+| `premium` | 8 | DOUBLE | 1 |
+| `loss_ratio` | 8 | DOUBLE | 1 |
+
+### But the descriptions do not arrive
+
+`REMARKS` is empty for every table and every column. JDBC has a standard,
+universally-read field for exactly this, and the world has excellent prose to put
+in it — the authoring guide calls a view's description *load-bearing*, since it
+is what the NL selector matches questions against. A client browsing this catalog
+sees bare names and no explanation.
+
+That is the **third** instance of one pattern, after identity and the
+virtual/stored distinction: *metadata the world already holds, dropped on the way
+to the client*. Whether Calcite 1.38 can populate `REMARKS` from a custom schema
+needs checking; the appliance side of it is simply that the text exists and is
+not being passed on.
+
 ## Smaller notes
 
 - Hyphenated view names (`policy-claims`) force double-quoting in every

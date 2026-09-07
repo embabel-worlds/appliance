@@ -17,9 +17,14 @@ import java.util.*;
  */
 public final class Lab {
 
+    /*
+     * Credentials come from the environment and have no defaults. This repo is
+     * public; a working password committed as a fallback is a working password
+     * published, however local the appliance it opens.
+     */
     private static final String BASE = env("APPLIANCE_BASE", "http://127.0.0.1:11043");
-    private static final String USER = env("APPLIANCE_USER", "demo");
-    private static final String PASS = env("APPLIANCE_PASS", "terminat8r");
+    private static final String USER = required("APPLIANCE_USER");
+    private static final String PASS = required("APPLIANCE_PASS");
 
     /* Params all defaulted, persisted data, no producers, no LLM calls. */
     private static final Set<String> VIEWS = new LinkedHashSet<>(List.of(
@@ -134,5 +139,13 @@ public final class Lab {
     private static String env(String k, String d) {
         String v = System.getenv(k);
         return v == null || v.isBlank() ? d : v;
+    }
+
+    private static String required(String k) {
+        String v = System.getenv(k);
+        if (v == null || v.isBlank()) {
+            throw new IllegalStateException("set " + k + " — see FINDINGS.md for how to run the lab");
+        }
+        return v;
     }
 }
