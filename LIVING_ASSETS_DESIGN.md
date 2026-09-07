@@ -254,10 +254,37 @@ Levels, in the order they pay:
   producer. Deferred: this is the implicit async fan-out the freshness section
   refuses.
 
-**Implementation: Apache Calcite**, per the repo's convention on solved problems.
-JVM, gives SQL parse, catalog, planner and JDBC via Avatica, and its adapter
-framework is built for tables that declare which predicates they can push. Behind
-it, a read-only Postgres-wire front end for the tools; read-only means no
+### Implementation: try borrowing the door before building it
+
+**The cheapest version of this door may involve none of our code.** Supabase's
+[OpenAPI wrapper](https://supabase.com/docs/guides/database/extensions/wrappers/openapi)
+is a generic WebAssembly foreign data wrapper that connects to any REST API with
+an OpenAPI 3.0+ spec, supporting path parameters, pagination, `WHERE`/`ORDER
+BY`/`LIMIT` pushdown, and automatic table creation via `IMPORT FOREIGN SCHEMA`
+from a `spec_url`. The appliance already publishes an OpenAPI spec — the
+`embabel-client` skill establishes it as the contract — so pointing that wrapper
+at a world makes its assets foreign tables inside somebody else's Postgres.
+
+That inverts the build. Rather than implementing a Postgres-compatible *server*,
+the client hosts the server and we supply a spec. It is also `IMPORT FOREIGN
+SCHEMA` doing precisely what this note means by catalog-as-deliverable: reading
+a remote catalog and materialising the local objects from it. If the generic
+wrapper proves insufficient, [Wrappers](https://supabase.com/blog/postgres-foreign-data-wrappers-with-wasm)
+allows a purpose-built Wasm FDW distributed from any URL, with no per-platform
+compilation.
+
+**Test this before building anything.** An hour pointing the generic wrapper at a
+live world's spec either removes a large tranche of proposed work or explains
+precisely why it cannot.
+
+The two routes reach different people and are not substitutes: an FDW reaches
+those who already run Postgres, while a wire surface reaches BI tools directly
+and does nothing for anyone in Excel — that is OData's job.
+
+**If we do build it: Apache Calcite**, per the repo's convention on solved
+problems. JVM, gives SQL parse, catalog, planner and JDBC via Avatica, and its
+adapter framework is built for tables that declare which predicates they can
+push. Behind it, a read-only Postgres-wire front end; read-only means no
 transaction machinery, which makes this materially cheaper than a Bolt surface.
 The real cost is `pg_catalog` introspection, which every engine taking this route
 has paid.
@@ -272,19 +299,37 @@ emit `SELECT … FROM schema.table WHERE …` and generally cannot call
 `TABLE(f(…))` — the mechanism that expresses *required* is the one the primary
 audience cannot reach.
 
-Three consequences, in preference order:
+### Decided: default every param on an asset meant for a table
 
-1. **Prefer defaulted params for anything exposed as a table.** A view whose
-   params all carry defaults has no required predicate at all. Both params in
-   `realms/realm-exposure/views/exposure.yml` are defaulted, so most existing
-   views are simply unaffected. The problem is confined to producer-keyed assets.
-2. Where a key is genuinely required, enforce it by throwing inside `scan` and
-   expose the same asset additionally as a table function for clients that can
-   call one. The refusal message is then the entire user experience, which is the
-   posture of 4a3cbf8.
-3. Params need classifying regardless — *required key*, *predicate* (`minEpss`),
-   *control* (`limit`, ordering). `limit` is not a `WHERE` clause; SQL has its
-   own, and surfacing it as a column puts a junk column on every table.
+This is not a Calcite quirk. The same problem was found in **four unrelated
+ecosystems**, each handling mandatory parameters badly by a different mechanism:
+
+| Route | How required params fail |
+|---|---|
+| Calcite | `scan` is permissive; enforcement only by throwing at runtime |
+| OData | function imports exist; Excel's support for them is poor |
+| MDX | no equivalent concept at all |
+| OpenAPI FDW | `IMPORT FOREIGN SCHEMA` **skips parameterized endpoints entirely** |
+
+Four independent sightings is not a protocol quirk, it is a property of the
+tabular client world, and it promotes what began as a preference into a
+**constraint on asset authoring: an asset intended for a table door gives every
+parameter a default.** A view whose params all carry defaults has no required
+predicate anywhere, on any of these routes. Both params in
+`realms/realm-exposure/views/exposure.yml` are already defaulted, so existing
+views are largely unaffected — the constraint bites only on producer-keyed
+assets, which are the ones most likely to be live rather than materialized in any
+case.
+
+Two supporting rules:
+
+- Where a key is genuinely required and cannot be defaulted, enforce it by
+  throwing, and expose the asset additionally as a table function for clients
+  that can call one. The refusal message is then the entire user experience,
+  which is the posture of 4a3cbf8.
+- Params need classifying regardless — *required key*, *predicate* (`minEpss`),
+  *control* (`limit`, ordering). `limit` is not a `WHERE` clause; SQL has its
+  own, and surfacing it as a column puts a junk column on every table.
 
 Type mapping: view columns are mostly scalars, which is the good case. Maps and
 lists have no SQL type and should land as JSON rather than being flattened into
@@ -510,9 +555,45 @@ the clearest caution in the survey: the differentiation cannot be the plumbing.
 
 **[Steampipe](https://steampipe.io/docs/steampipe_postgres/overview) is live
 external APIs as SQL tables, already** — a zero-ETL Postgres foreign data wrapper
-over 100+ services and 2000+ tables, translating queries into real-time API
-calls. That is close to the producer model expressed relationally. If a user
-simply wants cloud APIs as SQL, it exists and is free.
+over 100+ services and 2000+ tables, translating queries into real-time API calls
+with qualifiers pushed into them. That is the producer mechanic, expressed
+relationally. If a user simply wants cloud APIs as SQL, it exists and is free.
+
+This is the sharpest competitive item in the survey, because it makes *federation
+itself* commodity: "we query your systems in place rather than copying them" is
+now a free Postgres extension, not a differentiator. Federation should therefore
+stop being a headline. What Steampipe structurally cannot do is the rest of this
+note — there is nowhere in the foreign-table model to declare that a purl in one
+wrapper is the same entity as a purl in another, no traversal where each hop's key
+comes from the previous hop's result, and no judgment inside the query. **It
+federates tables; realms federate a graph.**
+
+### Consume rather than compete — the licence permits it
+
+[Turbot's split](https://github.com/turbot/steampipe/issues/488) is AGPLv3 for
+the CLI and Postgres FDW, **Apache 2.0 for the plugin SDK and the plugins**. The
+hundred-odd API integrations are the Apache-licensed half; the copyleft covers
+the engine we would not need.
+
+The architecture cooperates too. The
+[plugin SDK](https://github.com/turbot/steampipe-plugin-sdk) states that plugins
+work across all their engine types — CLI, Postgres FDW, SQLite extension, export
+CLI — because a plugin is a gRPC server, deliberately engine-agnostic, with
+in-process and gRPC encapsulation since v5.8.0. So plugins could be hosted and
+called directly as realm producers, with neither Postgres nor AGPL code in the
+stack: someone else maintains a hundred integrations, and we add the identity,
+the traversal and the judgment on top.
+
+Three risks to weigh before committing. The plugin gRPC interface is an SDK
+contract for *their* engines rather than a published third-party surface, so it
+may change — mitigated by its already being stable across four of their own
+engines. The licence boundary deserves an actual legal read rather than an
+inference from a licence table, particularly as Turbot names commercialisation as
+the reason for the split. And plugins are Go binaries, so a JVM appliance takes
+on process supervision and a gRPC client.
+
+**Worth an experiment before it is worth a plan**: stand up one plugin as a gRPC
+server and write a producer against it.
 
 **[Structurizr](https://docs.structurizr.com/) is the anti-rot diagram
 argument, shipped.** Many views generated from a single model, all updating when
@@ -555,7 +636,11 @@ matter. What is defensible sits behind them, in what the world can compute.
 ## Not decided
 
 - **Whether to do any of this**, and in what order. The ranking above is an
-  argument, not a plan.
+  argument, not a plan. Two experiments would resolve more of it than more
+  argument will, and both are hours rather than days: point the generic OpenAPI
+  FDW at a live world's spec and see how far `IMPORT FOREIGN SCHEMA` gets, and
+  stand up one Steampipe plugin as a gRPC server behind a producer. Each either
+  removes a tranche of proposed work or explains why it cannot be removed.
 - **How far `shape` goes.** Renderers must be a closed set. The moment shapes are
   user-supplied templates this becomes a templating language with its own
   maintenance surface, which is a different product.
