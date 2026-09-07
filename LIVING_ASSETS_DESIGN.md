@@ -277,9 +277,37 @@ compilation.
 live world's spec either removes a large tranche of proposed work or explains
 precisely why it cannot.
 
-The two routes reach different people and are not substitutes: an FDW reaches
-those who already run Postgres, while a wire surface reaches BI tools directly
-and does nothing for anyone in Excel — that is OData's job.
+**The mechanism is standard; the reach is not.** SQL/MED is ISO/IEC 9075-9:2008,
+and Postgres states that `CREATE FOREIGN DATA WRAPPER`
+[conforms to it](https://www.postgresql.org/docs/current/sql-createforeigndatawrapper.html) —
+so `CREATE SERVER`, `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA` are
+standard SQL rather than a vendor trick. But the standard's `LIBRARY` and
+`LANGUAGE` clauses, the part that would have made *wrappers* portable, are not
+implemented; Postgres substitutes its own `HANDLER`/`VALIDATOR` against Postgres
+C functions. **What the user writes is standard. What we would write is not**, and
+no other database has a meaningful SQL/MED ecosystem — Oracle, SQL Server, MySQL
+and MariaDB each federate by their own mechanism.
+
+**And a custom FDW cannot be installed on most managed Postgres.** RDS and Aurora
+gate extensions behind an `rds.allowed_extensions` allowlist, and anything
+shipping a shared library must also enter `shared_preload_libraries` via a custom
+parameter group; `pg_tle` covers trusted-language extensions, not native code.
+The FDW route therefore reaches **self-hosted Postgres and Supabase** — the
+latter only because Supabase ships the allowlisted `wrappers` extension itself
+and third parties supply Wasm modules into it, which is a distribution channel
+specific to them.
+
+So the three routes are complementary rather than ranked, and the earlier framing
+of the wire surface as merely a "fallback" was wrong:
+
+| Route | Reaches |
+|---|---|
+| FDW | self-hosted Postgres, Supabase |
+| pg-wire service | any BI tool directly, including everyone on managed Postgres |
+| OData | Excel and Power BI, with no driver or extension at all |
+
+For an estate whose Postgres is managed — which is most of them — the wire
+surface is not a fallback, it is the only one of the first two that works.
 
 **If we do build it: Apache Calcite**, per the repo's convention on solved
 problems. JVM, gives SQL parse, catalog, planner and JDBC via Avatica, and its
