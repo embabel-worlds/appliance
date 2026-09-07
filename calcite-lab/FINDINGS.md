@@ -29,7 +29,7 @@ Joining a view to a stored node table worked identically. **This is the case for
 the door**: not that SQL renders a view, but that it composes views the author
 never anticipated composing.
 
-## Three gaps that block the design as written
+## Gaps found — one retracted, one fixable, one architectural
 
 ### 1. Identity does not reach the API at all
 
@@ -45,20 +45,32 @@ and for the seven views under test it recovered **nothing**, because
 foreign keys from `RETURN` + identity is correct in principle and impossible in
 practice until the flag is served.
 
-### 2. Virtual and persisted labels are indistinguishable
+### 2. ~~Virtual and persisted labels are indistinguishable~~ — WRONG, retracted
 
-The note's rule — stored labels are tables, virtual labels are not, because a
-virtual label has no extent — cannot be implemented either:
+**This was my error, and the field I needed was there all along.** An earlier
+pass tested `exhaustive`, found it true for every label, and concluded the
+distinction was unavailable. The right field is **`anchor`**, which the schema
+API already serves and documents as: *"True when this label may open a MATCH
+pattern bare — a real read, or a virtual population implicitly bound by user
+tenancy. False means it is reachable only by traversal from a bound anchor."*
 
-| label | sampleCount | exhaustive |
+That is exactly the extent test, and it discriminates correctly:
+
+| label | anchor | realm |
 |---|---|---|
-| `Policy` (stored) | 12 | true |
-| `Dependency` (producer-backed) | 0 | true |
-| `WatchedRepo` (stored, unseeded) | 0 | true |
+| `Policy` | true | split-estate-drift |
+| `Claim` | true | split-estate-drift |
+| `WatchedRepo` (stored, unseeded) | true | realm-exposure |
+| `Dependency` (producer-backed) | **false** | realm-exposure |
+| `Vulnerability` (producer-backed) | **false** | realm-exposure |
 
-**No label in the world reports `exhaustive: false`.** A producer-backed label
-and an empty stored one are the same row. The lab admitted every zero-count label
-as a table because it had no basis to refuse one.
+**67 of 116 labels report `anchor: false`** and are now refused as tables on the
+correct grounds rather than admitted for want of evidence. The rule the design
+note proposes — a label with no extent must not become a table — is implementable
+today, with no server change.
+
+The API also serves `realm` per label, which gives schema-per-realm naming for
+free.
 
 ### 3. Types are guessed, not declared
 
@@ -67,12 +79,45 @@ from the first non-null value in the data. A door that guesses its own column
 types has no contract to offer a client, and the guess changes when the data
 does.
 
-## Two fields would unblock all three
+## Fixing identity: small, and precedented
 
-On `/kg/schema`: **`identity: true`** on properties, and a **storage class on
-labels** distinguishing stored from virtual. Everything the note proposes for the
-SQL, OData and codegen doors follows from those two, and none of it follows
-without them.
+The flag is not missing from the model, only from the projection.
+`metadata["identity"]` is already carried on the property definitions and already
+read elsewhere in the assistant — `RepositoryStore.kt:291` uses it to find a
+type's identity property, and `TypeShapeAdapters.kt:33` already surfaces it into
+a DTO as `FieldShape(..., identity = metadata["identity"] == "true")`. Nothing in
+the framework needs to change; the schema endpoint simply does not pass on what
+it holds.
+
+The change follows the path `description` already takes, which is the argument
+that it is the right change rather than a convenient one:
+
+1. `KgSchemaProperty` (`KgAskApi.kt`) gains `identity: Boolean = false` —
+   additive, so an older client reading a newer appliance loses nothing, the same
+   posture `anchor` already documents for itself.
+2. `KgAskService` gains `propertyIdentities(userId): Map<String, Set<String>>`
+   defaulting to `emptyMap()`, implemented in `TextToCypherKgAskService` exactly
+   parallel to `propertyDescriptions` — walk `dynamicTypes`, filter
+   `ownProperties` on `metadata["identity"].equals("true", ignoreCase = true)`.
+3. Both controllers that build the DTO are wired to it: `KgAskController` around
+   line 174 and `KgStudioController` around line 117, which carry the same
+   mapping and would otherwise drift apart.
+
+With that, the design note's rule becomes implementable as stated — a column is a
+foreign key when it is an identity projection of a label, not when its values
+happen to sit inside another column's. The lab's containment fallback found 140
+constraints for want of this; a declaration would find a handful.
+
+## One field, and one thing Calcite cannot do
+
+On `/kg/schema`: **`identity: true`** on properties. That is the whole ask — the
+storage-class field I originally asked for alongside it already exists as
+`anchor`. Everything the design note proposes for the SQL, OData and codegen
+doors follows from identity, and none of it follows without it.
+
+Descriptions are the other half, and they are not the appliance's fault:
+`REMARKS` is unreachable through Calcite's JDBC driver at all (see below), so
+they need the pg-wire front end rather than a server change.
 
 ## Joins execute but are not discoverable
 

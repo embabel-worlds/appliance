@@ -44,12 +44,24 @@ public final class WorldSchema extends AbstractSchema {
 
         for (JsonNode label : schema.path("labels")) {
             String name = label.path("label").asText();
-            int count = label.path("sampleCount").asInt(0);
-            boolean exhaustive = label.path("exhaustive").asBoolean(false);
-            if (count <= 0) {
-                if (!exhaustive) skippedVirtualLabels.add(name);
+
+            /*
+             * `anchor` is the extent test, and it is served today. It means the
+             * label may open a MATCH pattern bare — a real read, or a virtual
+             * population implicitly bound by tenancy. False means it is reachable
+             * only by traversal from a bound anchor, which is precisely "this has
+             * no extent, so it cannot be a table": Dependency and Vulnerability
+             * are false, Policy and WatchedRepo true.
+             *
+             * An earlier pass of this lab tested `exhaustive` instead, found it
+             * true everywhere, and wrongly concluded the distinction was not
+             * available. It was; the wrong field was read.
+             */
+            if (!label.path("anchor").asBoolean(true)) {
+                skippedVirtualLabels.add(name);
                 continue;
             }
+            if (label.path("sampleCount").asInt(0) <= 0) continue;
             List<String> props = new ArrayList<>();
             for (JsonNode p : label.path("properties")) props.add(p.path("name").asText());
             if (props.isEmpty()) continue;
