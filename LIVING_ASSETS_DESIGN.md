@@ -333,8 +333,12 @@ distribution that requires no client at all.
 
 **4. Spreadsheets, in both directions.** Outward: the appliance writes and
 refreshes a Sheet, so the recipient's client is a link with no install and no
-credential. A Power Query connector is the one that pays twice, serving Excel and
-Power BI from a single implementation.
+credential. **OData is the Excel and Power BI route — decided**, and the argument
+is in the next section, because it turns on disagreeing with Cube for a reason
+worth stating. It also subsumes an earlier recommendation in this note for a
+custom Power Query connector: Excel's OData support *is* Power Query underneath
+and Power BI has a native OData connector, so a feed reaches both with no
+connector to write.
 
 Inward is the part that was missed. `realm-exposure`'s types file says
 `WatchedRepo` is *"the one thing a user seeds by hand: everything else in this
@@ -373,10 +377,56 @@ the note is more useful for saying so plainly than for pretending otherwise.
 match.** Metrics, dimensions, joins and access rules are defined once and served
 over a Postgres-compatible SQL interface, REST, GraphQL, MDX/DAX and an MCP
 server for agents, with pre-aggregations and a two-level cache for speed. That is
-"one catalog, many projections" as a shipping product. Two things to take from
-it: the model is validated commercially, and Cube's choice of **MDX/DAX rather
-than OData** as the Excel and Power BI route is a data point against the OData
-recommendation in this note, which should be re-examined before anyone builds it.
+"one catalog, many projections" as a shipping product, and the model is validated
+commercially by it.
+
+### Decided: OData, not MDX — and Cube is right for Cube
+
+Cube reaches Excel and Power BI over MDX/DAX, which was initially logged here as
+a data point against this note's OData recommendation. Reconsidered, it is not.
+The two protocols serve different consumption patterns, and the choice follows
+from the shape of the content rather than the merits of the wire.
+
+**MDX exists to make pivot tables work.** An XMLA endpoint gives Excel a live
+PivotTable with server-side aggregation — the client asks for measures by
+dimensions and the server returns the subtotals. OData gives a refreshable flat
+table. For a user who wants to *re-slice*, MDX is plainly better, and it is the
+right answer for Cube because **Cube's assets are cubes**: measures, dimensions
+and aggregation rules, authored precisely so a consumer can re-aggregate them.
+
+**Our assets are not cubes, and are not meant to be.** `ActivelyExploited`
+returns service, repo, team, CVE, severity, ransomware flag, deadline and summary
+— a ranked list of records with identity, carrying no additive measures and no
+dimensional hierarchy. The authoring guidance is explicit that this is deliberate:
+*"aggregation and dedupe live in the view, tested once — not in every consumer"*
+(`skills/world-authoring/SKILL.md`). That is a direct rejection of the
+consumer-re-aggregates model MDX exists to serve. Serving MDX would mean
+inventing measures, hierarchies and aggregation semantics over assets that
+deliberately have none — the graph-as-tables mistake committed at a higher
+altitude, forcing content into a shape it does not have.
+
+**OData fits the shape we do have.** Entity sets with keys and navigation
+properties are record lists with identity and typed relationships, which is the
+identity model of this note almost exactly: identity columns become entity keys,
+inferred foreign keys become navigation properties, and the join surfaces as a
+clickable expansion. It is REST plus a metadata document against XMLA's
+DISCOVER/EXECUTE metadata model of catalogs, cubes, measure groups, hierarchies,
+levels and members — days of work rather than months, which matters when the
+strategic position is that doors should be cheap.
+
+Three honest caveats:
+
+- For someone who genuinely wants to slice, OData is the worse experience. The
+  answer is that our assets are not sliceable by construction, not that pivoting
+  does not matter.
+- Parameterized assets are awkward in OData — function imports exist, Excel's
+  support for them is poor. This is the *same* problem as the Calcite finding
+  above, arriving by a different route, which is evidence it is a catalog-level
+  issue rather than a protocol one. Same mitigation: prefer defaulted params.
+- If the world ever grows genuinely dimensional assets — a `shape: cube` with
+  measures and hierarchies — MDX becomes the right door **for those**. The
+  projection model absorbs that without contradiction, because doors are chosen
+  per shape rather than globally. That is a point in the model's favour.
 
 **[Palantir's Ontology and OSDK](https://www.palantir.com/docs/foundry/ontology-sdk/overview)
 is the closest conceptual match.** Object types, link types and action types,
