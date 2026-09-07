@@ -363,9 +363,74 @@ it where scheduling decisions are actually made, and `.ics` is a text format.
 Explicitly not pursued: Gremlin (imperative traversal fits the producer model
 poorly), Elasticsearch `_search` compatibility (wrong shape, no payoff), and A2A
 (too early). Arrow Flight SQL is a later throughput optimisation of the SQL door,
-not an alternative to it. GQL (ISO/IEC 39075:2024) is the most interesting query
-dialect remaining, because it is the standard rather than a vendor surface, but
-it is a parser and a real semantics gap.
+not an alternative to it. Graph languages and graph doors get their own section
+below, because "Bolt or GQL" turns out to be the wrong question.
+
+## Graph doors: Bolt, GQL and SQL/PGQ
+
+An earlier draft of this note weighed a Bolt door against GQL as if they were
+alternatives. They are not, and the confusion is worth naming because it is the
+same *class* of error as the OData/MDX case above. That one turned on the shape
+of the content; this one turns on layer.
+
+**Bolt is a transport. GQL and Cypher are languages.** One can carry the other.
+Deciding between them is a category error, and once separated both questions get
+easier.
+
+**The language axis.** [GQL](https://www.iso.org/standard/76120.html)
+(ISO/IEC 39075:2024) is the first new ISO query language since SQL in 1987, and
+it borrowed heavily from Cypher — `MATCH`/`RETURN` construction included — which
+means the gap from what the engine speaks today is narrower than a fresh dialect
+would be. It is being implemented in the wider market. But **it buys almost no
+clients**: there is no GQL driver ecosystem to speak of, and the one wire
+protocol effort found in the survey
+([GrafeoDB's `gwp`](https://github.com/GrafeoDB/gwp), a pure-Rust gRPC transport)
+is early and single-vendor. GQL is therefore a *conformance and portability*
+decision about the engine's dialect, not a client-reach decision.
+
+**The transport axis.** Bolt's entire value is its installed client base —
+drivers in every major language, the graph browser, the shell, and the
+GraphRAG and agent-framework integrations that already know how to speak it.
+That value is independent of which language travels inside, and because GQL is
+Cypher-derived, a Bolt door built to carry Virtual Cypher today would not need
+rebuilding to carry GQL later.
+
+**Decided: GQL is not a door, so it never competes with Bolt.** If both happen,
+the order is Bolt first, because that is where the clients are, and GQL after, as
+a claim about the language already being sent over it. The cheap version of the
+GQL decision is worth stating too: because it derives from Cypher, *tracking*
+GQL where it does not conflict is close to free, and only full conformance is
+expensive. Write toward GQL; claim conformance when it is earned.
+
+### Decided: SQL/PGQ is how graph patterns reach SQL clients
+
+The third answer, and the one this note's own logic prefers, is neither.
+[SQL/PGQ](https://www.iso.org/standard/79473.html) (ISO/IEC 9075-16:2023) puts a
+`GRAPH_TABLE` operator in the `FROM` clause: it runs a graph pattern against a
+property graph and returns the matches as rows for ordinary SQL to carry on with.
+It ships in Oracle 23ai, in
+[DuckDB via DuckPGQ](https://duckdb.org/docs/lts/guides/sql_features/graph_queries),
+and in Spanner Graph.
+
+If the SQL door is being built anyway, **this is graph pattern matching on a door
+that already exists** — the same move as OData subsuming the Power Query
+connector above: reuse a door rather than add one, which is the whole point of
+treating doors as commodity.
+
+It also lands on this note's own vocabulary. `GRAPH_TABLE` returns *tabular*
+results from a *graph* pattern, which is exactly the `shape: graph` versus
+`shape: rows` distinction written in the standard's own syntax — and it is honest
+about the traversal in a way a flattened view is not.
+
+The caveat, kept rather than buried: **SQL/PGQ fixes the language on the SQL
+door, not the client problem.** BI tools do not emit `GRAPH_TABLE`; its audience
+is people writing SQL by hand, and DuckDB users. It therefore does not reach the
+graph-native and GraphRAG tooling a Bolt door would, and is not a substitute for
+one. The two answer different questions, which is the recurring lesson of this
+whole section.
+
+Still open: whether to build a Bolt door at all. That remains a bet on client
+reach, unchanged by any of the above.
 
 ## Prior art
 
@@ -504,7 +569,10 @@ matter. What is defensible sits behind them, in what the world can compute.
   that exists on only one of them is not a door.
 - **Auth.** The console and MCP doors have their posture. A wire protocol with
   its own auth handshake needs that mapped onto it, not reinvented.
-- **A Cypher-over-Bolt door.** Unresolved and orthogonal: it reaches graph-native
-  and GraphRAG tooling that none of the above reaches. The observation from this
-  note is that the freshness classification matters *more* on a SQL or BI door
-  than a Bolt one, because driver clients can wait and dashboards cannot.
+- **A Cypher-over-Bolt door.** Still unresolved, and it is a bet on client reach:
+  it reaches graph-native and GraphRAG tooling that nothing else here does. Two
+  observations from this note bear on it. The freshness classification matters
+  *more* on a SQL or BI door than a Bolt one, because driver clients can wait and
+  dashboards cannot. And per the graph-doors section, GQL is not an alternative
+  to it — SQL/PGQ is the answer for SQL clients, and Bolt remains the only route
+  to the graph-native ones.
