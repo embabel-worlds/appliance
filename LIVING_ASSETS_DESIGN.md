@@ -18,6 +18,70 @@ They are the same decision, asked repeatedly, because the world holds things
 that other tools would like to read and there is currently no general account of
 what those things are.
 
+## The business case
+
+Stated without jargon, because the argument does not need any.
+
+The appliance's distinctive act is answering questions no single system can
+answer, because the answer lives across several at once — the code a company
+ships, a vulnerability database, a government threat list, and its own knowledge
+of which team owns what. Today, getting such an answer means coming to us:
+opening the console, or having a developer write code. That is a ceiling, and it
+falls in the wrong place. The people who most need these answers are the least
+likely to log into another piece of software to get one.
+
+**The change is to stop treating an answer as a place you visit and start
+treating it as something delivered in the form the recipient already works in.**
+One definition, written once, becomes a spreadsheet that refreshes itself, a
+table inside the reporting tools a company already owns, a diagram embedded in a
+wiki page, deadlines that appear in someone's calendar, or a library a developer
+builds against.
+
+The commercial consequences, in the order they matter:
+
+**Adoption stops requiring behaviour change.** The main barrier to enterprise
+software is rarely the software; it is asking people to change where they work.
+A compliance lead gets a spreadsheet. A security team sees it on the dashboard
+they already watch. Nobody is trained and nothing is migrated. That is often the
+difference between a tool one team uses and a tool a company runs on.
+
+**Answers stop going stale.** Most business reporting is assembled once and
+quietly rots — the architecture diagram that has been wrong for two years, the
+risk spreadsheet built by hand last quarter. These are re-derived on every read,
+so they cannot drift, and they can show what *changed* since last week, which is
+usually the part people care about and the part manual reporting never delivers.
+
+**Reach grows faster than cost.** Because every destination is a different
+presentation of the same definition, the next one is days of work rather than
+months — and it immediately works for every existing customer and every question
+they have already defined. It also lets us follow customers into whatever tools
+they use rather than arguing with them about it.
+
+**Nothing has to be copied anywhere.** The conventional route to a dashboard is
+to bulk-copy data into a warehouse first: expensive, slow to stand up, a
+governance burden, and stale on arrival. Here the data stays where it lives and
+is fetched when asked for. Cheaper, easier to get signed off, always current.
+
+**And the refusals are a selling point.** The design declines to serve an answer
+in a form that would mislead — where it cannot be computed honestly in time,
+would render as an unreadable mess, or would let someone join two things that
+look related and are not. Wrong numbers in a spreadsheet that looks right are
+worse than no spreadsheet, and buyers know it.
+
+Who benefits: managers and executives, who get answers in the spreadsheets,
+calendars and documents they already live in; analysts, who can point tools they
+already own at live cross-system information; developers, who get generated
+libraries with the guardrails built in, so they move faster and are stopped from
+making the specific mistakes that produce plausible nonsense; security and
+operations teams, who get a live picture rather than a stale audit; the people
+holding context in their heads, who can contribute it through a shared
+spreadsheet instead of a form; and IT buyers, who get an adoption story with no
+migration project attached.
+
+In one sentence: this turns the appliance from a destination people must visit
+into a supplier of answers that arrive where the work already happens, and makes
+each new place we appear cheaper than the last.
+
 ## The model
 
 A **living asset** is a named artifact whose content is derived from the world at
@@ -298,6 +362,80 @@ poorly), Elasticsearch `_search` compatibility (wrong shape, no payoff), and A2A
 not an alternative to it. GQL (ISO/IEC 39075:2024) is the most interesting query
 dialect remaining, because it is the standard rather than a vendor surface, but
 it is a parser and a real semantics gap.
+
+## Prior art
+
+Surveyed after the model above was drafted, which is the wrong order. Almost
+every individual mechanism here has been built before, some of it maturely, and
+the note is more useful for saying so plainly than for pretending otherwise.
+
+**[Cube](https://docs.cube.dev/docs/introduction) is the closest structural
+match.** Metrics, dimensions, joins and access rules are defined once and served
+over a Postgres-compatible SQL interface, REST, GraphQL, MDX/DAX and an MCP
+server for agents, with pre-aggregations and a two-level cache for speed. That is
+"one catalog, many projections" as a shipping product. Two things to take from
+it: the model is validated commercially, and Cube's choice of **MDX/DAX rather
+than OData** as the Excel and Power BI route is a data point against the OData
+recommendation in this note, which should be re-examined before anyone builds it.
+
+**[Palantir's Ontology and OSDK](https://www.palantir.com/docs/foundry/ontology-sdk/overview)
+is the closest conceptual match.** Object types, link types and action types,
+with generated typed TypeScript, Python and Java clients covering just the
+subset of the ontology a given consumer needs. That is the codegen proposal here,
+already built, including the "governed interface" framing — which is strong
+evidence for ranking codegen highly rather than a reason to drop it. It also
+means the structural-identity join rule in this note is *convergent, not novel*:
+link types are the same idea.
+
+**[Denodo](https://community.denodo.com/docs/html/accessible/9.1/vdp/administration/restful_architecture/restful_architecture.html)
+has published views over uncopied sources via JDBC, ODBC, REST, OData, GraphQL
+and SOAP for years**, with base views holding metadata only and data fetched live
+unless cached. The plumbing argued for here is a mature product category. This is
+the clearest caution in the survey: the differentiation cannot be the plumbing.
+
+**[Steampipe](https://steampipe.io/docs/steampipe_postgres/overview) is live
+external APIs as SQL tables, already** — a zero-ETL Postgres foreign data wrapper
+over 100+ services and 2000+ tables, translating queries into real-time API
+calls. That is close to the producer model expressed relationally. If a user
+simply wants cloud APIs as SQL, it exists and is free.
+
+**[Structurizr](https://docs.structurizr.com/) is the anti-rot diagram
+argument, shipped.** Many views generated from a single model, all updating when
+the model changes, explicitly motivated by stale diagrams; Backstage and
+Spotify's system model do the catalog-driven version. Useful warning attached:
+their hard problem is *view selection* — deciding which subset to draw — not
+rendering. This note's node-budget bound is a partial answer to that and probably
+not a sufficient one.
+
+**[Datasette](https://datasette.io/) already does one URL, many
+representations**, and publishing SQLite as a distribution format. Both were
+proposed here as though new.
+
+### What is actually left
+
+Being honest about the above sharpens rather than weakens the case, because it
+isolates what is genuinely ours:
+
+- Semantic layers (Cube, dbt) sit over a **warehouse** — the data has already
+  been centralised. Denodo and Steampipe federate but add no judgment.
+- **Nothing surveyed puts LLM reductions inside the query**, so that a judgment
+  — a classification, a synthesis — is part of the asset's definition and travels
+  with it to every door, beside exact figures that reconcile.
+- **Nothing surveyed combines that with a graph-native identity model** spanning
+  several organisations' data, which is what makes the cross-source relating
+  cheap rather than a modelling project.
+- The **appliance** deployment — owned, self-hosted, small — is a different
+  proposition from a platform engagement or a hosted service.
+- **The freshness class as a safety property was not found in the survey.**
+  Cube's pre-aggregations are a performance mechanism, and query latency for AI
+  agents is actively discussed, but withholding an asset from a door that cannot
+  honestly serve it appears to be new. It is new *because* judgment-in-query is
+  new: a warehouse query is slow in seconds, not minutes, so nobody previously
+  needed a refusal class. This is "not found", not "does not exist".
+
+The strategic reading: the doors are commodity and should be treated as such —
+copied shamelessly, cheaply, from products that have already proven which ones
+matter. What is defensible sits behind them, in what the world can compute.
 
 ## Not decided
 
