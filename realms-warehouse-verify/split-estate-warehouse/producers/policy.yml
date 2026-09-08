@@ -1,0 +1,15 @@
+# Only the party system needs a producer; everything else is mirrored. In THIS realm
+# the party system lives in the same consolidated store as everything else and spells
+# identifiers the shared way, so no dialect is declared — there would be nothing to
+# rewrite, and declaring one would misrepresent what this arm tests.
+- name: partyRolesByAgreement
+  kind: sql
+  datasource: party_crm
+  table: agreement_party_role
+  keyColumn: agreement_identifier
+  dialect: duckdb
+  governance:
+    mode: open
+    expose:
+      agreement_party_role:
+        properties: [agreement_identifier, party_identifier, party_role_code]

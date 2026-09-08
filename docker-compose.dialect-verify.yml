@@ -1,0 +1,14 @@
+# Throwaway: MCP bearer + developer door + fixture mount, for the identity-dialect
+# end-to-end check. Belongs to the embabel-dialect-verify project only.
+services:
+  worlds:
+    environment:
+      - ASSISTANT_MCP_API_TOKEN=${EMBABEL_MCP_API_TOKEN:-}
+      - ASSISTANT_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
+      - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
+      - ASSISTANT_LEARN_SHOW_WALLS=${SHOW_WALLS:-true}
+      - ASSISTANT_LEARN_WALL_COUNTS=${WALL_COUNTS:-true}
+      - ASSISTANT_MCP_LEAN_ORIENTATION=${LEAN:-false}
+      - ASSISTANT_MCP_INDEX_ORIENTATION=${INDEX:-false}
+    volumes:
+      - ./realms/split-estate-data:/benchdata:rw
