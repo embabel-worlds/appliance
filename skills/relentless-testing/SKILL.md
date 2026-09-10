@@ -55,13 +55,18 @@ failure taught: **dedupe by IDENTITY, never by name or by (name, amount)** — r
 distinct records with identical names and identical amounts, and a display-side dedupe that
 merges them silently loses money. Views must RETURN the ids; apps must key on them.
 
-## L5 — Apps: replay their calls, then use a browser
+## L5 — Apps: replay their calls, then drive the page
 
 Assets serve. Every call the app's scripts make is replayed with the script's OWN arguments —
-same view names, same args, same gateway methods. Then the part curl cannot do: open the page
-in a real browser and click everything — every button, every selector, every expansion — or
-state plainly at handover that in-browser behavior is untested. Implying a tested UI that was
-never clicked is the lie this skill exists to prevent.
+same view names, same args, same gateway methods. Then the part curl cannot do — and it is a
+required rung, not a permitted gap: drive the real page in a headless browser against the
+stubbed runtime, per `../vibe-apps/browser-harness.md` — render counts against fixture rows,
+every interaction path, forced empty and error states, zero console errors. Two regressions
+shipped through "in-browser behavior is untested" disclaimers — a 36 s first paint rendering
+the failure state, a name picker silently resolving to the wrong place — so the disclaimer is
+no longer an option. The served app sits behind session auth; the stub pattern is how an agent
+drives it at all. A live click-through when you can reach the page is still worth doing; it
+supplements the harness, which must run green regardless.
 
 ## L6 — Force the failures
 
@@ -84,7 +89,8 @@ schema's stage and status values into questions so no domain word goes unclaimed
 ## The harness ships with the realm
 
 Encode L0–L4 as an executable script in the realm (`tests/verify.sh` or equivalent): source
-queries, expected figures inline, exact-match assertions, exit nonzero on any drift. One
+queries, expected figures inline, exact-match assertions, exit nonzero on any drift. L5 ships
+beside it as the browser specs and their captured fixtures, under the same `tests/`. One
 command re-verifies after every change; a harness that lives in your head re-verifies nothing.
 
 ## The discipline under it
