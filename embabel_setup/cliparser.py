@@ -12,8 +12,8 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import (cmd_agents, cmd_contract, cmd_embeddings, cmd_realms, cmd_sample,
-                      cmd_sandbox, cmd_scenario)
+from .clidata import (cmd_agents, cmd_contract, cmd_embeddings, cmd_realms, cmd_run_view,
+                      cmd_sample, cmd_sandbox, cmd_scenario)
 from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
@@ -142,6 +142,20 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--output", help="write the contract YAML to a file instead of printing it")
     a.set_defaults(func=cmd_contract)
     p.set_defaults(func=cmd_contract, contract_command=None)
+
+    # Beside `contract`, which is the other verb about a saved view — and deliberately
+    # a TOP-LEVEL verb rather than `view run`: this is the one command in the CLI a
+    # non-operator has a reason to type, and burying the common case under a noun to
+    # keep the namespace tidy is how a product ends up with `embabel view run`.
+    p = sub.add_parser("run-view", help="run a saved view by name; bare, it lists them")
+    p.add_argument("view", nargs="?", help="the saved view to run; omit to list what there is")
+    p.add_argument("--arg", action="append", metavar="NAME=VALUE",
+                   help="a view parameter; repeat for more. The appliance coerces to the declared type")
+    p.add_argument("--args-json", metavar="JSON",
+                   help="all parameters as one JSON object; --arg wins over it")
+    p.add_argument("--json", action="store_true",
+                   help="print the whole result envelope as JSON, for a pipe")
+    p.set_defaults(func=cmd_run_view)
 
     p = sub.add_parser("scenario", help="put the world in a named state")
     sc = p.add_subparsers(dest="scenario_command")

@@ -91,6 +91,7 @@ from embabel_setup.realms import *       # noqa: F403 — realm checkouts and th
 from embabel_setup.capacity import *     # noqa: F403 — what docker can actually give this
 from embabel_setup.samples import *      # noqa: F403 — fictional records, marked and removable
 from embabel_setup.contracts import *    # noqa: F403 — ODCS contracts drafted for saved views
+from embabel_setup.views import *        # noqa: F403 — saved views, listed and run
 from embabel_setup.scenarios import *    # noqa: F403 — the world in a named state
 from embabel_setup.sandbox import *      # noqa: F403 — a code-mode sandbox of your own
 from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, if any

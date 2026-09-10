@@ -229,6 +229,41 @@ def cmd_contract(args) -> int:
     return 0
 
 
+def cmd_run_view(args) -> int:
+    """Run a saved view by name, or list what there is to run.
+
+    Named for what it does to something that already exists: the view was authored,
+    validated and saved elsewhere, and this calls it. Nothing here can create one, and
+    no Cypher crosses this boundary in either direction — the argument to this verb is
+    a NAME, and what comes back is the calling tier's envelope.
+
+    Bare `embabel run-view` lists, because the first question anyone has is what they
+    are allowed to call and what it wants passed. That is cheaper to answer here than
+    by sending someone to a console.
+    """
+    base, auth = _sample_target(args)
+    if not base:
+        return 1
+
+    if not args.view:
+        try:
+            s.describe_views(s.views_api(base, auth))
+        except s.SetupError as e:
+            print("  " + s.warn(str(e)))
+            return 1
+        print("  " + s.dim("embabel run-view <name> --arg name=value"))
+        return 0
+
+    try:
+        params = s.parse_args(args.arg, args.args_json)
+        result = s.run_view_api(base, auth, args.view, params)
+    except s.SetupError as e:
+        print("  " + s.warn(str(e)))
+        return 1
+
+    return s.describe_run(args.view, result, args.json)
+
+
 def cmd_scenario(args) -> int:
     """Put the world in a named state, from wherever it is now.
 

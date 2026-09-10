@@ -2,7 +2,7 @@
 """The Embabel appliance, as a command rather than a directory.
 
     embabel up · status · doctor · version · ps · logs · realms · open · agents
-    sample · scenario · backup · restore · bugreport · prune · upgrade
+    sample · run-view · scenario · backup · restore · bugreport · prune · upgrade
     down · uninstall
 
 WHY THIS EXISTS. Everything below was already possible — as `cd ~/embabel-me &&

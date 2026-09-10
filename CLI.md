@@ -252,6 +252,62 @@ anywhere.
 What comes out is exactly what `embabel sample add` takes, so there is no conversion step
 between exporting and loading, and therefore none to get wrong.
 
+### `embabel run-view [name]`
+
+Run a saved view by name. Bare, it lists what there is to run and what each one wants
+passed.
+
+```
+embabel run-view
+embabel run-view risky_dependencies --arg minScorecard=4
+embabel run-view triage_dependencies --arg policy='no unpatched CVEs' --json | jq '.data'
+```
+
+A saved view is a named, parameterised, server-owned query — validated when it was
+saved, and cached where it can be. Every typed client generated against an appliance is
+a nicer way to make this same call; the shell is the consumer that will never have a
+generated client, and it is the one CI, cron and a person at a terminal actually are.
+
+| Flag | |
+| --- | --- |
+| `--arg NAME=VALUE` | one parameter; repeat for more |
+| `--args-json JSON` | all of them as one object. `--arg` wins over it |
+| `--json` | the whole result envelope, for a pipe |
+
+Values go up as typed. The appliance coerces each to the parameter's **declared** type
+and refuses what it cannot, naming the parameter — so there is no second, disagreeing
+copy of that rule here. A parameter listed as `required` declares no default and must be
+supplied.
+
+**It reads the envelope before the rows, and so should you.** The verb distinguishes an
+honest empty from a failure, because a client that prints `0 rows` for both teaches you
+to believe the second one:
+
+- `EMPTY` — the view ran and there is genuinely nothing. Exit 0. This is an answer.
+- `SOURCE_UNAVAILABLE` — a backing source could not be reached. Exit 1. **Not** "no data".
+- `PARTIAL` — a source capped its result; treat any count as a floor.
+- Warnings print above the rows whatever the outcome, because a full-looking table drawn
+  from a degraded source is the failure worth catching.
+
+With `--json` the exit code still follows the outcome, so `embabel run-view … --json` is
+safe to put in a CI step without parsing what it printed.
+
+Running goes through the appliance's **calling tier** (`/api/v1/views/{name}/invoke`),
+which never returns the underlying query and resolves identity from the authenticated
+principal alone. Listing uses the admin path, because discovery needs each view's
+declared parameters — a question an operator may ask and an application may not.
+
+An intelligence view — one whose body carries an `{ai: {…}}` directive — can take its
+steer as an ordinary parameter, so the judgement is yours at the point of calling:
+
+```
+embabel run-view triage_dependencies \
+  --arg policy='Tolerate unmaintained packages, never an unpatched CVE.'
+```
+
+Such a view cannot be materialised (a cache is keyed per user, not per argument tuple),
+so every call is a fresh model hop. Expect it to be slow and to cost something.
+
 ### `embabel contract generate --view <name>`
 
 Draft an ODCS v3.1 data contract describing what one of your saved views returns.
