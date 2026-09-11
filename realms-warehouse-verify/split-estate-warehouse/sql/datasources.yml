@@ -1,0 +1,8 @@
+- name: policy_admin
+  jdbcUrl: "jdbc:duckdb:/benchdata/enterprise.duckdb"
+- name: claims
+  jdbcUrl: "jdbc:duckdb:/benchdata/enterprise.duckdb"
+- name: party_crm
+  jdbcUrl: "jdbc:duckdb:/benchdata/enterprise.duckdb"
+- name: cat_service
+  jdbcUrl: "jdbc:duckdb:/benchdata/enterprise.duckdb"

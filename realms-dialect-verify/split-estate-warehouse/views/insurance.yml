@@ -1,0 +1,149 @@
+# Views a modeller would build for a P&C insurance world: the entities, the money
+# on them, and the standard ratios. Authored from the domain, NOT fitted to any
+# question set — each is general and reusable, and where the domain permits two
+# readings of grain these take the one a modeller would (aggregate to the entity),
+# which is not necessarily the reading any given question expects.
+
+- name: policy-premium
+  description: >-
+    Every policy with the total premium written against it — columns
+    `policy_number`, `premium`. Grain is one row per policy; premium is summed across that
+    policy's premium lines, so a policy carrying two coverages still returns one row. For
+    the unaggregated lines — the grain a CLAIM sits at — use `coverage-premium`.
+  cypher: |
+    MATCH (p:Policy), (pa:PolicyAmount), (pr:Premium)
+    WHERE pa.policy_identifier = p.policy_identifier
+      AND pr.policy_amount_identifier = pa.policy_amount_identifier
+    RETURN p.policy_number AS policy_number, sum(pa.policy_amount) AS premium
+
+- name: coverage-premium
+  description: >-
+    Premium at COVERAGE-DETAIL grain — columns `policy_number`,
+    `policy_coverage_detail_identifier`, `premium`. One row per premium line, so a
+    policy carrying two coverages returns two rows and they do not sum to anything
+    here. This is the grain a CLAIM sits at: a claim is written against one coverage
+    detail, so "the premium for this claim" is that coverage's premium and not the
+    policy's total. Use `policy-premium` when the question is about a policy, and
+    this when it is about a claim or a coverage.
+  cypher: |
+    MATCH (p:Policy), (pa:PolicyAmount), (pr:Premium)
+    WHERE pa.policy_identifier = p.policy_identifier
+      AND pr.policy_amount_identifier = pa.policy_amount_identifier
+    RETURN p.policy_number AS policy_number,
+           pa.policy_coverage_detail_identifier AS policy_coverage_detail_identifier,
+           pa.policy_amount AS premium
+
+- name: claim-amounts
+  description: >-
+    Every claim with its four money lines broken out, and the policy and premium it
+    sits under — columns `claim_number`, `policy_number`, `premium`, `loss_payment`,
+    `loss_reserve`, `expense_payment`, `expense_reserve`. Grain is one row per claim,
+    not per amount line.
+
+    `premium` is the premium of the ONE coverage detail this claim is written against,
+    which is what a claim's premium means: a claim attaches to a single coverage, not
+    to the policy as a whole, so a policy carrying two coverages contributes a
+    different premium to a claim on each. It is NOT the policy total — for that, and
+    for questions about a policy rather than a claim, use `policy-premium`.
+  cypher: |
+    MATCH (c:Claim), (ca:ClaimAmount)
+    WHERE ca.claim_identifier = c.claim_identifier
+    OPTIONAL MATCH (lp:LossPayment) WHERE lp.claim_amount_identifier = ca.claim_amount_identifier
+    OPTIONAL MATCH (lr:LossReserve) WHERE lr.claim_amount_identifier = ca.claim_amount_identifier
+    OPTIONAL MATCH (ep:ExpensePayment) WHERE ep.claim_amount_identifier = ca.claim_amount_identifier
+    OPTIONAL MATCH (er:ExpenseReserve) WHERE er.claim_amount_identifier = ca.claim_amount_identifier
+    MATCH (cc:ClaimCoverage) WHERE cc.claim_identifier = c.claim_identifier
+    MATCH (pcd:PolicyCoverageDetail)
+      WHERE pcd.policy_coverage_detail_identifier = cc.policy_coverage_detail_identifier
+    MATCH (p:Policy) WHERE p.policy_identifier = pcd.policy_identifier
+    MATCH (pa:PolicyAmount)
+      WHERE pa.policy_coverage_detail_identifier = pcd.policy_coverage_detail_identifier
+    MATCH (pr:Premium) WHERE pr.policy_amount_identifier = pa.policy_amount_identifier
+    RETURN c.company_claim_number AS claim_number,
+           p.policy_number AS policy_number,
+           max(pa.policy_amount) AS premium,
+           sum(CASE WHEN lp IS NOT NULL THEN ca.claim_amount ELSE 0 END) AS loss_payment,
+           sum(CASE WHEN lr IS NOT NULL THEN ca.claim_amount ELSE 0 END) AS loss_reserve,
+           sum(CASE WHEN ep IS NOT NULL THEN ca.claim_amount ELSE 0 END) AS expense_payment,
+           sum(CASE WHEN er IS NOT NULL THEN ca.claim_amount ELSE 0 END) AS expense_reserve
+
+- name: claim-total-loss
+  description: >-
+    Every claim with total incurred loss — columns `claim_number`,
+    `total_loss`, where total_loss sums ALL FOUR money lines. Grain is one row per claim.
+    For a two-line definition, or the lines separately, use claim-amounts.
+  cypher: |
+    MATCH (c:Claim), (ca:ClaimAmount)
+    WHERE ca.claim_identifier = c.claim_identifier
+    RETURN c.company_claim_number AS claim_number, sum(ca.claim_amount) AS total_loss
+
+- name: policy-claims
+  description: >-
+    Every policy with HOW MANY claims were made against it — columns
+    `policy_number`, `claims` (a COUNT). Grain is one row per policy. It does NOT
+    return claim numbers.
+  cypher: |
+    MATCH (p:Policy), (pcd:PolicyCoverageDetail), (cc:ClaimCoverage), (c:Claim)
+    WHERE pcd.policy_identifier = p.policy_identifier
+      AND cc.policy_coverage_detail_identifier = pcd.policy_coverage_detail_identifier
+      AND c.claim_identifier = cc.claim_identifier
+    RETURN p.policy_number AS policy_number, count(c) AS claims
+
+- name: policy-loss-ratio
+  description: >-
+    Loss ratio per policy — columns `policy_number`, `premium`,
+    `total_loss`, `loss_ratio`, where total_loss sums all four money lines and loss_ratio
+    is total_loss over premium. Grain is one row per policy.
+  cypher: |
+    MATCH (p:Policy), (pa:PolicyAmount), (pr:Premium)
+    WHERE pa.policy_identifier = p.policy_identifier
+      AND pr.policy_amount_identifier = pa.policy_amount_identifier
+    WITH p, sum(pa.policy_amount) AS premium
+    MATCH (pcd:PolicyCoverageDetail), (cc:ClaimCoverage), (ca:ClaimAmount)
+    WHERE pcd.policy_identifier = p.policy_identifier
+      AND cc.policy_coverage_detail_identifier = pcd.policy_coverage_detail_identifier
+      AND ca.claim_identifier = cc.claim_identifier
+    RETURN p.policy_number AS policy_number, premium AS premium,
+           sum(ca.claim_amount) AS total_loss,
+           sum(ca.claim_amount) / premium AS loss_ratio
+
+
+- name: claim-catastrophe
+  description: >-
+    Claims arising from a named catastrophe — columns `claim_number`,
+    `catastrophe`, `catastrophe_type`. Grain is one row per claim, and ONLY claims that
+    have one: claims with no catastrophe are absent, so this returns fewer rows than there
+    are claims.
+  cypher: |
+    MATCH (c:Claim), (cat:Catastrophe)
+    WHERE c.catastrophe_identifier = cat.catastrophe_identifier
+    RETURN c.company_claim_number AS claim_number,
+           cat.catastrophe_name AS catastrophe,
+           cat.catastrophe_type_code AS catastrophe_type
+
+- name: policy-parties
+  description: >-
+    Returns one row per party role on ONE policy — columns `party` (the party
+    identifier; there are no names on this surface) and `role` (AG = the selling
+    agent, PH = the policy holder). Grain is one row per role, so a policy with an
+    agent and a holder returns two. Takes the policy identifier as a string. The
+    party system is a live fetch rather than a stored join, so rows carry
+    freshness. This view takes ONE policy at a time. To cover several in one
+    query, hand-write the anchor match in Cypher and read the agreement from the
+    ANCHOR, never from the role node: `UNWIND $ids AS id MATCH (q:PartyRoleQuery
+    {agreement_identifier: id})-[:HAS_PARTY_ROLE]->(r:PartyRole) RETURN id, r.party_identifier,
+    r.party_role_code`. A party who holds a role on more than one agreement is ONE
+    node here, so `r.agreement_identifier` and the role's dates belong to whichever
+    agreement was fetched last; `q.agreement_identifier` and the edge are always
+    right. Identifiers must be strings. Pass the PLAIN policy identifier — "1", not "AGR-0001". The party
+    system keeps its own identifier dialect (agreements AGR-0001, parties
+    PTY-000101); the producer declares it, so the identifiers you pass and the ones
+    you get back are already the ones every other system here uses.
+  params:
+    agreement_identifier:
+      type: string
+      required: true
+      description: The policy identifier, as a string.
+  cypher: |
+    MATCH (q:PartyRoleQuery {agreement_identifier: $agreement_identifier})-[:HAS_PARTY_ROLE]->(r:PartyRole)
+    RETURN r.party_identifier AS party, r.party_role_code AS role

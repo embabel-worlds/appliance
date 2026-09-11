@@ -1,0 +1,17 @@
+# Only the party system needs a producer now; everything else is mirrored.
+- name: partyRolesByAgreement
+  kind: sql
+  datasource: party_crm
+  table: agreement_party_role
+  keyColumn: agreement_identifier
+  dialect: duckdb
+  governance:
+    mode: open
+    expose:
+      agreement_party_role:
+        properties: [agreement_identifier, party_identifier, party_role_code]
+    # The party system spells shared identifiers its own way. Undo it where the
+    # records enter, so nothing downstream has to know.
+    dialect:
+      agreement_identifier: { foreign: 'AGR-0*(\d+)', outbound: 'AGR-%04d' }
+      party_identifier: { foreign: 'PTY-0*(\d+)', outbound: 'PTY-%06d' }

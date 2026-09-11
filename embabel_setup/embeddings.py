@@ -28,7 +28,7 @@ import urllib.request
 from .colour import MIDDOT, TICK, bold, dim, warn
 from .core import SetupError, prompt
 from .dockerlib import LOCAL_EMBEDDING_MODEL, _docker
-from .settings import env_file_value, set_env_var
+from .settings import api_address, env_file_value, set_env_var
 
 MODEL_VAR = "ASSISTANT_EMBEDDING_MODEL"
 
@@ -61,7 +61,10 @@ def embeddings_status(base: str, auth: str) -> dict:
             raise SetupError("The appliance did not accept that password.")
         raise SetupError(f"The appliance answered {e.code}.")
     except urllib.error.URLError as e:
-        raise SetupError(f"Could not reach the appliance at {base} ({e.reason}).")
+        raise SetupError(
+            f"Could not reach the appliance ({e.reason}).\n"
+            f"Its API did not answer on {api_address(base)}."
+        )
 
 
 def describe_embeddings(status: dict, chosen: str | None) -> None:

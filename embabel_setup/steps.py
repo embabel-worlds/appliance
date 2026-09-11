@@ -31,8 +31,8 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
                    Timeout, TokenRejected, Unreachable, prompt)
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
-from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, console_url,
-                       phone_home_on, resume_command, set_env_var)
+from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, api_address,
+                       console_url, phone_home_on, resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
 from .words import copy_text, say
@@ -121,7 +121,7 @@ def _timed_out(base: str, seconds: int, waiting_on: str | None) -> Timeout:
     """
     if not waiting_on:
         return Timeout(
-            f"The appliance at {base} did not answer within {seconds}s.\n"
+            f"The appliance did not answer within {seconds}s on {api_address(base)}.\n"
             "It is running — something is just taking longer than expected. Try again, "
             "or look at what it is doing: docker compose logs -f"
         )
@@ -182,7 +182,8 @@ def call(base: str, path: str, token: str, payload: dict | None = None,
         if isinstance(e.reason, socket.timeout):
             raise _timed_out(base, timeout, waiting_on)
         raise Unreachable(
-            f"Could not reach the appliance at {base} ({e.reason}).\n"
+            f"Could not reach the appliance ({e.reason}).\n"
+            f"Its API did not answer on {api_address(base)}.\n"
             "Is it running? Try: docker compose ps"
         )
     except socket.timeout:
@@ -195,7 +196,8 @@ def call(base: str, path: str, token: str, payload: dict | None = None,
         # discover_token owns retrying; crashing out of it turned a normal first
         # boot into a stack trace.
         raise Unreachable(
-            f"Could not reach the appliance at {base} ({e.__class__.__name__}: {e}).\n"
+            f"Could not reach the appliance ({e.__class__.__name__}: {e}).\n"
+            f"Its API did not answer on {api_address(base)}.\n"
             "Is it running? Try: docker compose ps"
         )
 

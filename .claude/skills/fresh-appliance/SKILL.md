@@ -27,6 +27,13 @@ why the realm-odoo battery still has a source system to reconcile against afterw
   the assertions against a saved run without reinstalling. Drive it by hand when the point
   IS the hand-driving (a new question, a prompt's wording, the Tab completion on the realm
   directory — a harness that always presses Enter never sees those).
+- **Credentials: `demo` / `terminat8r`, display name `Rod Johnson`.** Standardised so an
+  install you made is one you can still drive an hour later. Guessing at a password on an
+  instance you inherited wastes the session: the only recovery restarts the container and
+  re-runs setup (embabel/me#997), and half the things worth testing — apps, the config
+  catalog, both MCP doors — need a credential that works. `drive-install.py` already
+  defaults `--display`; pass `--username demo --password terminat8r`. A LOCAL credential on
+  a 127.0.0.1-bound appliance: never reuse it anywhere reachable.
 - `./worlds.py --fresh` for the worlds door, `./me.py --fresh` for me — ask which door the
   change under test affects; worlds is the default here.
 - Watch the first-boot log it streams. A stack trace swallowed by a healthy-looking wizard

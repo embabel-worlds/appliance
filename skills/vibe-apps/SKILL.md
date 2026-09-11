@@ -84,8 +84,22 @@ Non-negotiable before handing anything over:
   rows" with empty warnings on a question the data can answer is a defect somewhere — find it
   before the user does.
 - **The app's own calls.** Fetch the served page AND exercise the calls its scripts make
-  (views, gateway methods) with curl using the same arguments the script sends. What you cannot
-  execute (in-browser JS), say so explicitly when handing over — never imply it was tested.
+  (views, gateway methods) with curl using the same arguments the script sends.
+- **Drive the real page — a required rung, not an optional extra.** curl cannot click. Two
+  regressions shipped green on every check above: a first-paint view that grew to 36 s
+  server-side, so the app rendered its failure state and looked like it had lost every place;
+  and an add-by-name picker that resolved "whistler" to a lake in Nova Scotia, not the town.
+  Both are visible only in a browser. Run a headless harness (Playwright) over the app's real
+  HTML with the runtime stubbed to serve envelopes captured from live view runs —
+  `browser-harness.md` has the stub contract, the capture step and the assertion checklist.
+  The harness ships with the realm under `tests/` and asserts at minimum: render counts
+  against fixture rows, every interaction path the app offers (selection, toggles, add and
+  validation flows), forced empty and error states, and zero console errors.
+- **Budget the first paint.** The stub answers instantly, so live latency is the one thing it
+  cannot see. For every view the app calls before first interaction, read `cost.ms` from the
+  live every-view-every-parameter pass and hold it under a stated budget — 2000 ms unless the
+  handover says otherwise. A view whose rows are all correct and arrive in 36 s is still a
+  defect: the app in front of it renders its failure state.
 
 ## 5. Verify like a user, then iterate
 

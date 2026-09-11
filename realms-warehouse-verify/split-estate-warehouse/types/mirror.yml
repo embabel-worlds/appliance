@@ -1,0 +1,131 @@
+- name: Policy
+  description: >-
+    Mirror of the policy table from the split estate.
+  properties:
+    policy_identifier:
+      metadata: { identity: "true" }
+    effective_date: "Column effective_date of policy."
+    expiration_date: "Column expiration_date of policy."
+    policy_number: "Column policy_number of policy."
+    status_code: "Column status_code of policy."
+    geographic_location_identifier: "Column geographic_location_identifier of policy."
+
+- name: PolicyCoverageDetail
+  description: >-
+    Mirror of the policy_coverage_detail table from the split estate.
+  properties:
+    effective_date: "Column effective_date of policy_coverage_detail."
+    policy_coverage_detail_identifier:
+      metadata: { identity: "true" }
+    coverage_identifier: "Column coverage_identifier of policy_coverage_detail."
+    insurable_object_identifier: "Column insurable_object_identifier of policy_coverage_detail."
+    policy_identifier: "Column policy_identifier of policy_coverage_detail."
+    coverage_part_code: "Column coverage_part_code of policy_coverage_detail."
+    coverage_description: "Column coverage_description of policy_coverage_detail."
+    expiration_date: "Column expiration_date of policy_coverage_detail."
+    coverage_inclusion_exclusion_code: "Column coverage_inclusion_exclusion_code of policy_coverage_detail."
+
+- name: PolicyAmount
+  description: >-
+    Mirror of the policy_amount table from the split estate.
+  properties:
+    policy_amount_identifier:
+      metadata: { identity: "true" }
+    geographic_location_identifier: "Column geographic_location_identifier of policy_amount."
+    policy_identifier: "Column policy_identifier of policy_amount."
+    effective_date: "Column effective_date of policy_amount."
+    amount_type_code: "Column amount_type_code of policy_amount."
+    earning_begin_date: "Column earning_begin_date of policy_amount."
+    earning_end_date: "Column earning_end_date of policy_amount."
+    policy_coverage_detail_identifier: "Column policy_coverage_detail_identifier of policy_amount."
+    policy_amount: "Column policy_amount of policy_amount."
+    insurable_object_identifier: "Column insurable_object_identifier of policy_amount."
+    insurance_type_code: "Column insurance_type_code of policy_amount."
+
+- name: Premium
+  description: >-
+    Mirror of the premium table from the split estate.
+  properties:
+    policy_amount_identifier:
+      metadata: { identity: "true" }
+
+- name: Claim
+  description: >-
+    Mirror of the claim table from the split estate.
+  properties:
+    claim_identifier:
+      metadata: { identity: "true" }
+    catastrophe_identifier: "Column catastrophe_identifier of claim."
+    claim_description: "Column claim_description of claim."
+    claims_made_date: "Column claims_made_date of claim."
+    company_claim_number: "Column company_claim_number of claim."
+    company_subclaim_number: "Column company_subclaim_number of claim."
+    insurable_object_identifier: "Column insurable_object_identifier of claim."
+    occurrence_identifier: "Column occurrence_identifier of claim."
+    entry_into_claims_made_program_date: "Column entry_into_claims_made_program_date of claim."
+    claim_open_date: "Column claim_open_date of claim."
+    claim_close_date: "Column claim_close_date of claim."
+    claim_status_code: "Column claim_status_code of claim."
+    claim_reported_date: "Column claim_reported_date of claim."
+
+- name: ClaimCoverage
+  description: >-
+    Mirror of the claim_coverage table from the split estate.
+  properties:
+    row_id:
+      metadata: { identity: "true" }
+    claim_identifier: "Column claim_identifier of claim_coverage."
+    effective_date: "Column effective_date of claim_coverage."
+    policy_coverage_detail_identifier: "Column policy_coverage_detail_identifier of claim_coverage."
+
+- name: ClaimAmount
+  description: >-
+    Mirror of the claim_amount table from the split estate.
+  properties:
+    claim_amount_identifier:
+      metadata: { identity: "true" }
+    claim_identifier: "Column claim_identifier of claim_amount."
+    claim_offer_identifier: "Column claim_offer_identifier of claim_amount."
+    amount_type_code: "Column amount_type_code of claim_amount."
+    event_date: "Column event_date of claim_amount."
+    claim_amount: "Column claim_amount of claim_amount."
+    insurance_type_code: "Column insurance_type_code of claim_amount."
+
+- name: LossPayment
+  description: >-
+    Mirror of the loss_payment table from the split estate.
+  properties:
+    claim_amount_identifier:
+      metadata: { identity: "true" }
+
+- name: LossReserve
+  description: >-
+    Mirror of the loss_reserve table from the split estate.
+  properties:
+    claim_amount_identifier:
+      metadata: { identity: "true" }
+
+- name: ExpensePayment
+  description: >-
+    Mirror of the expense_payment table from the split estate.
+  properties:
+    claim_amount_identifier:
+      metadata: { identity: "true" }
+
+- name: ExpenseReserve
+  description: >-
+    Mirror of the expense_reserve table from the split estate.
+  properties:
+    claim_amount_identifier:
+      metadata: { identity: "true" }
+
+- name: Catastrophe
+  description: >-
+    Mirror of the catastrophe table from the split estate.
+  properties:
+    catastrophe_identifier:
+      metadata: { identity: "true" }
+    catastrophe_type_code: "Column catastrophe_type_code of catastrophe."
+    catastrophe_name: "Column catastrophe_name of catastrophe."
+    industry_catastrophe_code: "Column industry_catastrophe_code of catastrophe."
+    company_catastrophe_code: "Column company_catastrophe_code of catastrophe."

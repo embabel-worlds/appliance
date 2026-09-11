@@ -1,0 +1,28 @@
+- name: PartyRoleQuery
+  visibility: internal
+  description: An agreement identifier pinned against the party system.
+  properties:
+    agreement_identifier:
+      metadata: { identity: "true" }
+
+- name: PartyRole
+  visibility: internal
+  description: >-
+    A party's role on one agreement, held only in the party system, which has no
+    bulk export. AG is the selling agent, PH the policy holder. Identity is the
+    party, not the agreement: an agreement carries several roles and keying on the
+    agreement would collapse them to one.
+  properties:
+    party_identifier:
+      metadata: { identity: "true" }
+    agreement_identifier: "The agreement (policy) this role is against."
+    party_role_code: "AG (agent) or PH (policy holder)."
+  virtualJoins:
+    - anchorLabel: PartyRoleQuery
+      relationship: HAS_PARTY_ROLE
+      keyField: agreement_identifier
+      recordKeyField: agreement_identifier
+      producer: partyRolesByAgreement
+      description: >-
+        Fetch every party role on one agreement:
+        `MATCH (q:PartyRoleQuery {agreement_identifier:'1'})-[:HAS_PARTY_ROLE]->(r:PartyRole)`.

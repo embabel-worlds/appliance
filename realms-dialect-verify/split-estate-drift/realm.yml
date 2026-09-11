@@ -1,0 +1,7 @@
+name: split-estate-drift
+description: >-
+  The split-estate benchmark fixture as a governed realm. Four systems of record —
+  policy administration, claims, party/CRM and a catastrophe service — each left in
+  its own DuckDB store, joined at query time rather than consolidated. Read-only. The party system speaks its own identifier dialect (AGR-0001, PTY-000101); the realm reconciles it so callers never see it.
+version: "0.1.0"
+tags: [benchmark, insurance, federation]
