@@ -18,7 +18,7 @@ import sys
 
 from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
-from .settings import console_url, surface_urls
+from .settings import console_url, sql_door_on, surface_urls
 from .words import say
 
 # THE VERB, which every ending was missing.
@@ -82,6 +82,13 @@ def print_worlds_surfaces(base: str) -> None:
         metrics=url(surface_urls()["metrics"]),
         mcp="MCP servers    " + url(base + "/mcp/chat"),
         mcp_code="               " + url(base + "/mcp/code"))
+    # Only when the operator turned it on — an off door is not a surface. Shown as a
+    # connection string because that is what a BI tool or `psql` actually wants; the
+    # credentials are the operator's own appliance login, forwarded per connection.
+    if sql_door_on():
+        port = os.environ.get("WORLDS_SQL_PORT", "15432")
+        print("  " + dim("SQL door") + "       "
+              + url(f"postgresql://<user>@localhost:{port}/world") + "  " + dim("(BI / dbt / notebooks)"))
     print()
     print_next()
 

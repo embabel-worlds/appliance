@@ -197,6 +197,7 @@ def main() -> int:
         # the variable exists, and an upgrade that silently undid it made it a trap.
         remember_source()
         ensure_realms_dir(mode, args.realms)
+        ensure_sql_door(mode)
 
         if args.fresh:
             fresh_wipe()

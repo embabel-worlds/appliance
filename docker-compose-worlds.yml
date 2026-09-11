@@ -247,3 +247,31 @@ services:
       # them (chat, memory, document ingest). Empty by default: the console asks.
       - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
       - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
+
+  # ── SQL door (opt-in) ────────────────────────────────────────────────────────
+  # A Postgres-wire surface onto the world, so BI tools, dbt and notebooks can query
+  # it as tables — Metabase, Grafana, DuckDB, psql, even another Postgres via
+  # postgres_fdw. OFF by default: it starts only under the `world-sql` compose
+  # profile, which the installer turns on when you enable the door (setup.py →
+  # ensure_sql_door → dockerlib.compose_env sets COMPOSE_PROFILES). A plain
+  # `docker compose up` never starts it. PUBLISHED FROM embabel-worlds, like the
+  # console — pinned separately from EMBABEL_VERSION because the door versions on
+  # its own repo.
+  #
+  # It holds NO credentials. A client's own username and password are forwarded per
+  # connection and authenticated against the appliance, so a connection sees exactly
+  # that user's scope — multi-tenant for free, and nothing here is a second identity.
+  world-sql:
+    image: ghcr.io/embabel-worlds/world-sql:${WORLD_SQL_VERSION:-latest}
+    profiles: ["world-sql"]
+    restart: unless-stopped
+    depends_on:
+      - worlds
+    ports:
+      - "127.0.0.1:${WORLDS_SQL_PORT:-15432}:15432"
+    environment:
+      # In-container address of the server: same compose network, container port.
+      - APPLIANCE_BASE=http://worlds:${WORLDS_PORT:-11043}
+      # Bind every interface INSIDE the container; what is exposed is the ports:
+      # line above. The image already defaults to this — explicit is clearer.
+      - WORLDSQL_BIND=0.0.0.0

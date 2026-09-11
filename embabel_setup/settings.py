@@ -79,6 +79,21 @@ def phone_home_on() -> bool:
     """Whether this appliance reports usage. False unless .env says true."""
     value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()
     return value in ("1", "true", "yes", "on")
+
+
+# The opt-in SQL door (world-sql): a Postgres-wire surface onto the world for BI,
+# dbt and notebooks. OFF by default — it is a power-user surface, and a default
+# install should not open a second port nobody asked for. Enabling it turns on the
+# `world-sql` compose profile (see dockerlib.compose_env).
+SQL_DOOR_VAR = "EMBABEL_SQL_DOOR"
+
+
+def sql_door_on() -> bool:
+    """Whether the SQL door runs alongside the worlds mode. False unless .env says true."""
+    value = (os.environ.get(SQL_DOOR_VAR) or env_file_value(SQL_DOOR_VAR) or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
 def escape_for_env(value: str) -> str:
     """Double every `$`, because compose interpolates values read from .env.
 
