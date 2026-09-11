@@ -46,8 +46,8 @@ from .status import STATUS
 _ACCOUNT: tuple[str, str] | None = None
 # WHAT GOES IN, AND WHY TWO THINGS CAME OUT.
 #
-# DISCOVERY.md opened with "Status: proposal. Nothing on this page is built."
-# and was seeded anyway. Asked "what is virtual cypher", the world answered from
+# A design proposal ("Status: proposal. Nothing on this page is built.") was
+# once seeded anyway. Asked "what is virtual cypher", the world answered from
 # it — a filesystem producer with three tiers, none of which exists — because it
 # was one of only two seeded files mentioning the term and the other said little.
 # A retrieval corpus has no way to discount a document; whatever matches wins. A

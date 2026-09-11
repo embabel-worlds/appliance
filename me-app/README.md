@@ -1,8 +1,8 @@
 # Embabel Me — sensor app (spike)
 
-The Me side of the appliance/sensor architecture in [DISCOVERY.md](../DISCOVERY.md):
-a small native app that reads local signals and **sends** them to your own
-appliance. The appliance thinks; this app senses.
+The Me side of the appliance/sensor architecture: a small native app that reads
+local signals and **sends** them to your own appliance. The appliance thinks;
+this app senses.
 
 macOS is the implemented platform. Everything OS-specific lives behind the
 `SensorPlatform` seam in [`src/platform/`](src/platform): `common.ts` holds the
