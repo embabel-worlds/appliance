@@ -81,16 +81,16 @@ def phone_home_on() -> bool:
     return value in ("1", "true", "yes", "on")
 
 
-# The opt-in SQL door (world-sql): a Postgres-wire surface onto the world for BI,
-# dbt and notebooks. OFF by default — it is a power-user surface, and a default
+# The opt-in SQL endpoint (world-sql): a Postgres-wire surface onto the world for
+# BI, dbt and notebooks. OFF by default — it is a power-user surface, and a default
 # install should not open a second port nobody asked for. Enabling it turns on the
 # `world-sql` compose profile (see dockerlib.compose_env).
-SQL_DOOR_VAR = "EMBABEL_SQL_DOOR"
+SQL_VAR = "EMBABEL_SQL"
 
 
-def sql_door_on() -> bool:
-    """Whether the SQL door runs alongside the worlds mode. False unless .env says true."""
-    value = (os.environ.get(SQL_DOOR_VAR) or env_file_value(SQL_DOOR_VAR) or "").strip().lower()
+def sql_enabled() -> bool:
+    """Whether the SQL endpoint runs alongside the worlds mode. False unless .env says true."""
+    value = (os.environ.get(SQL_VAR) or env_file_value(SQL_VAR) or "").strip().lower()
     return value in ("1", "true", "yes", "on")
 
 

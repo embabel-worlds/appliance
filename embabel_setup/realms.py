@@ -15,8 +15,8 @@ import subprocess
 import sys
 
 from .colour import MIDDOT, TICK, bold, dim, url, warn
-from .core import APPLIANCE_DIR, SetupError, prompt
-from .settings import env_file_value, set_env_var, SQL_DOOR_VAR
+from .core import APPLIANCE_DIR, SetupError
+from .settings import env_file_value, set_env_var
 from .colour import heading
 from .words import say
 
@@ -175,36 +175,3 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
     say("realms")
     print()
     announce_realms(path, realms, notes)
-
-
-def ensure_sql_door(mode: str) -> None:
-    """Offer the opt-in SQL door on a first worlds run.
-
-    The door is a Postgres-wire surface onto the world — for BI, dbt and notebooks.
-    Off by default, and asked ONCE, like the realms directory and for the same reason:
-    a question every run is one people learn to Enter through. Written to .env BEFORE
-    the containers start, because compose reads the `world-sql` profile when it creates
-    them (see dockerlib.compose_env / settings.sql_door_on).
-    """
-    if mode != "worlds" or not sys.stdin.isatty():
-        return
-    if os.environ.get(SQL_DOOR_VAR):
-        return  # exported in the shell — compose sees it directly
-    if os.path.exists(".env"):
-        with open(".env") as f:
-            if any(line.strip().startswith(f"{SQL_DOOR_VAR}=") for line in f):
-                return  # already answered, either way
-
-    print("\n" + heading("SQL door"))
-    print("  A Postgres-wire surface onto this world, so BI tools, dbt and notebooks can")
-    print("  query it as tables — Metabase, Grafana, DuckDB, psql. Off unless you want it;")
-    print(f"  turn it on later with  {bold('EMBABEL_SQL_DOOR=true')}  in .env.\n")
-    answer = prompt("  Enable the SQL door? [y/N]: ").strip().lower()
-    on = answer in ("y", "yes")
-    set_env_var(SQL_DOOR_VAR, "true" if on else "false",
-                why=("The opt-in SQL door (world-sql): a Postgres-wire surface for BI, dbt and",
-                     "notebooks. This line is the answer to the install prompt; edit to change."))
-    if on:
-        print(f"  {TICK} SQL door on — it starts with the appliance on port 15432.\n")
-    else:
-        print()

@@ -248,15 +248,14 @@ services:
       - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
       - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
 
-  # ── SQL door (opt-in) ────────────────────────────────────────────────────────
+  # ── SQL endpoint (opt-in) ────────────────────────────────────────────────────
   # A Postgres-wire surface onto the world, so BI tools, dbt and notebooks can query
   # it as tables — Metabase, Grafana, DuckDB, psql, even another Postgres via
   # postgres_fdw. OFF by default: it starts only under the `world-sql` compose
-  # profile, which the installer turns on when you enable the door (setup.py →
-  # ensure_sql_door → dockerlib.compose_env sets COMPOSE_PROFILES). A plain
-  # `docker compose up` never starts it. PUBLISHED FROM embabel-worlds, like the
-  # console — pinned separately from EMBABEL_VERSION because the door versions on
-  # its own repo.
+  # profile, which the installer turns on for `--sql` (setup.py → dockerlib.compose_env
+  # sets COMPOSE_PROFILES). A plain `docker compose up` never starts it. PUBLISHED
+  # FROM embabel-worlds, like the console — pinned separately from EMBABEL_VERSION
+  # because world-sql versions on its own repo.
   #
   # It holds NO credentials. A client's own username and password are forwarded per
   # connection and authenticated against the appliance, so a connection sees exactly
