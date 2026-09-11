@@ -142,6 +142,17 @@ def main() -> int:
              "world can load one with `path:` instead of cloning it. Written to .env as "
              "EMBABEL_REALMS_DIR; checked before it is written",
     )
+    sql = parser.add_mutually_exclusive_group()
+    sql.add_argument(
+        "--sql", dest="sql", action="store_true", default=None,
+        help="run the SQL endpoint (Postgres wire) so BI tools, dbt and notebooks can query "
+             "this world as tables — Metabase, Grafana, DuckDB, psql. Written to .env as "
+             "EMBABEL_SQL; off unless asked for",
+    )
+    sql.add_argument(
+        "--no-sql", dest="sql", action="store_false", default=None,
+        help="do not run the SQL endpoint (the default)",
+    )
     parser.add_argument(
         "--ignore-env",
         action="store_true",
@@ -197,6 +208,14 @@ def main() -> int:
         # the variable exists, and an upgrade that silently undid it made it a trap.
         remember_source()
         ensure_realms_dir(mode, args.realms)
+        # --sql / --no-sql, persisted to .env BEFORE the containers start (compose reads the
+        # world-sql profile when it creates them). Unset leaves whatever .env already says — off
+        # by default. No prompt: the SQL endpoint is a deliberate, named choice, not a step
+        # every install walks through.
+        if args.sql is not None:
+            set_env_var(SQL_VAR, "true" if args.sql else "false",
+                        why=("Whether the SQL endpoint (world-sql) runs — the Postgres surface for",
+                             "BI, dbt and notebooks. Set by --sql / --no-sql; edit to change."))
 
         if args.fresh:
             fresh_wipe()

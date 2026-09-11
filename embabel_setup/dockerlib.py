@@ -22,7 +22,7 @@ from .core import (
 )
 from .settings import (
     compose_project, configured_mode, env_file_value, env_path, instance, phone_home_on,
-    port_base, ports_for, resume_command, PHONE_HOME_ENDPOINT,
+    port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
@@ -160,6 +160,14 @@ def compose_env() -> dict:
     # The switch resolved to an address. Empty is the off state the compose files
     # already default to; this only ever turns it ON.
     env["ASSISTANT_PHONE_HOME_ENDPOINT"] = PHONE_HOME_ENDPOINT if phone_home_on() else ""
+    # The opt-in SQL endpoint is a compose PROFILE, off unless enabled. Turning it on here —
+    # in the environment compose runs with — rather than in .env keeps the compose files
+    # pull-only and means a profile the operator set by hand is merged, not clobbered.
+    if sql_enabled():
+        profiles = [p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()]
+        if "world-sql" not in profiles:
+            profiles.append("world-sql")
+        env["COMPOSE_PROFILES"] = ",".join(profiles)
     return env
 def announce_github_token() -> None:
     """Say once, before the containers start, whether private realms will resolve. Never print the
