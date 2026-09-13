@@ -49,6 +49,9 @@ returns to whichever you set up.
 - **[Showing somebody what your world does](tours.md)** — tours drive the real app on
   your real data. How to record one, how to send it to somebody, and what a tour you were
   sent is and is not allowed to do.
+- **[Reading your world from other tools](clients.md)** — the doors: SQL for the
+  tools a data team already has, GraphQL for developers, OData for Excel, Power BI and
+  Salesforce, and webhooks that post a view's changes where people look.
 - **[Making your own realm](realms.md)** — connecting a system nobody has connected yet,
   including the version where you describe it and an agent builds it.
 - **[Running your own models](local-models.md)** — LM Studio and Ollama, what they cost
