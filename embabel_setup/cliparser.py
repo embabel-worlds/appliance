@@ -12,7 +12,7 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import (cmd_agents, cmd_contract, cmd_embeddings, cmd_realms, cmd_run_view,
+from .clidata import (cmd_agents, cmd_contract, cmd_diagram, cmd_embeddings, cmd_realms, cmd_run_view,
                       cmd_sample, cmd_sandbox, cmd_scenario)
 from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
@@ -156,6 +156,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true",
                    help="print the whole result envelope as JSON, for a pipe")
     p.set_defaults(func=cmd_run_view)
+
+    # A picture of the world, re-derived rather than drawn: what the world's declarations
+    # relate to what. Read from the GraphQL door, which is the sidecar that renders it.
+    p = sub.add_parser("diagram", help="the world as an entity-relationship diagram, in Mermaid")
+    p.add_argument("--door", metavar="URL",
+                   help="the world-graphql sidecar to read it from (default: $EMBABEL_GRAPHQL_DOOR "
+                        "or http://127.0.0.1:15480)")
+    p.add_argument("--out", metavar="FILE", help="write the diagram here instead of printing it")
+    p.set_defaults(func=cmd_diagram)
 
     p = sub.add_parser("scenario", help="put the world in a named state")
     sc = p.add_subparsers(dest="scenario_command")

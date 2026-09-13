@@ -308,6 +308,33 @@ embabel run-view triage_dependencies \
 Such a view cannot be materialised (a cache is keyed per user, not per argument tuple),
 so every call is a fresh model hop. Expect it to be slow and to cost something.
 
+### `embabel diagram`
+
+The world as an entity-relationship diagram, in Mermaid: every entity with its
+typed columns and keys, every view as its own shape, a relationship wherever a
+column carries another entity's key, and a mark on every column a model made.
+
+```
+embabel diagram                       # prints Mermaid; paste it where Mermaid renders
+embabel diagram --out world.mmd       # or write it to a file
+embabel diagram --door http://host:15480
+```
+
+It is **re-derived from the world's declarations on every read**, so it cannot
+rot the way a drawn diagram does, and a diff of two runs is a diff of what
+changed in the world. A view appears when it projects an entity's declared key,
+dashed, because a view is a reading about that entity rather than a record of
+it; a producer-backed label, which has no extent, is listed at the bottom rather
+than drawn as a table that would fan out.
+
+The drawing is done by the world-graphql sidecar, the same one that serves the
+world as GraphQL, because the catalog it is drawn from lives in the doors rather
+than in this installer. `--door` or `EMBABEL_GRAPHQL_DOOR` says where it is;
+the default is a sidecar on this machine at port 15480, and the verb says how
+to start one when none answers. Your appliance login is forwarded to it, the
+way every door forwards a login: `EMBABEL_USER` / `EMBABEL_PASSWORD`, or the
+password is asked for.
+
 ### `embabel contract generate --view <name>`
 
 Draft an ODCS v3.1 data contract describing what one of your saved views returns.
