@@ -377,3 +377,52 @@ def cmd_embeddings(args) -> int:
     s.describe_embeddings(s.embeddings_status(base, auth), s.configured_embedding_model())
     return 0
 
+
+def cmd_diagram(args) -> int:
+    """The world as an entity-relationship diagram: entities with their typed columns and
+    keys, views as their own shape, a relationship wherever a column carries another
+    entity's key, and a mark on every column a model made. Re-derived from the world's
+    declarations on every read, so it cannot rot the way a drawn diagram does.
+
+    It is rendered by world-graphql, the sidecar that also serves the world as GraphQL,
+    because the catalog it is drawn from lives there and in world-sql, not in this
+    installer. Mermaid text: paste it into a README, a wiki page or a pull request and
+    it renders; `--out` writes a .mmd file.
+    """
+    import base64
+    import urllib.error
+    import urllib.request
+
+    door = (args.door or os.environ.get("EMBABEL_GRAPHQL_DOOR") or "http://127.0.0.1:15480").rstrip("/")
+    base, auth = _sample_target(args)
+    if not base:
+        return 1
+    request = urllib.request.Request(f"{door}/catalog/diagram.mmd")
+    request.add_header("Authorization", auth)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            diagram = response.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            print(f"  {door} did not accept the appliance login. The door forwards YOUR login to the appliance; "
+                  "set EMBABEL_USER / EMBABEL_PASSWORD to the account that can read it.")
+        else:
+            print(f"  {door} answered HTTP {e.code} for /catalog/diagram.mmd. Is that a world-graphql sidecar?")
+        return 1
+    except (urllib.error.URLError, OSError) as e:
+        print(f"  No GraphQL door at {door} ({getattr(e, 'reason', e)}).")
+        print("  The diagram is drawn by the world-graphql sidecar. Start one beside the appliance:")
+        inside = base.replace('127.0.0.1', 'host.docker.internal').replace('localhost', 'host.docker.internal')
+        print(f"    docker run --rm --add-host=host.docker.internal:host-gateway -p 15480:15480 -e APPLIANCE_BASE={inside} \\")
+        print("      -e APPLIANCE_USER=<user> -e APPLIANCE_PASS=<password> ghcr.io/embabel-worlds/world-graphql")
+        print("  then run this again, or point --door at one that is running.")
+        return 1
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(diagram)
+        entities = sum(1 for line in diagram.splitlines() if line.rstrip().endswith("{"))
+        relations = sum(1 for line in diagram.splitlines() if "||--o{" in line or "||..o{" in line)
+        print(f"  Wrote {args.out}: {entities} entities, {relations} relationships. Paste it where Mermaid renders.")
+        return 0
+    sys.stdout.write(diagram)
+    return 0
