@@ -37,14 +37,13 @@ jobs:
             python3 "scripts/$check.py"
           done
 
-  # ADVISORY, not a gate, for now. The Me app depends on @embabel/appliance-kit by a git
-  # reference to that repository's main, and a developer works against a linked checkout
-  # that can run ahead of it — so this job reports what a fresh clone would see without
-  # blocking the installer's own checks on another repository's state. Make it a gate
-  # once the kit publishes a version the app can pin.
+  # The Me app takes @embabel/appliance-kit from that repository's main, pinned to a
+  # commit by the lockfile. A developer's node_modules is usually a link to a live kit
+  # checkout, which never notices when the pin falls behind — this job is what does.
+  # When it fails on a missing kit export, refresh the pin:
+  #   cd me-app && npm install --package-lock-only @embabel/appliance-kit@github:embabel-worlds/appliance-kit#main
   me-app:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: me-app
