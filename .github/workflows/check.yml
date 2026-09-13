@@ -1,0 +1,62 @@
+name: Check
+
+# Every push and pull request. The installer is Python standard library and shell, so
+# the gates are the ones the repository already keeps for itself: every module compiles,
+# every check script under scripts/ passes (each is a regression somebody actually hit),
+# the command answers, and the Me app typechecks and builds. Nothing here needs Docker
+# or an appliance; the install itself is driven by scripts/drive-install.py by a person.
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: check-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Every module compiles
+        run: python3 -m compileall -q embabel_setup scripts *.py
+      - name: The command answers
+        run: ./embabel --help > /dev/null && ./embabel version --help > /dev/null
+      - name: Copy, modules, timeouts, agents, shim, ports, tokens
+        run: |
+          for check in check-copy check-modules check-complete check-agents check-shim check-port-allocation check-uninstall-token; do
+            echo "== $check"
+            python3 "scripts/$check.py"
+          done
+
+  # ADVISORY, not a gate, for now. The Me app depends on @embabel/appliance-kit by a git
+  # reference to that repository's main, and a developer works against a linked checkout
+  # that can run ahead of it — so this job reports what a fresh clone would see without
+  # blocking the installer's own checks on another repository's state. Make it a gate
+  # once the kit publishes a version the app can pin.
+  me-app:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: me-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: me-app/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
