@@ -56,6 +56,13 @@ The floor is the theme CSS and a working table. Aim above it:
   waiting states for deferred lens results, so build on that rather than spinners of your own.
 - Interactions that answer the follow-up question ("and which of those…") beat static charts:
   drill-down on click, a filter bound to a view parameter, detail fetched lazily on open.
+- **A number a reader cannot interpret is not shipped.** Correct and unexplained is the easiest
+  way to mislead: a coefficient, index, score or rate needs its scale, its direction and one
+  plain-English sentence saying what a value of that size MEANS, next to the number rather than
+  in a footnote. If a figure could be read as a percentage and is not one, say so where it is
+  shown. And where a figure is dangerous stripped of its context — a raw correlation that a
+  fuller model overturns — build the page so the two cannot be separated, because a screenshot
+  of one panel travels without its correction.
 - Compute time-relative things ("last 7 days") in the app's own script at load, never bake a
   date in.
 
@@ -94,7 +101,9 @@ Non-negotiable before handing anything over:
   `browser-harness.md` has the stub contract, the capture step and the assertion checklist.
   The harness ships with the realm under `tests/` and asserts at minimum: render counts
   against fixture rows, every interaction path the app offers (selection, toggles, add and
-  validation flows), forced empty and error states, and zero console errors.
+  validation flows), forced empty and error states, zero console errors, and — because a stub
+  resolves instantly and hides every timing defect — one interaction performed while a
+  deliberately DELAYED call is still in flight.
 - **Budget the first paint.** The stub answers instantly, so live latency is the one thing it
   cannot see. For every view the app calls before first interaction, read `cost.ms` from the
   live every-view-every-parameter pass and hold it under a stated budget — 2000 ms unless the

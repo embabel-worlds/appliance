@@ -44,6 +44,12 @@ Substitute by string-replacing the two `<script src>` tags in the saved HTML wit
 before `page.goto('file://…')` — no route interception, no origin subtleties, and everything
 else in the page stays byte-identical.
 
+**Navigate to the page; never `setContent` it.** `page.setContent()` does not perform a
+navigation, so `page.addInitScript()` never runs and the stub is never installed — the app
+loads with no runtime at all and renders its failure state. That looks *exactly* like a broken
+app, and the harness is what is broken. If you stub via `addInitScript` rather than by
+rewriting the script tags, serve the HTML from a `page.route()` and `goto` that URL.
+
 ## 3. What the harness asserts
 
 The floor, from the regressions that motivated it:
@@ -58,6 +64,15 @@ The floor, from the regressions that motivated it:
   envelope; the app must show its designed error and empty states, loudly.
 - **Zero console errors**: collect `page.on('console')` and `page.on('pageerror')`; any error
   fails the run.
+- **Interaction DURING a slow call.** A stub answers instantly, so the window in which a call is
+  in flight does not exist in the harness — and that window is where interaction bugs live. Add a
+  delay to one stubbed call (`await new Promise(r => setTimeout(r, 400))`) and click a control
+  while it is pending. The control must respond AT ONCE — the checkbox ticks, the tab switches —
+  with data catching up after; and a second click must not be dropped. Three defects shipped past
+  a fully green harness this way: a checkbox whose handler returned early while a fit was running,
+  so the tick never moved and the click looked dead; a re-render that tore down and rebuilt the
+  list under the pointer, scrolling the page away mid-click; and a queued update silently
+  discarded. None is visible when every promise resolves in a microtask.
 
 Target shape: dozens of checks, seconds of runtime, no network, no auth — cheap enough to run
 after every edit, which is the point.
@@ -122,6 +137,12 @@ test('renders every place and no console errors', async ({ page }) => {
 
 Adapt the selectors and fixture keys to the app; keep the loud-throw rule and the console
 assertion in every spec.
+
+**Select on a stable handle, never on visible text.** Give each row, card or control a
+`data-` key in the app and drive it by that. One label is often a substring of another — a
+filter for "Population" also matches "Population density" — so a text selector silently drives
+the WRONG element and fails somewhere else entirely, as a count that does not add up. The
+handle is also the app telling you what its parts are, which survives the copy being reworded.
 
 ## 5. Handover honesty
 
