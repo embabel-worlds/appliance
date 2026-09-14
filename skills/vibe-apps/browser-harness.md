@@ -64,6 +64,10 @@ The floor, from the regressions that motivated it:
   envelope; the app must show its designed error and empty states, loudly.
 - **Zero console errors**: collect `page.on('console')` and `page.on('pageerror')`; any error
   fails the run.
+- **The Embabel badge, visible.** `#embabel-badge` exists, has non-empty text, links to
+  embabel.com and lies within the viewport. Nothing injects it into a realm-shipped app, so this
+  assertion is the only thing standing between an app and shipping unattributed — and asserting
+  presence rather than visibility passes an empty div, which is how it was missed.
 - **Interaction DURING a slow call.** A stub answers instantly, so the window in which a call is
   in flight does not exist in the harness — and that window is where interaction bugs live. Add a
   delay to one stubbed call (`await new Promise(r => setTimeout(r, 400))`) and click a control

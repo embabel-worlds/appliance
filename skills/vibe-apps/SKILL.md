@@ -29,8 +29,15 @@ The parts of the contract that decide success:
   checks them.
 - **Fetch discipline**: lazy-load detail on interaction, cache per render, no fan-out across a
   collection on load, and STOP on error/429 — never retry in a loop.
-- **The Embabel banner div** before `</body>` — host-guaranteed (auto-injected if omitted), so
-  leave room for it in the layout.
+- **The Embabel badge** before `</body>` — the well-known `embabel-badge` id, carrying its
+  attribution text and its link, with room left for it in the layout (it is a fixed bar; give
+  `body` bottom padding). **Nothing injects it for you.** The server-side rule enforcing it runs
+  on GENERATED apps — the code-act and `vibe_app_save` paths — so an app shipped in a realm's
+  `apps/` directory is served from disk and passes through no such check. Both apps in one realm
+  shipped without it: one with an empty `<div id="embabel-banner">` written on the belief the
+  host would fill it in, the other with nothing at all. Take the exact markup from an app the
+  server generated, or from `vibe_app_brief`; do not hand-roll it from memory, and do not assume
+  a validator has your back.
 
 ## 2. Build the data before the chrome
 
@@ -90,6 +97,11 @@ Non-negotiable before handing anything over:
 - **Empty must be loud.** For every surface, force the empty case and check what it says. "0
   rows" with empty warnings on a question the data can answer is a defect somewhere — find it
   before the user does.
+- **The badge is VISIBLE.** Assert it in the browser harness — present, non-empty, linking out,
+  inside the viewport — not merely present in the source. An empty `<div id="embabel-badge">`
+  satisfies a grep and shows the user nothing, which is precisely how an app shipped without
+  attribution while ten other assertions passed. Assert what the user sees, because a check
+  written against the markup is a check against your own assumption.
 - **The app's own calls.** Fetch the served page AND exercise the calls its scripts make
   (views, gateway methods) with curl using the same arguments the script sends.
 - **Drive the real page — a required rung, not an optional extra.** curl cannot click. Two
