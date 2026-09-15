@@ -17,10 +17,12 @@ GET /swagger-ui/index.html # the same, browsable
 
 Fetch it, read the operations you need, and generate or hand-write your client from it. Never
 invent an endpoint from memory — the spec is served by the running server, so it is exactly
-what this appliance version supports. All API paths sit under the `/api/v1` prefix; auth for a
-local appliance is HTTP Basic with the operator account (the setup-created user), and services
-can use the bearer token (`EMBABEL_MCP_API_TOKEN`) instead. Credentials live in the caller's
-config, never in committed code.
+what this appliance version supports. All API paths sit under the `/api/v1` prefix. Auth is an
+**API key**: the user mints one in the console under *Settings → API keys*, and the client sends
+it as `X-Embabel-Api-Key: emb_…` (or `Authorization: Bearer emb_…` where only that header can be
+set). The key acts as the user who minted it. Read it from `EMBABEL_API_KEY` in the caller's
+environment — never commit it, never put it in a URL. HTTP Basic with the operator account also
+works, and is the fallback before a key exists.
 
 ### Typed classes and generated clients
 
@@ -103,7 +105,8 @@ webhook on the server, not a poller in your app.
 
 ## 5. Failure discipline for a client
 
-- 401 means authenticate, 404 on a view means the NAME is wrong or not saved — list views before
+- 401 means the key is missing, revoked, or pasted with whitespace — check `EMBABEL_API_KEY`;
+  404 on a view means the NAME is wrong or not saved — list views before
   concluding data is missing.
 - 400 on a view carries the actionable argument error (bad name, missing required param, bad
   coercion) — show it to the developer verbatim.

@@ -49,6 +49,9 @@ curl -u <you> http://localhost:11042/api/v1/phone-home           # what was last
 curl -u <you> http://localhost:11042/api/v1/phone-home/preview   # what would be sent now
 ```
 
+`-u <you>` is your appliance login; an API key from *Settings → API keys* does the same as
+`-H "X-Embabel-Api-Key: $EMBABEL_API_KEY"`.
+
 The `json` field is the literal request body, not a re-rendering of it — compare it with
 a packet capture and it matches byte for byte.
 

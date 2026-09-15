@@ -7,10 +7,10 @@ them. This chapter says which doors exist, who each one is for, and how to open 
 
 Three things are true of every door, and they are worth knowing before the details:
 
-- **Your login is forwarded, never held.** A door signs in to the appliance with the
-  credentials the client sent, so what a client reads is what that user may read.
-  A door that runs beside the appliance keeps no credentials of its own beyond the
-  one some of them need to read the catalog.
+- **Your credential is forwarded, never held.** A door puts the API key or login the
+  client sent on every appliance request, so what a client reads is what that user
+  may read. A door that runs beside the appliance keeps no credential of its own
+  beyond the one some of them need to read the catalog.
 - **Nothing is copied.** A door reads the world when asked and returns what it holds
   now. A materialised view returns its snapshot until its TTL, the same as in the
   console.
@@ -33,6 +33,30 @@ Three things are true of every door, and they are worth knowing before the detai
 The SQL, GraphQL and OData doors are sidecars: separate containers that run beside the
 appliance and read it over its own API. Nothing is installed into the appliance, and
 switching one off means not running it. Webhooks are part of the appliance.
+
+## Authentication
+
+The REST API and the MCP doors take an **API key**. Mint one in the console, under
+*Settings → API keys*: give it a name, and copy it when it is shown, because it is shown
+once — the appliance keeps a hash of it, not the key. Send it in a header, never in a
+URL:
+
+```bash
+export EMBABEL_API_KEY=emb_…    # from Settings → API keys; in your environment, not your code
+curl -H "X-Embabel-Api-Key: $EMBABEL_API_KEY" http://localhost:11043/api/v1/watches
+```
+
+`Authorization: Bearer emb_…` is accepted too, for MCP clients and anything that can set
+only that header. A key acts as the user who minted it and reaches whatever they can
+reach, with one exception: it cannot mint or revoke keys, which takes the password.
+Every key starts with `emb_`, so a secret scanner — or a person — can tell what a leaked
+one is. Revoke it in the same place it was minted; a revoked key answers 401 from that
+moment.
+
+HTTP Basic with your appliance login still works, and is what you have before a key
+exists. The SQL, GraphQL and OData doors forward either: the key header or your Basic
+login over HTTP, and over the Postgres wire, which has one password field, the key
+*as* the password.
 
 ## What every door shows
 
@@ -57,10 +81,11 @@ docker run --rm -p 15432:15432 --add-host=host.docker.internal:host-gateway \
   -e APPLIANCE_BASE=http://host.docker.internal:11043 \
   ghcr.io/embabel-worlds/world-sql
 
-psql -h 127.0.0.1 -p 15432 -U <your appliance user> -d world
+PGPASSWORD=$EMBABEL_API_KEY psql -h 127.0.0.1 -p 15432 -U me -d world
 ```
 
-The password is your appliance password; the door forwards it. Then:
+The key is the password and the user name is a label, since the key says who you are.
+Your appliance user and password work the same way, forwarded as a Basic login. Then:
 
 ```sql
 \dt                                                -- every view and entity, as tables
@@ -89,12 +114,13 @@ key, in both directions. It serves GraphiQL for exploring.
 ```sh
 docker run --rm -p 15480:15480 --add-host=host.docker.internal:host-gateway \
   -e APPLIANCE_BASE=http://host.docker.internal:11043 \
-  -e APPLIANCE_USER=<user> -e APPLIANCE_PASS=<password> \
+  -e APPLIANCE_API_KEY=emb_… \
   ghcr.io/embabel-worlds/world-graphql
 ```
 
-The login given to the container reads the catalog, since a schema is shared by every
-client of a world. Rows are read with each request's own HTTP Basic login.
+The key given to the container reads the catalog, since a schema is shared by every
+client of a world; `APPLIANCE_USER` and `APPLIANCE_PASS` do the same with a login. Rows
+are read with each request's own credential, forwarded as it arrived.
 
 ```graphql
 {
@@ -116,12 +142,14 @@ told, with a 409, when the world's schema has moved on.
 
 The OData door is for tools that speak OData 4: Excel (Data → From OData Feed),
 Power BI, Power Apps, Tableau, and Salesforce Connect, which maps entity sets to
-external objects. No driver, no database port, plain HTTPS with Basic login.
+external objects. No driver, no database port, plain HTTPS. Those tools offer only a
+Basic sign-in, so give any user name with your API key as the password, or your
+appliance login; a script sends the key header as everywhere else.
 
 ```sh
 docker run --rm -p 15490:15490 --add-host=host.docker.internal:host-gateway \
   -e APPLIANCE_BASE=http://host.docker.internal:11043 \
-  -e APPLIANCE_USER=<user> -e APPLIANCE_PASS=<password> \
+  -e APPLIANCE_API_KEY=emb_… \
   ghcr.io/embabel-worlds/world-odata
 ```
 
@@ -141,7 +169,8 @@ polls the world but the appliance.
 
 ### Registering a receiver
 
-You need your appliance login, the name of a saved view, and the URL to post to.
+You need an API key (*Settings → API keys*), the name of a saved view, and the URL to
+post to.
 
 1. **Pick the view.** `GET /api/v1/admin/kg/views` lists them; the `name` is the
    watch's `lensId`. The view should project an identity — an entity's declared key —
@@ -151,7 +180,7 @@ You need your appliance login, the name of a saved view, and the URL to post to.
 
    ```http
    POST /api/v1/watches
-   Authorization: Basic <user:password>
+   X-Embabel-Api-Key: emb_…
    Content-Type: application/json
 
    {

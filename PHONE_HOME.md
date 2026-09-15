@@ -18,6 +18,9 @@ curl -u <you> http://localhost:11042/api/v1/phone-home           # the exact JSO
 curl -u <you> http://localhost:11042/api/v1/phone-home/preview   # what would be sent right now
 ```
 
+`-u <you>` is your appliance login; an API key from *Settings → API keys* does the same as
+`-H "X-Embabel-Api-Key: $EMBABEL_API_KEY"`.
+
 The `json` field in that response is the literal request body, not a re-rendering of it —
 compare it against a packet capture and it will match byte for byte.
 

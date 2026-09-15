@@ -247,6 +247,24 @@ account that actually exists, or `embabel agents` to re-point your coding agents
 
 ---
 
+## 401 with an `emb_` key
+
+**What it means.** The appliance saw an API key and refused it. Keys start with `emb_`;
+if what you sent does not, it is not a key — it is a password or a setup token in the
+wrong field.
+
+In order of likelihood: the key was revoked in *Settings → API keys* — a revoked key
+answers 401 from that moment, and the list there says which keys still exist; the key was
+pasted with a trailing newline, a space, or the word `Bearer ` in front of it, into a
+field that wanted the raw value; or the appliance predates keys, in which case
+`GET /api/v1/api-keys` answers 404 and `embabel up` brings a version that has them.
+
+The header is `X-Embabel-Api-Key`, or `Authorization: Bearer emb_…` for a client that can
+set only that one. A key in a URL or query string is never read, and should never be
+written.
+
+---
+
 ## Neo4j connection failures in the log
 
 **These are never routine.** A healthy appliance logs nothing about Neo4j even when

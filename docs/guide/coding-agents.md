@@ -15,13 +15,14 @@ If you said yes during setup, this is already done. The wizard offers it at the 
 runs the command for you, and the agent sees your appliance in its next session.
 
 If you skipped it, or you want to connect a second machine or a different agent, you
-need two things: the URL and a token. The token is minted once during setup and never
-shown again, so if you no longer have it, the simplest honest answer is to re-run
-`embabel up --fresh`, or to mint a new one from the console's Coding agents tab.
+need two things: the URL and a key. Mint one in the console under *Settings → API keys*
+— it is shown once, so copy it then. The token setup minted still works if you kept it,
+but a key you named is one you can revoke on its own, and rotating is minting a new one
+and revoking the old.
 
 ```bash
 claude mcp add --transport http --scope user embabel \
-  http://localhost:11043/mcp/code --header "Authorization: Bearer <token>"
+  http://localhost:11043/mcp/code --header "Authorization: Bearer <key>"
 ```
 
 Note the `/mcp/code` path: the server has two MCP doors, and this one carries the
@@ -107,6 +108,6 @@ agent and your git remote already are — and the appliance only reads.
 | What you see | What it usually is |
 |---|---|
 | The agent describes Embabel generically | Not actually connected — check `claude mcp list` |
-| "Failed to connect" on every session | The token died with the volume; a `--fresh` install mints a new one and the old registration is stale |
+| "Failed to connect" on every session | The key is gone: revoked in *Settings → API keys*, or the volume was recreated by a `--fresh` install. Mint another and re-register |
 | Realm tools are missing | You are on the Me door; Worlds is the developer one |
 | A local realm's changes do nothing | It needs a refresh — or it has a build step, which only runs on clone and must be run on the host |

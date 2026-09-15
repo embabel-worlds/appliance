@@ -349,15 +349,20 @@ The assistant is an MCP server, so Claude Code, Claude Desktop, Open WebUI and a
 MCP-aware client can drive it.
 
 **You normally configure nothing here.** First-run setup's "Connect coding agents" step
-mints a bearer token bound to the account you create, stores it in the data volume, and —
+mints a token bound to the account you create, stores it in the data volume, and —
 if the `claude` CLI is on your PATH — offers to run `claude mcp add` for you on the spot.
+
+To connect another client, or another machine, mint an **API key** in the console under
+*Settings → API keys*. It is shown once, it acts as you, and it works on both MCP doors
+and the REST API alike. Rotation is mint a new one, revoke the old. These are keys *into*
+your appliance; the provider keys above are credentials it presents to somebody else.
 
 The `.env` variables exist for scripted deployments that skip the wizard, or to supply a
 token before first boot:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `EMBABEL_MCP_API_TOKEN` | empty | Pre-set bearer token for both MCP doors and `/sse` (`openssl rand -hex 32`). A setup-minted token **takes precedence** — adding a value here after setup has minted one has no effect. |
+| `EMBABEL_MCP_API_TOKEN` | empty | Pre-set bearer token for both MCP doors, `/sse` and the REST API (`openssl rand -hex 32`). A setup-minted token **takes precedence** — adding a value here after setup has minted one has no effect. |
 | `EMBABEL_MCP_API_TOKEN_USER` | empty | Which user's world a pre-set token acts as. Both must be set together; there is no implicit default user. |
 
 To wire a client manually (Claude Code shown; the URL + header work for any client).
@@ -367,12 +372,13 @@ door and what most clients fill in for you:
 
 ```bash
 claude mcp add --transport http --scope user embabel http://localhost:11042/mcp/code \
-  --header "Authorization: Bearer <your token>"
+  --header "Authorization: Bearer <your API key>"
 ```
 
 A setup-minted token lives in the data volume at
-`/data/embabel/assistant/admin/providers.env` — read it from there to wire additional
-clients, or edit that file (and restart) to rotate it.
+`/data/embabel/assistant/admin/providers.env`. It keeps working, but it is one token for
+one account with nothing to name it by: prefer a key from the console, which you can
+revoke on its own.
 
 ## Optional — integration credentials
 
@@ -671,7 +677,7 @@ move between versions.
 | First code-execution turn hangs for minutes | The sandbox image is still downloading. `docker pull embabel/assistant-sandbox:latest` |
 | `assistant` restarts during boot | Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
-| An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
+| An MCP client gets 401 | The key in the client's header was revoked, or pasted with whitespace or a `Bearer ` prefix into a field that wanted the raw value. Mint another from *Settings → API keys*. For a `.env` token, `EMBABEL_MCP_API_TOKEN` is empty or doesn't match |
 | Nothing on 11047 | `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
 | Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:11048/api/v1/targets` — the `embabel-assistant` target should be `up` |
 | Port already in use | Change the port variables in `.env` |
