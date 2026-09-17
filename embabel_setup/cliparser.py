@@ -56,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("up", help="start the appliance and finish setup (safe to re-run)")
     mode_flags(p)
     p.add_argument("--fresh", action="store_true", help="DELETE all data first, then start over")
+    p.add_argument("--browser", action="store_true",
+                   help="worlds mode: finish setup in the console instead of here")
     p.set_defaults(func=cmd_up)
 
     p = sub.add_parser("status", help="what is running, what is still downloading, where to go")
