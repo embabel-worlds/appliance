@@ -409,7 +409,7 @@ def main() -> int:
                                            "add or refresh it from Documents."))
         warn_if_conversion_pending()
         if service == "worlds":
-            print_worlds_surfaces(base)
+            print_worlds_surfaces(base, mcp_token=bool(api_token) or bool(status.get("mcpTokenExists")))
         elif service == "assistant":
             print_me_surfaces(base)
             launch_me_app(base, username)

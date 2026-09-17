@@ -56,10 +56,13 @@ def hand_setup_to_browser(base: str, token: str, container: str | None) -> int:
     started_before = container_started_at(container) if container else ""
     STATUS.start("Waiting for setup to finish in the browser")
     deadline = time.monotonic() + BROWSER_WAIT_SECONDS
+    # The last thing setup said about MCP before it closed: after /complete the API
+    # answers 410 and says nothing, so this is the only way to know what to print.
+    mcp_token = False
     try:
         while time.monotonic() < deadline:
             try:
-                call(base, "", token)
+                mcp_token = bool(call(base, "", token).get("mcpTokenExists")) or mcp_token
             except AlreadySetUp:
                 break
             except Unreachable:
@@ -78,7 +81,7 @@ def hand_setup_to_browser(base: str, token: str, container: str | None) -> int:
         STATUS.stop()
 
     print(f"\n  {TICK} Setup complete. {bold('Embabel Worlds')} is at {url(console_url())}")
-    print_worlds_surfaces(base)
+    print_worlds_surfaces(base, mcp_token=mcp_token)
     return 0
 
 
