@@ -90,7 +90,12 @@ address, `Organization` keyed on domain, each resolved through indexed key-nodes
 
 **A Worlds appliance** (the developer platform) knows nothing about email and should not be made
 to. Its anchors are whatever its installed realms declare — a `GitHubRepository`, a `SitePoint`,
-a domain type from a learned schema. If no email-shaped anchor exists in the schema, do not
+a domain type from a learned schema — and that includes **spines a realm declares**. A realm can
+say that a type is a shared IDENTITY (`spine:` with a key and a normalization: a customer account
+keyed on company domain, a product on SKU, a site on its code), and any other realm attaches its
+own records to it with `hub: <Label>` on whichever property carries the key. Look for these in
+`realm_status` and the schema: a realm-declared spine is the strongest anchor a world can have,
+because every system that knows the entity lands on ONE node however it spells the key. If no email-shaped anchor exists in the schema, do not
 mention email at all: not as a bridge, not as a column to add, not in the demo sentence. Rank
 against the anchors that exist, and when few do, say the value lives in capability instead
 (see the tiers below).
@@ -120,6 +125,8 @@ different product's data model:
 | Company registration no., ABN, ticker | `Organization`, once a spine realm maps it to a domain | registries, finance and procurement data |
 | Person name alone | `Person` (WEAK — ambiguous) | anything; only worth it with a second key to disambiguate |
 | Repo, org, handle | `Person`, via github's learned-handle path | CI config, `CODEOWNERS`, package metadata |
+| Company domain, website, billing email — where NO Organization spine exists | a realm-declared account spine (`CustomerAccount` or the like); if the world has none, **proposing one is the finding** | CRM accounts, helpdesk companies, billing customers — three systems that each hold the same customer under a differently shaped key |
+| SKU, part number, site code, asset tag | a realm-declared spine for that entity | ERP, inventory, maintenance, ticketing |
 | Address, lat/long, postcode | a realm's own spatial anchor, not a built-in spine | property, logistics, council, delivery tables |
 | Date range | any timeline already in the world | events, transactions, meetings |
 
@@ -236,11 +243,17 @@ only the live ones):
    emergencies?"). This is the highest-value thing you will
    get from them, it is the thing a schema cannot tell you, and it decides the join direction and
    which producer you need. Offer your best guess so they can correct rather than compose.
-3. **Whether the bridge resolves.** Ask how the two sides actually match when it is not obvious —
+3. **Identity or record?** For each entity two systems share, ask: *if each system holds one,
+   are those two things or one?* Two tickets are two things — a shared parent label
+   (`parents: [SupportCase]`) lets one question cover both. A CRM customer and a billing customer
+   for the same company are ONE thing — that needs a spine, and a parent label there silently
+   produces one node per system with nothing joining them. The realm spec's Virtual Cypher §5.4
+   has the rules; say which of the two each proposed bridge is.
+4. **Whether the bridge resolves.** Ask how the two sides actually match when it is not obvious —
    people with several email addresses, companies that trade under another name. github's realm
    needs three strategies for this (`existingBridge`, `learnedHandle`, `canonicalEmail`) because
    one was never enough.
-4. **Which door — the architecture question, asked explicitly.** A system with a middle tier
+5. **Which door — the architecture question, asked explicitly.** A system with a middle tier
    offers two doors, and they are different products:
 
    - **Through the application** (its REST/GraphQL API, learned from an OpenAPI spec): every
@@ -259,14 +272,14 @@ only the live ones):
    operations the realm needs) is genuine product work worth naming as an option, not a detour
    from the "real" route. Do not default to the database just because `learn_connect` makes it
    the easiest thing to reach.
-5. **How deeply to read.** `learn_source` takes `METADATA` (default, schema only),
+6. **How deeply to read.** `learn_source` takes `METADATA` (default, schema only),
    `DISTINCT_VALUES` (low-cardinality column values — usually where the meaning is) or
    `SAMPLE_ROWS`. Recommend `DISTINCT_VALUES` for a system they own, say what it will read, and
    never widen without an explicit answer.
-6. **Credentials.** Name what is needed and where it goes — a password goes to their encrypted
+7. **Credentials.** Name what is needed and where it goes — a password goes to their encrypted
    wallet, never into YAML or git. Never invent one, and never reuse one found in a scanned `.env`
    without saying that is what you are doing.
-7. **Name and scope** per realm, once the above are settled.
+8. **Name and scope** per realm, once the above are settled.
 
 Stop when the frontier is empty. Do not install anything until they confirm the plan.
 
