@@ -1,0 +1,12 @@
+Your appliance is up. The rest happens in the console, in a browser: the
+account you sign in with, the model provider key, and whether coding agents
+can reach this world.
+
+It asks there rather than here because it can do more with the answers. A key
+is checked against the provider as you paste it, so a wrong one is wrong
+immediately instead of at the end. A username is suggested from your name. And
+the world it builds for you reports what it is doing while it does it, which on
+a first run is about ninety seconds of cloning.
+
+Nothing is configured yet, so nothing is lost if you close the page — the link
+below works until setup is finished.

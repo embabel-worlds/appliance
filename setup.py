@@ -110,6 +110,36 @@ from embabel_setup import wizard
 from embabel_setup.dockerlib import _compose, _docker
 
 
+def hand_over_to_console(base: str, token: str, container: str | None) -> int:
+    """Open the console on its setup link and stop asking questions here.
+
+    The link carries the token in the FRAGMENT (`#setup=…`), which is the half of
+    a URL a browser never sends to a server and never writes to a proxy log. The
+    console takes it off the address bar before it renders anything.
+
+    The embedding offer stays on this side. It is not part of onboarding and
+    could not be: it asks whether to pull a gigabyte through Docker Model Runner,
+    which is a question about THIS machine, and the answer has to be acted on by
+    something holding a Docker socket.
+    """
+    print("\n" + heading("Finish in the console"))
+    say("hand-over-to-console")
+
+    # Before the link, so the question is answered while somebody is still reading
+    # the terminal rather than after they have moved to the browser.
+    offer_embeddings()
+
+    where = console_url()
+    link = f"{where}/#setup={token}"
+    print(f"\n  {TICK} Your appliance is running. Finish setting it up at:")
+    print(f"     {url(link)}")
+    print("  " + dim("The link carries a one-time token. It works until setup is finished."))
+    if open_in_browser(link):
+        print("  " + dim("Opening it in your browser…"))
+    print_worlds_surfaces(base)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
     parser.add_argument("mode", nargs="?", choices=tuple(MODE_COMPOSE),
@@ -275,6 +305,40 @@ def main() -> int:
         # doing the installation sees the report contract in the flow they are already
         # following. A detached `docker compose up` cannot make a README visible.
         disclose_usage_reporting(base)
+
+        service_now = mode_service(container) if container else None
+
+        # ── WORLDS HANDS OVER; IT DOES NOT ASK ────────────────────────────────
+        #
+        # The console's onboarding covers account, provider key and coding agents,
+        # and covers them better: it checks the key against the provider as you
+        # paste it, derives a username from your name, and reports the world build
+        # in phases. Asking the same three things here made this a SECOND front end
+        # to the same API, and two of them drift — the comment above the account
+        # field in wizard.py records one such drift, where the guidance about full
+        # names sat above the username prompt and people dutifully typed one in.
+        #
+        # It also removes a whole class of failure rather than fixing one. Read
+        # through `curl … | sh`, this script's stdin is the pipe the shell is still
+        # reading the script from; install.sh reattaches /dev/tty and core.prompt
+        # guards EOF, and an install still reached the account step, took three
+        # empty answers, and sent a password nobody typed. A question not asked
+        # cannot be answered by the wrong file descriptor.
+        #
+        # /complete IS NOT CALLED HERE, and that is the point rather than an
+        # omission: it closes the setup API permanently, so calling it on the way
+        # out would lock the console out of the onboarding it is being handed.
+        # The console calls it when it has finished asking.
+        # Whenever setup is still open, not only on a first run: an install
+        # abandoned halfway would otherwise come back to the questions here and
+        # restore the two-front-ends problem for the half that was left.
+        #
+        # THE COST, NAMED: `from_environment` let a developer with OPENAI_API_KEY
+        # exported skip the key prompt, and that shortcut goes with the prompt. The
+        # console checks a pasted key against the provider as you paste it, which is
+        # the better trade for everyone who is not us.
+        if service_now == "worlds":
+            return hand_over_to_console(base, token, container)
 
         pending = wizard.pending(status)
         if not pending:
