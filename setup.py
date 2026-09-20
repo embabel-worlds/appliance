@@ -113,29 +113,40 @@ from embabel_setup.dockerlib import _compose, _docker
 def hand_over_to_console(base: str, token: str, container: str | None) -> int:
     """Open the console on its setup link and stop asking questions here.
 
-    The link carries the token in the FRAGMENT (`#setup=…`), which is the half of
-    a URL a browser never sends to a server and never writes to a proxy log. The
-    console takes it off the address bar before it renders anything.
+    THE LINK IS PRINTED BEFORE ANYTHING ELSE CAN GO WRONG, and that ordering is the
+    whole lesson of the first version: it asked about document search first, and
+    `prompt` reads stdin, which under `curl … | sh` is the pipe the shell is still
+    reading this script from. The question blocked, and the one line the install
+    exists to produce was never reached. A person was left with a paragraph saying
+    the link was below and no link below it.
 
-    The embedding offer stays on this side. It is not part of onboarding and
-    could not be: it asks whether to pull a gigabyte through Docker Model Runner,
-    which is a question about THIS machine, and the answer has to be acted on by
-    something holding a Docker socket.
+    So nothing interactive runs on this path at all, not before the link and not
+    after it. Document search is described instead of asked about — one command,
+    printed, for whenever somebody wants it. An install that cannot be blocked by a
+    file descriptor is worth more than a question answered a minute earlier.
+
+    The token rides in the FRAGMENT (`#setup=…`), which is the half of a URL a
+    browser never sends to a server and never writes to a proxy log. The console
+    takes it off the address bar before it renders anything.
     """
-    print("\n" + heading("Finish in the console"))
-    say("hand-over-to-console")
-
-    # Before the link, so the question is answered while somebody is still reading
-    # the terminal rather than after they have moved to the browser.
-    offer_embeddings()
-
     where = console_url()
     link = f"{where}/#setup={token}"
-    print(f"\n  {TICK} Your appliance is running. Finish setting it up at:")
-    print(f"     {url(link)}")
-    print("  " + dim("The link carries a one-time token. It works until setup is finished."))
+
+    print("\n" + heading("Finish in your browser"))
+    print(f"  {TICK} Your appliance is running. Finish setting it up at:\n")
+    print(f"     {url(link)}\n")
+    say("hand-over-to-console")
     if open_in_browser(link):
-        print("  " + dim("Opening it in your browser…"))
+        print("\n  " + dim("Opening it in your browser…"))
+
+    # DESCRIBED, NOT ASKED. It needs a Docker Desktop feature and pulls about a
+    # gigabyte, so it is a question about THIS machine rather than about the world —
+    # but a question here is a question that can hang, and this path has no terminal
+    # it can trust. Said once, in the place somebody will be looking when they wonder
+    # why a document search returned nothing.
+    print("\n" + heading("Document search, when you want it"))
+    say("embeddings-later")
+
     print_worlds_surfaces(base)
     return 0
 
