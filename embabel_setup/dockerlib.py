@@ -12,6 +12,7 @@ instance's server.
 """
 
 from __future__ import annotations
+import json
 import os
 import subprocess
 
@@ -195,6 +196,82 @@ def core_services(mode: str) -> tuple[str, ...]:
         return base
     rest = tuple(s for s in base if s != "neo4j")
     return ("falkordb",) + rest if engine == "FALKORDB" else rest
+
+
+# A tag that MOVES. Everything else is a version somebody pinned, and a pinned
+# version is immutable: the copy on this machine is the copy the registry has,
+# so asking again buys nothing. `latest` is the opposite — it is a name, and
+# the build behind it changes several times a day.
+FLOATING_TAGS = ("latest",)
+
+
+def floating_services(mode: str, services: tuple[str, ...] | list[str]) -> list[str]:
+    """Which of these services run on a tag whose build can have moved since the pull.
+
+    A SERVICE LIST, not an image list, because pulling is per-service and the two
+    are not interchangeable: the graph overlays swap which service carries which
+    image, so resolving through compose is the only answer that survives FalkorDB.
+
+    An untagged reference is floating too — Docker reads it as `:latest`.
+    """
+    run = _compose(mode, "config", "--format", "json", capture=True)
+    if run is None or run.returncode != 0:
+        return []
+    try:
+        config = json.loads(run.stdout)
+    except (json.JSONDecodeError, TypeError):
+        # Compose said something this version of it does not promise. Not a
+        # failure: the caller's pull is an improvement, not a precondition.
+        return []
+    defined = config.get("services") or {}
+    floating = []
+    for name in services:
+        image = (defined.get(name) or {}).get("image") or ""
+        if not image:
+            continue
+        # The tag is what follows the last colon, unless that colon is the
+        # registry's port — `ghcr.io:5000/x` has no tag and is floating.
+        tail = image.rsplit(":", 1)
+        tag = tail[1] if len(tail) == 2 and "/" not in tail[1] else "latest"
+        if tag in FLOATING_TAGS:
+            floating.append(name)
+    return floating
+
+
+def refresh_floating_images(mode: str, services: tuple[str, ...] | list[str]) -> None:
+    """Pull the services whose tag moves, before starting them for the first time.
+
+    `compose up` pulls an image it does not HAVE, and stops there. That is right
+    for a pinned tag and wrong for `latest`: a machine that pulled `latest` once
+    keeps that build for ever, so a fresh INSTALL on a machine with any history
+    starts on whatever was published the first time anybody installed. It cost a
+    morning — a console image three-quarters of an hour old, missing two features
+    that had shipped, on a install performed after they shipped.
+
+    NOT FATAL, ever. The pull is how a start gets the newest build; it is not how
+    a start works. An offline machine, a registry having a bad day, a rate limit —
+    each of those leaves a perfectly good local image, and refusing to start on
+    one would turn an improvement into an outage.
+
+    IT SPEAKS, because it can replace a locally-built `:latest` — which is the
+    correct outcome for a tag that means "what the registry publishes", and still
+    a surprise worth a line. Pin EMBABEL_VERSION to keep your own build.
+    """
+    moving = floating_services(mode, services)
+    if not moving:
+        return
+    # FLUSHED, because the pull below inherits this terminal and writes to it
+    # directly: an unflushed line arrives after the output it was introducing.
+    print("  " + dim("Checking for newer builds: " + ", ".join(moving)), flush=True)
+    try:
+        run = _compose(mode, "pull", *moving)
+    except SetupError as e:
+        print("  " + warn("!") + f" could not check for newer builds ({e})")
+        print("  " + dim("    Starting on the images already here."))
+        return
+    if run is None or run.returncode != 0:
+        print("  " + warn("!") + " could not check for newer builds — see docker's output above.")
+        print("  " + dim("    Starting on the images already here."))
 
 
 def graph_engine() -> str:
