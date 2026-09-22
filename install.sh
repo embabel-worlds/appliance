@@ -239,34 +239,18 @@ docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start D
 if ! docker model status >/dev/null 2>&1; then
   printf '  %s..%s\n' "$C_DIM" "$C_RESET"
   cat <<'DOCKER_MODEL_RUNNER' | sed 's/^./  &/'
-Docker Model Runner is not available here. The appliance installs and runs
-without it; only document search waits on this.
-
-Model Runner serves the embedding model — the one that turns your documents into
-vectors so your world can search and reason over them — on this machine, with no
-key and no account. It is a Docker Desktop feature, so where you get it depends
-on what runs your containers:
-
-    Docker Desktop            Settings → AI, or: docker desktop enable model-runner
-    Docker Engine on Linux    install the docker-model-plugin package
-    anything else             not available — use the provider key you already have
-
-That last row is the common one: Rancher Desktop, Colima, and Docker Desktop on
-an Intel Mac have no Model Runner to enable, and no amount of configuring will
-produce one. Those installs turn document features on with the key instead, and
-download nothing:
+No Docker Model Runner here, which decides one thing only: if you turn document
+search on, the embedding model is a hosted one, set up from the key you give the
+appliance and downloading nothing.
 
     embabel embeddings use hosted
 
-An appliance ships with NO embedding model either way, so nothing here is
-blocking you. Documents are the one feature that waits.
+(On Docker Desktop you can enable Model Runner instead — Settings → AI — and run
+that model on this machine with `embabel embeddings use local`.)
+
+Nothing is waiting on this. An appliance ships with no embedding model at all,
+and documents are the only feature that uses one.
 DOCKER_MODEL_RUNNER
-  # The one line that depends on THIS machine, kept outside the heredoc so the
-  # shared words stay byte-identical to the copy/ file they are checked against.
-  if ! docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop'; then
-    printf '  %sThis machine is not running Docker Desktop, so it is that last row.%s\n' \
-      "$C_DIM" "$C_RESET"
-  fi
   echo
 fi
 

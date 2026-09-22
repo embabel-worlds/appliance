@@ -614,23 +614,34 @@ def embedding_model_present() -> bool:
 
 
 def ensure_embedding_model() -> None:
-    """Pull the embedding model before anything needs it, and say so while it happens.
+    """Pull the LOCAL embedding model, if that is the one this appliance was told to use.
 
-    NOT LEFT TO COMPOSE. infra.yml declares it as a `models:` element, which is
-    the right declaration and not a guarantee: that element is a recent Compose
-    feature, and where it is not honoured — or where the provisioning quietly
-    fails — the model never arrives. The server then cannot build its embedding
-    bean and dies with an UnsatisfiedDependencyException naming Spring, forty
-    seconds into a boot, having said nothing about a download.
+    ONLY THEN. An appliance ships with no embedding model at all — document
+    features are off until somebody runs `embabel embeddings use`, and `use
+    hosted` writes a role the server resolves against a provider key, with
+    nothing to download. So a machine with no local model configured has nothing
+    to pull, and this returns.
 
-    So it is pulled here, explicitly, before a container starts. Doing it twice
-    costs nothing: `docker model pull` on a model already present returns
-    immediately.
+    That gate is the whole function. Without it this ran on every first boot and,
+    where Docker Model Runner was absent, ABORTED SETUP — which made the appliance
+    uninstallable on Rancher Desktop, Colima, and every Intel Mac, none of which
+    can have Model Runner at all. The installer had just finished telling that
+    person, in as many words, that nothing here was blocking them.
 
-    Embeddings are the appliance's one capability that needs no key and no
-    account, which makes this the difference between an appliance that works out
-    of the box and one that will not start at all.
+    NOT LEFT TO COMPOSE, when it is wanted. infra.yml declares the model as a
+    `models:` element, which is the right declaration and not a guarantee: that
+    element is a recent Compose feature, and where it is not honoured — or where
+    the provisioning quietly fails — the model never arrives, and the server
+    dies forty seconds into a boot with an UnsatisfiedDependencyException naming
+    Spring. So when local IS the choice, it is pulled here, explicitly, before a
+    container starts. Doing it twice costs nothing.
     """
+    # Imported inside the function: embeddings imports this module, so a
+    # top-level import here is a cycle.
+    from .embeddings import configured_embedding_model
+    chosen = configured_embedding_model() or ""
+    if not chosen.startswith(("ai/", "docker.io/ai/")):
+        return
     if embedding_model_present():
         return
     runner = _docker("model", "status", timeout=20)
@@ -648,7 +659,9 @@ def ensure_embedding_model() -> None:
         # wrong there, and only this side knows how they invoked it anyway.
         return_here = resume_command()
         raise SetupError(
-            copy_text("docker-model-runner").strip()
+            f"This appliance is set to embed with {chosen}, which needs Docker Model\n"
+            "  Runner — and Model Runner is not available here.\n\n"
+            + copy_text("docker-model-runner").strip()
             + f"\n\n  Then pick up where you left off:  {return_here}"
         )
     print(f"  Downloading the embedding model {dim('(' + EMBEDDING_MODEL + ', about 1.1GB)')}.")

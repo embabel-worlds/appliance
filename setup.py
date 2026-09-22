@@ -262,10 +262,11 @@ def main() -> int:
             fresh_wipe()
         started = False
         if args.mode or args.fresh:
-            # BEFORE the containers, not alongside them. The server dies without
-            # this model, and dying forty seconds into a boot with a Spring
-            # stack trace is a much worse way to learn that a 1.1GB file is
-            # missing than being told up front that it is downloading.
+            # BEFORE the containers, not alongside them — but only when a LOCAL
+            # model is the configured one. An appliance ships with no embedding
+            # model, so this is usually a no-op; when local IS the choice, a
+            # 1.1GB file announced up front beats a Spring stack trace forty
+            # seconds into a boot.
             # BEFORE THE PULL, for the same reason as the embedding model below it:
             # everything after this line costs gigabytes and minutes, and "Docker has
             # 3.8 GB" is worth hearing while that is still a choice rather than a
