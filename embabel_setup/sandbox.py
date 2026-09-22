@@ -15,6 +15,8 @@ adding a toolchain is a line or two rather than a fork that goes stale the momen
 shipped one gains something. A rewrite is still yours to make; it is just not the
 thing this encourages.
 """
+
+from __future__ import annotations
 import os
 import subprocess
 

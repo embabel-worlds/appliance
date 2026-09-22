@@ -19,6 +19,8 @@ everything. The server does that properly (drop indexes, re-embed each store, re
 the new width, roll back on failure); this says how much work it is about to ask for
 before it asks.
 """
+
+from __future__ import annotations
 import base64
 import json
 import os
