@@ -146,6 +146,34 @@ def choose_embeddings(choice: str) -> str:
     return model
 
 
+def migrate_legacy_embedding_choice() -> str | None:
+    """Rewrite a hosted model NAME left in .env by an older `use openai` into the role.
+
+    THIS IS A REPAIR, NOT A PREFERENCE. `use openai` used to write
+    `text-embedding-3-small`, and it resolved only because the server carried an
+    appliance-only embedding service in front of its default. That service is gone now
+    that an embedding default can name a role resolved per call, and the appliance image
+    ships no provider starters — so the name left behind matches nothing and document
+    features go off after an upgrade, with .env looking set and nothing saying why.
+
+    Called from `upgrade`, which is the documented way onto a newer image, and from `up`,
+    which people re-run. Idempotent: an already-migrated .env, a local model id, or no
+    value at all are all left exactly as they are.
+
+    Returns the role when it changed something, so the caller can say so — a config file
+    rewritten silently is its own small betrayal.
+    """
+    current = configured_embedding_model()
+    if current not in LEGACY_HOSTED_MODELS:
+        return None
+    set_env_var(MODEL_VAR, HOSTED_ROLE, why=(
+        "# Was the model name %s, which newer builds cannot resolve here: the appliance" % current,
+        "# holds no provider starters, so a hosted model has to be named as a ROLE and",
+        "# resolved against your key. Same model, same vectors — nothing is re-embedded.",
+    ))
+    return HOSTED_ROLE
+
+
 def clear_embeddings() -> None:
     if not configured_embedding_model():
         print(f"  {MIDDOT} " + dim("No embedding model set."))
