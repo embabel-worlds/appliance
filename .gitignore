@@ -5,6 +5,13 @@
 .env
 .envrc
 
+# Variants of .env for a second stack on this machine (.env.dialect-verify,
+# .env.warehouse-verify, a .env.bak-* taken before a benchmark) hold the same
+# keys as .env and are one `git add .` from a public repo. Ignore them by the
+# family, not by name, so the next one is covered before anyone remembers to.
+.env.*
+!.env.example
+
 # Realm credentials, passed into the container wholesale by the optional env_file
 # in both compose files. Same blast radius as .env, same rule.
 secrets.env
