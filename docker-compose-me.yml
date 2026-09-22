@@ -156,7 +156,7 @@ services:
       # until somebody chooses one:
       #
       #   embabel embeddings use local     ~1.1GB, runs here, nothing leaves
-      #   embabel embeddings use openai    the provider key already given
+      #   embabel embeddings use hosted    the provider key already given
       #
       # THE EMPTY VALUE IS THE MECHANISM, NOT AN OVERSIGHT. `${VAR:-}` sends an
       # explicitly empty value, and an explicit empty beats the image's own
