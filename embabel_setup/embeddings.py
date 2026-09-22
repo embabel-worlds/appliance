@@ -173,6 +173,40 @@ def migrate_legacy_embedding_choice() -> str | None:
     ))
     return HOSTED_ROLE
 
+def apply_now(model: str, base: str, auth: str) -> bool:
+    """Put [model] into effect on the RUNNING appliance, and say whether it took.
+
+    The .env write is what survives a restart; this is what saves waiting for one. Both, not
+    either: the environment variable is the appliance's durable answer to "which model", and the
+    API call is the same answer delivered to a process that has already read it.
+
+    IT MAY LEGITIMATELY FAIL, and a failure is not an error here. An older server does not accept
+    a ROLE by name and will refuse `hosted`; a server mid-restart will not answer at all. Both
+    leave .env correct, so the restart the caller was going to be told about anyway is still the
+    way through — which is why this returns a boolean rather than raising.
+
+    RE-EMBEDS, when there is anything to re-embed. Changing the model on an appliance that already
+    holds vectors rewrites all of them, so this can take a while and the caller should say so
+    before calling.
+    """
+    request = urllib.request.Request(
+        f"{base}/api/v1/embeddings",
+        method="POST",
+        data=json.dumps({"model": model}).encode(),
+    )
+    request.add_header("Authorization", auth)
+    request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, timeout=1800) as response:
+            body = json.loads(response.read() or "{}")
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        return False
+    # The server reports what it ENDED UP with. Trusting the status code alone would call a
+    # no-op a success, which is the same mistake the server itself used to make.
+    return (body.get("status") or {}).get("model") == model or (
+        (body.get("result") or {}).get("newModel") == model
+    )
+
 
 def clear_embeddings() -> None:
     if not configured_embedding_model():

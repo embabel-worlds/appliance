@@ -11,7 +11,9 @@ So the thing worth checking is narrow and load-carrying: the hosted choice must 
 ROLE, and nothing that somebody might plausibly type may write a hosted model name instead.
 The failure it guards against is silent — documents simply never index, and nothing says why.
 """
+import json
 import os
+from unittest.mock import patch
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -58,6 +60,11 @@ assert not CHOICES[HOSTED_ROLE].startswith(("ai/", "docker.io/ai/")), \
 # --- the repair for appliances upgraded from a build that wrote a model name ------------
 import tempfile  # noqa: E402
 from unittest.mock import patch  # noqa: E402
+
+# --- applying to a RUNNING appliance --------------------------------------------------------
+# The .env write survives a restart; the API call saves waiting for one. Both, not either — and
+# every failure path must leave the restart route intact, because the CLI ships independently of
+# the server and an older one will refuse a role by name.
 
 from embabel_setup import embeddings as e  # noqa: E402
 
@@ -106,5 +113,43 @@ for path in glob.glob(os.path.join(REPO, "copy", "*.txt")) + [os.path.join(REPO,
         f"{os.path.relpath(path, REPO)} still tells people `embabel embeddings use openai`. "
         f"The hosted choice is `{HOSTED_ROLE}`; the old spelling works but must not be taught."
     )
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = json.dumps(payload).encode()
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def apply_with(payload=None, raises=None):
+    def fake_urlopen(request, timeout=0):
+        if raises is not None:
+            raise raises
+        return _FakeResponse(payload)
+
+    with patch.object(e.urllib.request, "urlopen", fake_urlopen):
+        return e.apply_now("hosted", "http://appliance", "Basic xyz")
+
+
+# The server reports what it ENDED UP with, and that is what counts as applied. A 200 alone would
+# call a no-op a success — the same mistake the server itself used to make.
+assert apply_with({"status": {"model": "hosted"}}) is True
+assert apply_with({"result": {"newModel": "hosted"}}) is True
+assert apply_with({"status": {"model": "text-embedding-3-small"}}) is False, \
+    "a server that ended up on a different model has NOT applied the choice"
+assert apply_with({}) is False
+
+# Every failure is soft: .env is already right, so the caller falls back to the restart it was
+# going to print anyway. An older server refusing a role by name is the case that matters.
+import urllib.error  # noqa: E402
+assert apply_with(raises=urllib.error.URLError("down")) is False
+assert apply_with(raises=OSError("connection refused")) is False
 
 print("embeddings role: ok")
