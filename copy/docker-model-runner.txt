@@ -1,10 +1,21 @@
-Docker Model Runner looks disabled, and Embabel needs it to start.
+Docker Model Runner is not available here. The appliance installs and runs
+without it; only document search waits on this.
 
-It runs the embedding model — the one that turns your documents into vectors so
-your world can search and reason over them. That model runs HERE, on this
-machine, with no key and no account, which is why document search costs you
-nothing and why nothing you feed it has to leave your machine.
+Model Runner serves the embedding model — the one that turns your documents into
+vectors so your world can search and reason over them — on this machine, with no
+key and no account. It is a Docker Desktop feature, so where you get it depends
+on what runs your containers:
 
-Enable it in Docker Desktop (Settings → AI), or run:
+    Docker Desktop            Settings → AI, or: docker desktop enable model-runner
+    Docker Engine on Linux    install the docker-model-plugin package
+    anything else             not available — use the provider key you already have
 
-    docker desktop enable model-runner
+That last row is the common one: Rancher Desktop, Colima, and Docker Desktop on
+an Intel Mac have no Model Runner to enable, and no amount of configuring will
+produce one. Those installs turn document features on with the key instead, and
+download nothing:
+
+    embabel embeddings use hosted
+
+An appliance ships with NO embedding model either way, so nothing here is
+blocking you. Documents are the one feature that waits.

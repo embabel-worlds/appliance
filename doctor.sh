@@ -58,9 +58,18 @@ say "  ${DIM}Nothing here changes anything. Copy the whole output if you need to
 # producing twenty more failures that all mean "docker is not running".
 head2 "Docker"
 if ! command -v docker >/dev/null 2>&1; then
-  bad "Docker is not installed." "Install Docker Desktop: https://docs.docker.com/get-started/get-docker/"
+  # Rancher Desktop installs with containerd selected, which ships nerdctl and no
+  # docker command. Telling that person to install Docker Desktop sends them for a
+  # second container runtime when the one they have is a radio button away. Both
+  # tools together are the tell — nerdctl alone is plain containerd.
+  if command -v rdctl >/dev/null 2>&1 && command -v nerdctl >/dev/null 2>&1; then
+    bad "Rancher Desktop is set to containerd, which has no docker command." \
+        "Run:  rdctl set --container-engine docker   — or Preferences → Container Engine → dockerd (moby). Nothing is deleted: the two engines keep separate image stores, so anything you pulled with nerdctl is invisible until you switch back, not gone."
+  else
+    bad "Docker is not installed." "Install Docker Desktop: https://docs.docker.com/get-started/get-docker/"
+  fi
   say ""
-  say "  ${B}Nothing else can be checked without it.${R} Install Docker, start it, and run this again."
+  say "  ${B}Nothing else can be checked without it.${R} Fix that, start it, and run this again."
   exit 1
 fi
 ok "Docker is installed."

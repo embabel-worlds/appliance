@@ -46,6 +46,7 @@ DUPLICATED = {
     "banner": "ART",
     "docker-required": "DOCKER_REQUIRED",
     "docker-model-runner": "DOCKER_MODEL_RUNNER",
+    "rancher-containerd": "RANCHER_CONTAINERD",
 }
 
 on_disk = {f[:-4] for f in os.listdir(COPY) if f.endswith(".txt")}

@@ -170,7 +170,47 @@ Install Docker Desktop, start it, and run this again:
 DOCKER_REQUIRED
 }
 
+rancher_containerd() {
+  printf '\n'
+  cat <<'RANCHER_CONTAINERD' | sed 's/^./  &/'
+Rancher Desktop is installed here and set to containerd, which ships nerdctl and
+no `docker` command at all. That is a setting, not a missing product, and it is
+the setting Rancher Desktop installs with.
+
+Switch it to the Docker engine:
+
+    rdctl set --container-engine docker
+
+or open Preferences → Container Engine and choose dockerd (moby). Then run this
+again.
+
+Nothing is deleted by switching. The two engines keep separate image stores, so
+images you pulled with nerdctl go quiet until you switch back — they are still on
+disk, and nothing outside those stores is touched. Rancher Desktop's own words
+for it are that they are "not available on the container runtime being switched
+to", which is invisibility, not loss.
+
+Embabel needs the Docker API itself, not only a command that looks like Docker.
+The appliance starts the sandbox your agents' code runs in as a sibling
+container, through the docker socket, and containerd serves no such socket. On
+containerd this would install, start, and then fail at the exact moment it first
+ran code — which is a worse outcome than stopping here.
+RANCHER_CONTAINERD
+}
+
 if ! command -v docker >/dev/null 2>&1; then
+  # RANCHER DESKTOP DEFAULTS TO containerd, and the person in front of this does
+  # not need persuading that containers are worth it — they chose a runtime and
+  # missed a radio button. The essay below is written for somebody with nothing
+  # installed; printing it here reads as "go and get the product you
+  # deliberately did not get", and buries the one command that fixes this.
+  #
+  # BOTH tools, not either: nerdctl alone is also plain containerd, where every
+  # sentence about Preferences is wrong. rdctl beside it is Rancher Desktop.
+  if command -v rdctl >/dev/null 2>&1 && command -v nerdctl >/dev/null 2>&1; then
+    rancher_containerd
+    die "No 'docker' on your PATH — Rancher Desktop is set to containerd."
+  fi
   docker_required
   # die() adds the one line this case needs on top of the explanation: what
   # exactly was looked for and not found.
@@ -182,24 +222,51 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required —
 # Docker. One line, one action.
 docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start Docker Desktop, then run this again."
 
-# Embeddings run locally, so the appliance needs Model Runner. A warning, not a
-# failure: setup says the same thing with more room, and being told to fix two
-# things at once by a script that then exits is a bad first minute. Same
-# duplication rule as above — copy/docker-model-runner.txt is canonical.
+# MODEL RUNNER IS AN OPTION, NOT A PREREQUISITE, and this block said the
+# opposite for as long as it existed: "Embabel needs it to start" was true of an
+# older appliance that built its embedding bean at boot and refused to come up
+# without one. An appliance now ships with no embedding model and says so, and
+# `embeddings use hosted` needs no download at all.
+#
+# It misfires worst on the people who cannot act on it. Model Runner is a Docker
+# Desktop feature, so on Rancher Desktop, Colima, or an Intel Mac there is
+# nothing to enable — and a missing prerequisite announced at the top of an
+# install that is about to work perfectly well reads as a broken install.
+# Dimmed rather than yellow for the same reason: this is a fact about the
+# machine, not a fault in it.
+#
+# Same duplication rule as above — copy/docker-model-runner.txt is canonical.
 if ! docker model status >/dev/null 2>&1; then
-  printf '  %s!!%s\n' "$C_YELLOW" "$C_RESET"
+  printf '  %s..%s\n' "$C_DIM" "$C_RESET"
   cat <<'DOCKER_MODEL_RUNNER' | sed 's/^./  &/'
-Docker Model Runner looks disabled, and Embabel needs it to start.
+Docker Model Runner is not available here. The appliance installs and runs
+without it; only document search waits on this.
 
-It runs the embedding model — the one that turns your documents into vectors so
-your world can search and reason over them. That model runs HERE, on this
-machine, with no key and no account, which is why document search costs you
-nothing and why nothing you feed it has to leave your machine.
+Model Runner serves the embedding model — the one that turns your documents into
+vectors so your world can search and reason over them — on this machine, with no
+key and no account. It is a Docker Desktop feature, so where you get it depends
+on what runs your containers:
 
-Enable it in Docker Desktop (Settings → AI), or run:
+    Docker Desktop            Settings → AI, or: docker desktop enable model-runner
+    Docker Engine on Linux    install the docker-model-plugin package
+    anything else             not available — use the provider key you already have
 
-    docker desktop enable model-runner
+That last row is the common one: Rancher Desktop, Colima, and Docker Desktop on
+an Intel Mac have no Model Runner to enable, and no amount of configuring will
+produce one. Those installs turn document features on with the key instead, and
+download nothing:
+
+    embabel embeddings use hosted
+
+An appliance ships with NO embedding model either way, so nothing here is
+blocking you. Documents are the one feature that waits.
 DOCKER_MODEL_RUNNER
+  # The one line that depends on THIS machine, kept outside the heredoc so the
+  # shared words stay byte-identical to the copy/ file they are checked against.
+  if ! docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop'; then
+    printf '  %sThis machine is not running Docker Desktop, so it is that last row.%s\n' \
+      "$C_DIM" "$C_RESET"
+  fi
   echo
 fi
 

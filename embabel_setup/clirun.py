@@ -159,13 +159,26 @@ def cmd_doctor(args) -> int:
             if fix:
                 print(f"     {s.dim(fix)}")
 
+    # RANCHER DESKTOP DEFAULTS TO containerd, which ships nerdctl and no docker
+    # command — so "install Docker Desktop" is advice to install a second
+    # container runtime beside the one already here, and the actual fix is one
+    # setting. Both tools together are the tell: nerdctl alone is plain
+    # containerd, where nothing about Preferences applies.
+    rancher = shutil.which("rdctl") is not None and shutil.which("nerdctl") is not None
     check("docker installed", shutil.which("docker") is not None,
+          "Rancher Desktop is set to containerd, which has no docker CLI. Switch it:\n"
+          "         rdctl set --container-engine docker\n"
+          "       or Preferences → Container Engine → dockerd (moby). Nothing is deleted;\n"
+          "       images pulled with nerdctl are invisible until you switch back."
+          if rancher else
           "Install Docker Desktop: https://docs.docker.com/get-started/get-docker/")
     daemon = s._docker("info")
     check("docker running", bool(daemon and daemon.returncode == 0),
+          "Start Rancher Desktop, then run this again." if rancher else
           "Start Docker Desktop, then run this again.")
     compose = s._docker("compose", "version")
     check("docker compose v2", bool(compose and compose.returncode == 0),
+          "Update Rancher Desktop, or install the compose plugin." if rancher else
           "Update Docker Desktop, or install the compose plugin.")
     # THE CREDENTIAL HELPER, which fails in a way that looks nothing like its cause.
     #
@@ -182,28 +195,40 @@ def cmd_doctor(args) -> int:
         check(f"docker credential helper '{helper}' on PATH", shutil.which(f"docker-credential-{helper}") is not None,
               f"Named by {where}, but docker-credential-{helper} is not on PATH, so every pull "
               f"fails before it starts.\n"
-              f"       Put Docker Desktop's own bin directory on your PATH:\n"
-              f"         export PATH=\"$PATH:/Applications/Docker.app/Contents/Resources/bin\"\n"
+              f"       Put the bin directory that owns it on your PATH:\n"
+              f"         export PATH=\"$PATH:{'$HOME/.rd/bin' if helper == 'rancher-desktop' else '/Applications/Docker.app/Contents/Resources/bin'}\"\n"
               f"       or drop the helper — these images are public and need no credentials:\n"
               f"         remove the \"credsStore\" line from {shorten_home(docker_config_path())}")
 
+    # MODEL RUNNER IS NOT A PROBLEM WHEN IT IS ABSENT, and counting it as one
+    # taught every Rancher Desktop, Colima and Intel-Mac user to distrust this
+    # doctor's crosses. It is a Docker Desktop feature: those machines cannot
+    # have it, the appliance does not need it, and `embeddings use hosted`
+    # covers the one thing it serves. A cross is for something the reader can
+    # and should fix.
     runner = s._docker("model", "status")
-    check("Docker Model Runner (embeddings run locally)", bool(runner and runner.returncode == 0),
-          "Enable it in Docker Desktop (Settings → AI), or: docker desktop enable model-runner")
-
-    # THE EMBEDDING MODEL IS A HARD REQUIREMENT, not a nicety: the server builds
-    # its embedding bean at startup and refuses to start without one, which
-    # surfaces as an UnsatisfiedDependencyException and a stack trace naming
-    # Spring rather than a missing download. Checked by name, because the tag
-    # matters — `latest` on that repository is the 4B variant with different
-    # dimensions, and embeddings are sticky once written.
     if runner and runner.returncode == 0:
+        print(f"  {s.TICK}  Docker Model Runner (can serve a local embedding model)")
+    else:
+        print(f"  {s.MIDDOT}  Docker Model Runner unavailable "
+              + s.dim("— only document search uses it"))
+        print("     " + s.dim(
+            "Docker Desktop: enable it in Settings → AI. Linux: the docker-model-plugin\n"
+            "     package. Rancher Desktop, Colima, Intel Mac: it does not exist there —\n"
+            "     use the key you already have, with `embabel embeddings use hosted`."))
+
+    # THE MODEL IS CHECKED BY NAME, because the tag matters: `latest` on that
+    # repository is the 4B variant with different dimensions, and embeddings are
+    # sticky once written. Only asked when the appliance has been pointed at the
+    # local model — an appliance ships with no embedding model at all, so a
+    # missing pull is a finding only for somebody who chose `use local`.
+    if runner and runner.returncode == 0 and (s.configured_embedding_model() or "").startswith(("ai/", "docker.io/ai/")):
         listed = s._docker("model", "list")
         have = listed.stdout if listed and listed.returncode == 0 else ""
         wanted = s.EMBEDDING_MODEL
         check(f"embedding model {wanted}", wanted.split("/")[-1].split(":")[0] in have
               and wanted.split(":")[-1] in have,
-              f"Not pulled yet. The appliance cannot start without it:\n"
+              f"Chosen in {s.env_file()} but not pulled, so documents will not index:\n"
               f"       docker model pull {wanted}")
 
     # NOT a check: a fresh checkout has no .env and is not broken. Flagging it with

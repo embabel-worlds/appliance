@@ -154,7 +154,41 @@ function Show-DockerRequired {
 "@ | Write-Host
 }
 
+# Rancher Desktop on containerd -- see install.sh for the reasoning. The ASCII
+# arrows and dashes below are this file's convention, not a different text.
+function Show-RancherContainerd {
+  @"
+
+  Rancher Desktop is installed here and set to containerd, which ships nerdctl and
+  no docker command at all. That is a setting, not a missing product, and it is
+  the setting Rancher Desktop installs with.
+
+  Switch it to the Docker engine:
+
+      rdctl set --container-engine docker
+
+  or open Preferences -> Container Engine and choose dockerd (moby). Then run this
+  again.
+
+  Nothing is deleted by switching. The two engines keep separate image stores, so
+  images you pulled with nerdctl go quiet until you switch back -- they are still on
+  disk, and nothing outside those stores is touched.
+
+  Embabel needs the Docker API itself, not only a command that looks like Docker.
+  The appliance starts the sandbox your agents' code runs in as a sibling
+  container, through the docker socket, and containerd serves no such socket. On
+  containerd this would install, start, and then fail at the exact moment it first
+  ran code -- which is a worse outcome than stopping here.
+"@ | Write-Host
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+  # BOTH tools, not either: nerdctl alone is also plain containerd, where every
+  # sentence about Preferences is wrong. rdctl beside it is Rancher Desktop.
+  if ((Get-Command rdctl -ErrorAction SilentlyContinue) -and (Get-Command nerdctl -ErrorAction SilentlyContinue)) {
+    Show-RancherContainerd
+    Die "No 'docker' on your PATH -- Rancher Desktop is set to containerd."
+  }
   Show-DockerRequired
   Die "No 'docker' on your PATH."
 }
@@ -167,21 +201,34 @@ if ($LASTEXITCODE -ne 0) { Die "Docker Compose v2 is required -- update Docker D
 & docker info 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { Die "Docker is installed but not running. Start Docker Desktop, then run this again." }
 
-# Model Runner -- warning, not a failure. Same reasoning as install.sh.
+# Model Runner -- an OPTION, not a prerequisite. Same reasoning, and the same
+# rewrite, as install.sh: an appliance ships with no embedding model, and the
+# people who cannot enable this at all are the ones the old wording alarmed.
 & docker model status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  Warn ""
+  Write-Host ""
   @"
-  Docker Model Runner looks disabled, and Embabel needs it to start.
+  Docker Model Runner is not available here. The appliance installs and runs
+  without it; only document search waits on this.
 
-  It runs the embedding model -- the one that turns your documents into vectors so
-  your world can search and reason over them. That model runs HERE, on this
-  machine, with no key and no account, which is why document search costs you
-  nothing and why nothing you feed it has to leave your machine.
+  Model Runner serves the embedding model -- the one that turns your documents into
+  vectors so your world can search and reason over them -- on this machine, with no
+  key and no account. It is a Docker Desktop feature, so where you get it depends
+  on what runs your containers:
 
-  Enable it in Docker Desktop (Settings -> AI), or run:
+      Docker Desktop            Settings -> AI, or: docker desktop enable model-runner
+      Docker Engine on Linux    install the docker-model-plugin package
+      anything else             not available -- use the provider key you already have
 
-      docker desktop enable model-runner
+  That last row is the common one: Rancher Desktop, Colima, and Docker Desktop on
+  an Intel Mac have no Model Runner to enable, and no amount of configuring will
+  produce one. Those installs turn document features on with the key instead, and
+  download nothing:
+
+      embabel embeddings use hosted
+
+  An appliance ships with NO embedding model either way, so nothing here is
+  blocking you. Documents are the one feature that waits.
 "@ | Write-Host
   Write-Host ""
 }

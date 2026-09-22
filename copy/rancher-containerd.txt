@@ -1,0 +1,22 @@
+Rancher Desktop is installed here and set to containerd, which ships nerdctl and
+no `docker` command at all. That is a setting, not a missing product, and it is
+the setting Rancher Desktop installs with.
+
+Switch it to the Docker engine:
+
+    rdctl set --container-engine docker
+
+or open Preferences → Container Engine and choose dockerd (moby). Then run this
+again.
+
+Nothing is deleted by switching. The two engines keep separate image stores, so
+images you pulled with nerdctl go quiet until you switch back — they are still on
+disk, and nothing outside those stores is touched. Rancher Desktop's own words
+for it are that they are "not available on the container runtime being switched
+to", which is invisibility, not loss.
+
+Embabel needs the Docker API itself, not only a command that looks like Docker.
+The appliance starts the sandbox your agents' code runs in as a sibling
+container, through the docker socket, and containerd serves no such socket. On
+containerd this would install, start, and then fail at the exact moment it first
+ran code — which is a worse outcome than stopping here.
