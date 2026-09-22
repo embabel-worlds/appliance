@@ -128,7 +128,13 @@ services:
       # BYOK lands and a missing provider key is simply inert.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # Same embedding model as the Me mode, NON-NEGOTIABLY: both modes write
-      # vectors into the same graph. See the models element in infra.yml.
+      # vectors into the same graph, and every vector in it has to come from one
+      # model. The pin lives in embeddings-local-worlds.yml / -me.yml, which say so.
+      #
+      # Empty by default, and that is deliberate — an appliance ships with no
+      # embedding model and `embabel embeddings use local|openai` chooses one. The
+      # long note in docker-compose-me.yml explains why the empty value must stay
+      # empty, and why `:-text-embedding-3-small` would be a regression.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-}
       # Models the operator runs on their OWN machine, outside Docker. `localhost`
       # inside this container is the container, so an LM Studio or Ollama server

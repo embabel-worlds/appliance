@@ -152,19 +152,33 @@ services:
       # so nothing routes there unless configured. Remove this workaround when
       # BYOK lands and a missing provider key is simply inert.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # Embeddings are LOCAL by default: the `models:` element in infra.yml has
-      # Docker Model Runner serve ai/qwen3-embedding on the host (Metal/CUDA
-      # accelerated where available), so memory and RAG need no provider key and no
-      # per-token spend. Spring reads this as embabel.models.default-embedding-model.
-      # Set ASSISTANT_EMBEDDING_MODEL=text-embedding-3-small in .env to use OpenAI
-      # instead — but on an EXISTING install any change of embedding model means a
-      # re-embed (Settings → Embedding model): vector indexes are dimension-bound.
+      # An appliance ships with NO embedding model, and document features are off
+      # until somebody chooses one:
       #
-      # The registry-qualified form is REQUIRED: it must equal the id the Model
-      # Runner reports at /engines/v1/models — `docker.io/`-prefixed for current
-      # runner versions — because Embabel classifies and resolves the discovered
-      # model by exact name. The `models:` element in infra.yml uses the shorter
-      # PULL name; the two refer to the same artifact.
+      #   embabel embeddings use local     ~1.1GB, runs here, nothing leaves
+      #   embabel embeddings use hosted    the provider key already given
+      #
+      # THE EMPTY VALUE IS THE MECHANISM, NOT AN OVERSIGHT. `${VAR:-}` sends an
+      # explicitly empty value, and an explicit empty beats the image's own
+      # application.yml default (text-embedding-3-small) — which is exactly what
+      # "off until chosen" requires. Do NOT "fix" this to `:-text-embedding-3-small`:
+      # that silently switches every fresh appliance to paid OpenAI embeddings and
+      # re-breaks plain Docker Engine, which is what a08dfa3 moved the local model
+      # out of the default composition to avoid. See embeddings.py for the argument
+      # and embabel-worlds/appliance#95 for the report that prompted this note.
+      #
+      # `embabel embeddings use` writes ASSISTANT_EMBEDDING_MODEL into .env; the
+      # local overlay (embeddings-local-me.yml) is composed in alongside. On an
+      # EXISTING install any change of embedding model means a re-embed
+      # (Settings → Embedding model): vector indexes are dimension-bound.
+      #
+      # A LOCAL value must be the registry-qualified id the Model Runner reports at
+      # /engines/v1/models — `docker.io/`-prefixed for current runner versions —
+      # because Embabel classifies and resolves the discovered model by exact name.
+      # The overlay's `models:` element uses the shorter PULL name; the two refer to
+      # the same artifact.
+      #
+      # Spring reads this as embabel.models.default-embedding-model.
       - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-}
       # MCP bearer credentials. First-run setup normally mints these into the data
       # volume (setup.py, the "Connect coding agents" step); the values below are the
