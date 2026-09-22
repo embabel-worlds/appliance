@@ -25,7 +25,9 @@ from .core import prompt
 def cmd_up(args) -> int:
     """Start the appliance and finish setting it up. Safe to run any time: setup.py
     reconciles a running mode rather than starting a second one."""
-    return run_setup(resolved_mode(args.mode), *(["--fresh"] if args.fresh else []))
+    return run_setup(resolved_mode(args.mode),
+                     *(["--fresh"] if args.fresh else []),
+                     *(["--browser"] if args.browser else []))
 
 
 def cmd_down(args) -> int:

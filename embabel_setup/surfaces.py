@@ -53,7 +53,7 @@ def print_next(width: int = 58) -> None:
     print()
 
 
-def print_worlds_surfaces(base: str) -> None:
+def print_worlds_surfaces(base: str, mcp_token: bool = True) -> None:
     """Worlds onboarding ends at the way in, not at "done": every surface a worlds
     operator reaches next, in one block. The API/MCP lines use the mode's real
     detected port; the rest are the compose defaults (.env moves them).
@@ -66,6 +66,10 @@ def print_worlds_surfaces(base: str) -> None:
     /mcp/chat rather than the bare /mcp, because these two lines sit one above the
     other and the pair has to READ as a pair: `/mcp` beside `/mcp/code` looks like a
     general endpoint and a special one. Both spellings reach the same server.
+
+    `mcp_token` says whether setup minted one. The line under the MCP servers used to
+    claim it always had, which was false for anyone who declined — and for a setup
+    finished in the browser, where the token was shown there and never reached here.
     """
     print("  " + heading("Your Worlds surfaces", 58))
     say("surfaces-worlds",
@@ -81,7 +85,12 @@ def print_worlds_surfaces(base: str) -> None:
         dashboards="Dashboards     " + url(surface_urls()["dashboards"]),
         metrics=url(surface_urls()["metrics"]),
         mcp="MCP servers    " + url(base + "/mcp/chat"),
-        mcp_code="               " + url(base + "/mcp/code"))
+        mcp_code="               " + url(base + "/mcp/code"),
+        mcp_auth=(
+            "((Authorization: Bearer — the MCP token setup minted, kept at))\n"
+            "                   ((/data/embabel/assistant/admin/providers.env))"
+            if mcp_token else
+            "((Authorization: Bearer — no MCP token yet; Settings in the console makes one))"))
     # Only when the operator turned it on — an off endpoint is not a surface. Shown as a
     # connection string because that is what a BI tool or `psql` actually wants; the
     # credentials are the operator's own appliance login, forwarded per connection.

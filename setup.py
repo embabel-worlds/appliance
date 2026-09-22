@@ -86,6 +86,7 @@ from embabel_setup.seed import *         # noqa: F403
 from embabel_setup.agents import *       # noqa: F403 — Claude Code and Codex wiring
 from embabel_setup.surfaces import *     # noqa: F403 — where to go once it is up
 from embabel_setup.steps import *        # noqa: F403 — asking, and posting the answers
+from embabel_setup.browser import *      # noqa: F403 — finishing setup in the console instead
 from embabel_setup.lifecycle import *    # noqa: F403 — up, down, and away
 from embabel_setup.realms import *       # noqa: F403 — realm checkouts and the world repo
 from embabel_setup.capacity import *     # noqa: F403 — what docker can actually give this
@@ -193,6 +194,13 @@ def main() -> int:
     sql.add_argument(
         "--no-sql", dest="sql", action="store_false", default=None,
         help="do not run the SQL endpoint (the default)",
+    )
+    parser.add_argument(
+        "--browser",
+        action="store_true",
+        help="worlds mode: finish setup in the console, one question at a time, instead of "
+             "here. The terminal starts the appliance, opens the console with the setup "
+             "token, and waits",
     )
     parser.add_argument(
         "--ignore-env",
@@ -311,6 +319,14 @@ def main() -> int:
             report_boot_warnings(container)
             print()
         status = call_when_ready(base, token)
+
+        if args.browser:
+            if not container or mode_service(container) != "worlds":
+                raise SetupError(
+                    "--browser finishes setup in the Worlds console, which only the worlds "
+                    "mode has. Run it as:  embabel up worlds --browser"
+                )
+            return hand_setup_to_browser(base, token, container)
 
         # Before account details, provider keys or the permanent /complete: the person
         # doing the installation sees the report contract in the flow they are already
@@ -468,7 +484,7 @@ def main() -> int:
                                            "add or refresh it from Documents."))
         warn_if_conversion_pending()
         if service == "worlds":
-            print_worlds_surfaces(base)
+            print_worlds_surfaces(base, mcp_token=bool(api_token) or bool(status.get("mcpTokenExists")))
         elif service == "assistant":
             print_me_surfaces(base)
             launch_me_app(base, username)
