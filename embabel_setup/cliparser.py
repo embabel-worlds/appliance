@@ -191,7 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
     a = em.add_parser("show", help="whether document features are on, and with what")
     a.set_defaults(func=cmd_embeddings)
     a = em.add_parser("use", help="set the embedding model")
-    a.add_argument("choice", help="local, openai, or a model name")
+    a.add_argument("choice", help="local, hosted, or a model name")
     a.set_defaults(func=cmd_embeddings)
     a = em.add_parser("off", help="no embedding model; document features go off")
     a.set_defaults(func=cmd_embeddings)

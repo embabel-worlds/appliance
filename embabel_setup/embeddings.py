@@ -9,7 +9,7 @@ not pay for a capability they have not asked for.
 So document features are OFF rather than broken, and this is how they come on:
 
     embabel embeddings use local     the local model, on this machine, nothing leaves it
-    embabel embeddings use openai    the provider key already given, nothing to download
+    embabel embeddings use hosted    the provider key already given, nothing to download
     embabel embeddings off           back to no embedding model
 
 STICKY, and that is the whole reason this is a deliberate act rather than a default.
@@ -32,11 +32,37 @@ from .settings import api_address, env_file_value, set_env_var
 
 MODEL_VAR = "ASSISTANT_EMBEDDING_MODEL"
 
-# What the shorthands mean. `openai` is the provider default rather than a pinned name
-# so it follows whatever the server considers current.
+# What the shorthands mean, and the two are deliberately not the same KIND of thing.
+#
+# `local` is a model NAME, pinned: there is one local model, it is registered at startup and
+# needs no key, so a name is exactly right and a role would only add indirection.
+#
+# `hosted` is a ROLE. The server resolves it per call against whichever provider key the
+# appliance holds, so it means "embed with the key I gave you" rather than "embed with
+# OpenAI". That matters for more than tidiness: the appliance image ships no provider
+# starters, so a hosted model NAME matches nothing registered and resolves to the
+# setup-required placeholder. `hosted` was `openai` until the server learned to resolve an
+# embedding default per call (embabel/embabel-agent#2041, embabel/me#1487).
+#
+# The role name is what gets written verbatim, so it must match `embabel.models.embedding-roles`
+# on the server side. Keep the two in step.
+HOSTED_ROLE = "hosted"
+
 CHOICES = {
     "local": LOCAL_EMBEDDING_MODEL,
-    "openai": "text-embedding-3-small",
+    HOSTED_ROLE: HOSTED_ROLE,
+    # Kept working, because it is in older docs and in muscle memory, and silently doing
+    # nothing would be the worst of the options. It sets the same role.
+    "openai": HOSTED_ROLE,
+}
+
+# Hosted model names somebody might type from memory or an older README. Passing one through
+# would write a name the appliance cannot resolve, and the failure arrives later, as documents
+# that will not index — so they are mapped to the role that does work.
+LEGACY_HOSTED_MODELS = {
+    "text-embedding-3-small",
+    "text-embedding-3-large",
+    "text-embedding-ada-002",
 }
 
 
@@ -45,8 +71,18 @@ def configured_embedding_model() -> str | None:
 
 
 def resolve_choice(choice: str) -> str:
-    """A shorthand, or a model name passed through untouched."""
-    return CHOICES.get(choice, choice)
+    """A shorthand, a known hosted model name, or anything else passed through untouched.
+
+    Pass-through stays, because a local model id has to be settable and no list here could
+    keep up with them. What it must NOT do is pass through a hosted model name: the appliance
+    has no provider starters, so such a name resolves to the placeholder and document features
+    stay off with nothing saying why.
+    """
+    if choice in CHOICES:
+        return CHOICES[choice]
+    if choice in LEGACY_HOSTED_MODELS:
+        return HOSTED_ROLE
+    return choice
 
 
 def embeddings_status(base: str, auth: str) -> dict:
@@ -76,7 +112,7 @@ def describe_embeddings(status: dict, chosen: str | None) -> None:
         print(f"  {MIDDOT} " + bold("No embedding model."))
         print("  " + dim("Document features are off until one is set:"))
         print("     embabel embeddings use local    " + dim("~1.1GB, runs here, nothing leaves"))
-        print("     embabel embeddings use openai   " + dim("uses the provider key you gave"))
+        print("     embabel embeddings use hosted   " + dim("uses the provider key you gave"))
     if chosen and not status.get("configured"):
         # The two disagree, which means a restart is pending — worth saying, because
         # otherwise the command looks as though it did nothing.
@@ -94,7 +130,7 @@ def pull_local_model() -> None:
             "Could not pull the model. Docker Model Runner is a Docker Desktop feature:\n"
             "  enable it in Settings → AI, or `docker desktop enable model-runner`.\n"
             "  On plain Docker Engine, install the docker-model-plugin package —\n"
-            "  or use `embabel embeddings use openai`, which downloads nothing."
+            "  or use `embabel embeddings use hosted`, which downloads nothing."
         )
 
 
@@ -135,6 +171,6 @@ def offer_embeddings() -> str | None:
         print(f"  {MIDDOT} " + dim("Skipped. Turn it on any time: embabel embeddings use local"))
         return None
     print("\n     1) local    " + dim("~1.1GB, runs on this machine, nothing leaves it"))
-    print("     2) openai   " + dim("uses the provider key you gave, nothing to download"))
+    print("     2) hosted   " + dim("uses the provider key you gave, nothing to download"))
     pick = prompt("  Choose 1-2 [1]: ").strip() or "1"
-    return choose_embeddings("openai" if pick == "2" else "local")
+    return choose_embeddings(HOSTED_ROLE if pick == "2" else "local")

@@ -442,7 +442,7 @@ Whether documents can be indexed, and with what.
 ```bash
 embabel embeddings show          # on or off, and why
 embabel embeddings use local     # ~1.1GB, runs here, nothing leaves the machine
-embabel embeddings use openai    # uses the provider key you already gave
+embabel embeddings use hosted    # uses the provider key you already gave
 embabel embeddings off           # no model; document features go off
 ```
 
@@ -467,6 +467,14 @@ first choice on an empty appliance is the cheap moment to make it.
 
 `use local` composes in `embeddings-local-<mode>.yml`, which is the only thing that
 requires Model Runner. Without it, nothing in the compose files mentions it.
+
+`use hosted` writes a ROLE, not a model name, and the difference is load-carrying. The
+appliance image ships no provider starters, so a model name like `text-embedding-3-small`
+matches nothing registered and resolves to the setup-required placeholder — document
+features would stay off with nothing saying why. A role is resolved per call against
+whichever key the appliance holds, so it means "embed with the key I gave you" and keeps
+meaning that if you later swap providers. `use openai` still works and sets the same role;
+so does typing a known hosted model name.
 
 ### `embabel sandbox`
 
