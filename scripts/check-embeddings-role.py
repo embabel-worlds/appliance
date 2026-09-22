@@ -91,4 +91,20 @@ for untouched in (HOSTED_ROLE, LOCAL_EMBEDDING_MODEL, "", None, "a-model-nobody-
     assert returned is None, f"{untouched!r} must not be migrated, got {returned!r}"
     assert written is None, f"{untouched!r} must not be rewritten, wrote {written!r}"
 
+# --- the copy a user READS must teach the verb we want them to type -----------------------
+# `openai` still works as an alias, so nothing breaks when copy says it — which is exactly why
+# this needs checking rather than being noticed. The installer's own "document search, when you
+# want it" text kept recommending the old verb after the rename, and that text is the first and
+# often only place anyone meets the command.
+import glob  # noqa: E402
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for path in glob.glob(os.path.join(REPO, "copy", "*.txt")) + [os.path.join(REPO, "CLI.md")]:
+    with open(path) as f:
+        body = f.read()
+    assert "embeddings use openai" not in body, (
+        f"{os.path.relpath(path, REPO)} still tells people `embabel embeddings use openai`. "
+        f"The hosted choice is `{HOSTED_ROLE}`; the old spelling works but must not be taught."
+    )
+
 print("embeddings role: ok")

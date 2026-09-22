@@ -375,8 +375,14 @@ def main() -> int:
     # downloads the checkout (from EMBABEL_REF) and hands over to the wizard with
     # `< /dev/tty` — a hand-off that had never been driven here, and which broke
     # in exactly the environment this harness creates.
-    command = (["sh", "./install.sh"] if args.installer
-               else ["python3", f"./{args.mode}.py"] + (["--fresh"] if args.fresh else []))
+    # --fresh reaches BOTH paths. install.sh forwards "$@" to the mode script, so the flag
+    # works through the real entry point too — it just was not being passed, and the run then
+    # went green against whatever was already installed. A harness that silently checks the
+    # wrong thing is worse than one that fails: `--installer --fresh` asserted a fresh install
+    # and got an idempotent re-run, on a stale image, and said nothing.
+    fresh = ["--fresh"] if args.fresh else []
+    command = (["sh", "./install.sh", *fresh] if args.installer
+               else ["python3", f"./{args.mode}.py", *fresh])
     print(f"  Driving: {' '.join(command)}   (transcript: {args.transcript})\n")
     text = drive(command, vars(args), args.transcript, args.timeout)
     print()

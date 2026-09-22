@@ -3,7 +3,7 @@ It has none yet: the local one is about a gigabyte and needs Docker Model
 Runner turned on, so it is not pulled behind your back.
 
     embabel embeddings use local    on this machine, nothing leaves it
-    embabel embeddings use openai   the provider key you give the console
+    embabel embeddings use hosted   the provider key you give the console
 
 Either can be run later. Nothing already added is lost by waiting — turning a
 model on indexes what is already there.
