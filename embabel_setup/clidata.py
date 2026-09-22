@@ -350,6 +350,29 @@ def cmd_sandbox(args) -> int:
     return 1
 
 
+def _applied_live(args, model: str) -> bool:
+    """Put the choice into effect now, if the appliance is up and can take it.
+
+    THE LOCAL MODEL CANNOT BE DONE THIS WAY and is not attempted. It needs its compose overlay
+    composed in — a container that is not running cannot be talked into serving a model — so that
+    one restart is real and saying otherwise would be a lie the next upload would expose.
+
+    Nothing here is required. A refusal, an older server that does not take a role by name, an
+    appliance that is down: each leaves .env correct and the restart still works, so every failure
+    path simply returns False and lets the caller print what it was going to print anyway.
+    """
+    if model == s.LOCAL_EMBEDDING_MODEL:
+        return False
+    base, auth = _sample_target(args)
+    if not base:
+        return False
+    print("  " + s.dim("Applying to the running appliance… re-embedding anything already stored."))
+    if not s.apply_now(model, base, auth):
+        return False
+    print(f"  {s.TICK} In effect now — no restart needed.")
+    return True
+
+
 def cmd_embeddings(args) -> int:
     """The embedding model, and whether document features are on.
 
@@ -364,6 +387,9 @@ def cmd_embeddings(args) -> int:
     if args.embeddings_command == "use":
         model = s.choose_embeddings(args.choice)
         print(f"  {s.TICK} Embedding model set to {s.bold(model)}")
+        print("  " + s.dim(".env now says so, which is what survives a restart."))
+        if _applied_live(args, model):
+            return 0
         print("  " + s.warn("Restart to apply: embabel down && embabel up"))
         return 0
 
