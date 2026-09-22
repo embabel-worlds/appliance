@@ -215,6 +215,11 @@ def cmd_upgrade(args) -> int:
     """
     mode = resolved_mode(args.mode)
     print(f"  Upgrading the {mode} mode to the latest build. Your data is untouched.\n")
+    # Before the images move: an older `use openai` left a model NAME that newer builds
+    # cannot resolve here, and the symptom is documents quietly never indexing again.
+    if s.migrate_legacy_embedding_choice():
+        print(f"  {s.TICK} Embedding model recorded as the `hosted` role, which newer builds resolve")
+        print("  " + s.dim("Same model and the same vectors — nothing is re-embedded.\n"))
     try:
         result = s.upgrade(mode)
     except s.SetupError as e:

@@ -25,6 +25,10 @@ from .core import prompt
 def cmd_up(args) -> int:
     """Start the appliance and finish setting it up. Safe to run any time: setup.py
     reconciles a running mode rather than starting a second one."""
+    # Also here, not only in `upgrade`: somebody who moved images by hand still runs this,
+    # and the repair is a no-op on anything already correct.
+    if s.migrate_legacy_embedding_choice():
+        print(f"  {s.TICK} Embedding model recorded as the `hosted` role, which newer builds resolve")
     return run_setup(resolved_mode(args.mode), *(["--fresh"] if args.fresh else []))
 
 

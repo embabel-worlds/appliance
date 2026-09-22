@@ -55,4 +55,40 @@ assert HOSTED_ROLE == "hosted", \
 assert not CHOICES[HOSTED_ROLE].startswith(("ai/", "docker.io/ai/")), \
     "the hosted choice must not look like a Model Runner id, or choose_embeddings would pull it"
 
+# --- the repair for appliances upgraded from a build that wrote a model name ------------
+import tempfile  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+from embabel_setup import embeddings as e  # noqa: E402
+
+
+def migrate_with(env_value):
+    """Run the repair against a throwaway .env holding env_value, and report what it left."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = os.path.join(tmp, ".env")
+        with open(env, "w") as f:
+            if env_value is not None:
+                f.write(f"{e.MODEL_VAR}={env_value}\n")
+        with patch.object(e, "env_file_value", lambda var: env_value), \
+             patch.dict(os.environ, {}, clear=True):
+            written = {}
+            with patch.object(e, "set_env_var", lambda var, val, why=None: written.update({var: val})):
+                returned = e.migrate_legacy_embedding_choice()
+            return returned, written.get(e.MODEL_VAR)
+
+
+# A name left by an older `use openai` is repaired to the role. Without this, an upgraded
+# appliance keeps a name newer builds cannot resolve and documents silently stop indexing.
+for legacy in LEGACY_HOSTED_MODELS:
+    returned, written = migrate_with(legacy)
+    assert returned == HOSTED_ROLE, f"{legacy!r} should migrate to the role, got {returned!r}"
+    assert written == HOSTED_ROLE, f"{legacy!r} should be rewritten in .env, wrote {written!r}"
+
+# Everything else is left exactly alone, and says it changed nothing. Idempotent on a value
+# already migrated, and never touches a local model id or an appliance that chose nothing.
+for untouched in (HOSTED_ROLE, LOCAL_EMBEDDING_MODEL, "", None, "a-model-nobody-here-knows"):
+    returned, written = migrate_with(untouched)
+    assert returned is None, f"{untouched!r} must not be migrated, got {returned!r}"
+    assert written is None, f"{untouched!r} must not be rewritten, wrote {written!r}"
+
 print("embeddings role: ok")
