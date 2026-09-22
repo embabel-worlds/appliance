@@ -33,8 +33,8 @@ Realm manifests (`config/realms.yml`) merge across the same tiers, user-first â€
 a template's realm list rides its tier like its types and apps do, and the
 default world's realms arrive regardless.
 
-A template may declare parents of its own (requires an assistant with
-[embabel/me#743](https://github.com/embabel/me/pull/743)):
+A template may declare parents of its own (requires an assistant with template
+inheritance support):
 
 ```yaml
 # config/world.yml
@@ -153,7 +153,7 @@ for every world it creates.
   **GitHub** only: an `ssh://` or `git@` URL has no key to authenticate with, and
   another host's PAT does not use GitHub's token-as-username convention. The
   token is a whole-appliance credential, not per-template, and a world's own
-  credential store is not consulted ([embabel/me#741](https://github.com/embabel/me/issues/741)).
+  credential store is not consulted.
 - `extends` parents are pinned in a clone-once cache (`.template-cache`,
   keyed `name@ref`); refresh is explicit, so pin a tag when you need
   reproducibility and use a branch when you want drift.
