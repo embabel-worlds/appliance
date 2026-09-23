@@ -33,15 +33,28 @@ with open(other, "w") as f:
 os.chmod(other, 0o755)
 
 original_appliance_dir = lifecycle.APPLIANCE_DIR
-original_env = {name: os.environ.get(name) for name in ("EMBABEL_BIN_DIR", "PATH", "SHELL")}
+original_env = {name: os.environ.get(name) for name in ("EMBABEL_BIN_DIR", "PATH", "SHELL", "HOME")}
 failures = []
+
+
+home = os.path.join(root, "home")
 
 
 def reset_state():
     lifecycle.APPLIANCE_DIR = original_appliance_dir
-    os.environ.update(EMBABEL_BIN_DIR=bin_dir, PATH=other_dir, SHELL="/bin/bash")
+    os.environ.update(EMBABEL_BIN_DIR=bin_dir, PATH=other_dir, SHELL="/bin/bash", HOME=home)
+    shutil.rmtree(home, ignore_errors=True)
+    os.makedirs(home)
     if os.path.lexists(shim):
         os.remove(shim)
+
+
+def default_install_state(shell="/bin/bash"):
+    """No EMBABEL_BIN_DIR: the path every ordinary install takes."""
+    reset_state()
+    os.environ.pop("EMBABEL_BIN_DIR", None)
+    os.environ["SHELL"] = shell
+    return os.path.join(home, ".local", "bin")
 
 
 def write_quietly():
@@ -157,6 +170,79 @@ def symlinked_checkout_and_bin_are_the_same_installation():
     assert "NOT on your PATH" not in output, output
 
 
+
+def the_default_install_puts_the_command_on_path():
+    """The promise: after an install, `embabel` runs. ~/.local/bin is on PATH by default
+    on most Linux distributions and on NO macOS, so on a Mac this branch IS the install."""
+    directory = default_install_state()
+    path, output = write_quietly()
+    assert path == os.path.join(directory, "embabel"), path
+    profile = os.path.join(home, ".bashrc")
+    with open(profile) as f:
+        written = f.read()
+    assert lifecycle.install_path_entry.__module__  # the block came from the shared writer
+    assert "BEGIN embabel appliance PATH" in written, written
+    assert directory in written, written
+    assert "added that to ~/.bashrc" in output, output
+    # A child cannot change its parent's environment, so the two things true RIGHT NOW
+    # must be said rather than left to be discovered.
+    assert "exec $SHELL" in output, output
+    assert path in output, output
+
+
+def setting_up_again_replaces_the_path_block():
+    default_install_state()
+    write_quietly()
+    write_quietly()
+    with open(os.path.join(home, ".bashrc")) as f:
+        written = f.read()
+    assert written.count("BEGIN embabel appliance PATH") == 1, written
+
+
+def fish_gets_fish_syntax():
+    """`export PATH=...` is a syntax error in fish, and a profile that errors on load
+    breaks every new shell — a worse outcome than the problem it was fixing."""
+    directory = default_install_state(shell="/usr/local/bin/fish")
+    write_quietly()
+    with open(os.path.join(home, ".config", "fish", "config.fish")) as f:
+        written = f.read()
+    assert "fish_add_path" in written, written
+    assert "export PATH" not in written, written
+    assert directory in written, written
+
+
+def uninstall_takes_the_path_line_back_out():
+    default_install_state()
+    profile = os.path.join(home, ".bashrc")
+    theirs = "# their own file\nexport EDITOR=vi\n"
+    with open(profile, "w") as f:
+        f.write(theirs)
+    write_quietly()
+    from embabel_setup import agents
+    assert agents.remove_path_entry(profile) is True
+    with open(profile) as f:
+        assert f.read() == theirs, "uninstall did not leave the profile as it found it"
+    assert agents.remove_path_entry(profile) is False, "a second removal claimed to change something"
+
+
+def a_directory_already_on_path_needs_no_profile():
+    directory = default_install_state()
+    os.environ["PATH"] = os.pathsep.join([directory, other_dir])
+    path, output = write_quietly()
+    assert path == os.path.join(directory, "embabel")
+    assert not os.path.exists(os.path.join(home, ".bashrc")), "edited a profile it did not need to"
+    assert "NOT on your PATH" not in output, output
+
+
+def an_explicit_bin_dir_is_left_to_its_owner():
+    """EMBABEL_BIN_DIR means somebody chose. Editing their profile after they told us
+    where to write is presumption, not help."""
+    reset_state()
+    path, output = write_quietly()
+    assert path == shim
+    assert not os.path.exists(os.path.join(home, ".bashrc")), "edited a profile it was not asked to"
+    assert "NOT on your PATH" in output, output
+
 CASES = (
     ("a written shim is executable and recognised by uninstall", write_and_detect_round_trip),
     ("writing the same shim twice changes nothing", writing_twice_is_idempotent),
@@ -164,6 +250,12 @@ CASES = (
     ("remove then write restores the command", remove_then_write_restores_the_command),
     ("an install.sh-era shim is recognised and removed", legacy_install_sh_shim_is_still_owned),
     ("symlinked checkout and bin paths resolve to this installation", symlinked_checkout_and_bin_are_the_same_installation),
+    ("the default install puts the command on PATH", the_default_install_puts_the_command_on_path),
+    ("setting up again replaces the PATH block", setting_up_again_replaces_the_path_block),
+    ("fish gets fish syntax, not a broken profile", fish_gets_fish_syntax),
+    ("uninstall leaves the profile as it found it", uninstall_takes_the_path_line_back_out),
+    ("a directory already on PATH needs no profile edit", a_directory_already_on_path_needs_no_profile),
+    ("an explicit EMBABEL_BIN_DIR is left to its owner", an_explicit_bin_dir_is_left_to_its_owner),
 )
 
 try:

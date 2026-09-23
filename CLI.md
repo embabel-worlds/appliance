@@ -13,8 +13,11 @@ copy to drift.
 curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | EMBABEL_MODE=worlds sh
 ```
 
-If `~/.local/bin` is not on your `PATH`, the installer says so and gives you the
-line to add.
+The `embabel` command goes in `~/.local/bin`. If that is not already on your
+`PATH` — it is not, on macOS — the installer adds it to your shell profile in a
+marked block that `embabel uninstall` takes back out. New terminals have the
+command; for the one you are in, `exec $SHELL`. Set `EMBABEL_BIN_DIR` to choose
+the directory yourself, and the installer leaves your profile alone.
 
 ---
 
@@ -768,7 +771,7 @@ appliance to write to your files, which is why the mount is read-only.
 
 | | |
 |---|---|
-| **macOS** | Supported. Docker Desktop with Model Runner enabled (Settings → AI). `embabel` lands in `~/.local/bin`, which is not on `PATH` by default — the installer says so and names your shell's profile. |
+| **macOS** | Supported. `embabel` lands in `~/.local/bin`, which macOS does not put on `PATH` — so the installer adds it to `~/.zshrc` (or your shell's profile) in a marked block, and uninstall removes it. Docker Model Runner is a Docker Desktop feature and optional: without it, `embabel embeddings use hosted`. |
 | **Linux** | Supported. Model Runner needs the `docker-model-plugin` package rather than a Desktop toggle. `~/.local/bin` is usually already on `PATH`. `embabel open` uses `xdg-open`; on a headless box it prints the URL and opens nothing, which is the useful behaviour over ssh. |
 | **Windows** | **WSL2 only** — see below. |
 

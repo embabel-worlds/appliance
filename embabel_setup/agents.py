@@ -56,6 +56,96 @@ _TOKEN_BLOCK_BEGIN_LINE = re.compile(
     rb"(?m)^(?:" + re.escape(TOKEN_BLOCK_BEGIN.encode()) + rb"|"
     + re.escape(TOKEN_BLOCK_BEGIN_WITH_SEPARATOR.encode()) + rb")\r?$"
 )
+# THE PATH BLOCK, which exists for the same reason the token block does: setup has to
+# change a file it does not own, and the only honest way to do that is to mark exactly
+# what is ours so uninstall can take back exactly that and nothing else.
+#
+# ~/.local/bin is on PATH by default on most Linux distributions and on NO macOS. So the
+# installer's own next sentence — "after this, use the 'embabel' command" — was false on
+# every Mac, and the fix it printed was a line for the user to copy. An installer that
+# knows the command will not work, knows the file to change, and asks the user to do it
+# anyway has chosen its own comfort over theirs.
+PATH_BLOCK_BEGIN = "# BEGIN embabel appliance PATH"
+# Same proof the token block keeps: that the preceding LF was added by setup and is ours
+# to take away. Without it, removal leaves a blank line per install — residue that makes
+# an uninstall look like it half-worked.
+PATH_BLOCK_BEGIN_WITH_SEPARATOR = "# BEGIN embabel appliance PATH (owns preceding newline)"
+PATH_BLOCK_END = "# END embabel appliance PATH"
+_PATH_EXPORT_LINE = rb"[^\r\n]*\r?\n"
+_PATH_BLOCK_PATTERN = re.compile(
+    rb"(?m)^" + re.escape(PATH_BLOCK_BEGIN.encode()) + rb"\r?\n"
+    + _PATH_EXPORT_LINE + re.escape(PATH_BLOCK_END.encode()) + rb"(?:\r?\n|$)"
+)
+_PATH_BLOCK_WITH_SEPARATOR_PATTERN = re.compile(
+    rb"(?m)\n^" + re.escape(PATH_BLOCK_BEGIN_WITH_SEPARATOR.encode()) + rb"\r?\n"
+    + _PATH_EXPORT_LINE + re.escape(PATH_BLOCK_END.encode()) + rb"(?:\r?\n|$)"
+)
+_PATH_BLOCK_BEGIN_LINE = re.compile(
+    rb"(?m)^(?:" + re.escape(PATH_BLOCK_BEGIN.encode()) + rb"|"
+    + re.escape(PATH_BLOCK_BEGIN_WITH_SEPARATOR.encode()) + rb")\r?$"
+)
+
+
+def path_export(directory: str, target: str | None = None) -> str:
+    """The line that puts [directory] on PATH, in the dialect of the profile it goes in.
+
+    fish is not sh and never has been: `export PATH=...` is a syntax error there, and a
+    profile that errors on load takes every new shell's startup with it.
+    """
+    if target and target.endswith("config.fish"):
+        return f"fish_add_path {shlex.quote(directory)}"
+    return f'export PATH={shlex.quote(directory)}:"$PATH"'
+
+
+def install_path_entry(directory: str, target: str) -> bool:
+    """Put [directory] on PATH in one replaceable block. True if the file changed.
+
+    Idempotent by replacement, not by appending: setting up again rewrites the block where
+    it stands, so a profile cannot collect one of these per install.
+    """
+    export = path_export(directory, target)
+    block = f"{PATH_BLOCK_BEGIN}\n{export}\n{PATH_BLOCK_END}\n".encode()
+    separator_block = f"\n{PATH_BLOCK_BEGIN_WITH_SEPARATOR}\n{export}\n{PATH_BLOCK_END}\n".encode()
+    existing = b""
+    if os.path.exists(target):
+        with open(target, "rb") as f:
+            existing = f.read()
+    if _PATH_BLOCK_WITH_SEPARATOR_PATTERN.search(existing):
+        updated = _PATH_BLOCK_WITH_SEPARATOR_PATTERN.sub(lambda _: separator_block, existing)
+    elif _PATH_BLOCK_PATTERN.search(existing):
+        updated = _PATH_BLOCK_PATTERN.sub(lambda _: block, existing)
+    elif not existing:
+        updated = block
+    else:
+        # Their last line keeps its ending; the blank line that follows is ours, and is
+        # marked as ours so that removal takes it back.
+        updated = existing + (b"" if existing.endswith(b"\n") else b"\n") + separator_block
+    if updated == existing:
+        return False
+    directory_of_target = os.path.dirname(target)
+    if directory_of_target:
+        os.makedirs(directory_of_target, exist_ok=True)
+    with open(target, "wb") as f:
+        f.write(updated)
+    return True
+
+
+def remove_path_entry(target: str) -> bool:
+    """Remove only complete appliance-owned PATH blocks from a shell profile."""
+    if not os.path.exists(target):
+        return False
+    with open(target, "rb") as f:
+        existing = f.read()
+    updated = _PATH_BLOCK_PATTERN.sub(b"", _PATH_BLOCK_WITH_SEPARATOR_PATTERN.sub(b"", existing))
+    if _PATH_BLOCK_BEGIN_LINE.search(updated):
+        print(warn(f"  Incomplete appliance PATH block in {target}; remove it manually."))
+    if updated == existing:
+        return False
+    with open(target, "wb") as f:
+        f.write(updated)
+    return True
+
+
 SHELL_PROFILES = {
     "zsh": "~/.zshrc",
     "bash": "~/.bashrc",

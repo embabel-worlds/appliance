@@ -22,7 +22,8 @@ import sys
 import threading
 import time
 
-from .agents import MCP_SERVER_NAME, shell_profile, unwire_coding_agents
+from .agents import (MCP_SERVER_NAME, install_path_entry, remove_path_entry, shell_profile,
+                     shell_profiles, unwire_coding_agents)
 from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_COMPOSE, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
@@ -454,13 +455,36 @@ exit 1
     if any(os.path.realpath(entry) == os.path.realpath(directory)
            for entry in os.environ.get("PATH", "").split(os.pathsep) if entry):
         print(f"  Installed the 'embabel' command to {directory}.")
+        print()
+        return path
+
+    # NOT ON PATH, WHICH IS THE DEFAULT ON macOS. ~/.local/bin is on PATH out of the box
+    # on most Linux distributions and on no Mac, so this branch is not an edge case — it
+    # is every Mac. It used to print the export line for the user to copy, immediately
+    # before setup said "after this, use the 'embabel' command", which was false for them
+    # and false in the same breath. So the line goes in, in a block uninstall can take
+    # back out, and the message says what was done rather than what they must do.
+    #
+    # EXCEPT when EMBABEL_BIN_DIR named the directory. Somebody who chose where the
+    # command goes has a PATH they manage themselves, and editing their profile after
+    # they told us where to write would be presumption, not help.
+    profile = shell_profile()
+    chosen_by_hand = bool(os.environ.get("EMBABEL_BIN_DIR"))
+    if profile and not chosen_by_hand and install_path_entry(directory, profile):
+        shown = profile.replace(os.path.expanduser("~"), "~", 1)
+        print(f"  Installed the 'embabel' command to {directory}, and added that to {shown}.")
+        # THIS shell cannot be changed from here — a child process cannot alter its
+        # parent's environment — so say the two things that are true right now rather
+        # than leave them to discover the command still does not run.
+        print("  " + dim("New terminals have it. In this one:  exec $SHELL"))
+        print("  " + dim(f"Or run it by path any time:  {path}"))
     else:
-        # Name the profile THEY use: sending a bash user to ~/.zshrc gives them
-        # no usable instruction at all.
-        profile = shell_profile()
+        # Name the profile THEY use: sending a bash user to ~/.zshrc gives them no usable
+        # instruction at all.
         shown = profile.replace(os.path.expanduser("~"), "~", 1) if profile else "your shell profile"
         print(f"  Installed the 'embabel' command to {directory}, which is NOT on your PATH.")
         print(f'  Add it to {shown}:  export PATH="{directory}:$PATH"')
+        print("  " + dim(f"Until then, run it by path:  {path}"))
     print()
     return path
 
@@ -517,6 +541,15 @@ def remove_cli_shim() -> None:
         except OSError as e:
             print(f"  Could not remove {path}: {e}")
 
+    # AND THE PATH LINE, wherever setup put one. Removing the command and leaving the
+    # directory on PATH would leave a profile pointing at nothing — harmless, and exactly
+    # the kind of residue that makes people distrust an uninstall. Every supported profile
+    # is checked rather than the current shell's, because the shell that installs is not
+    # always the shell that uninstalls, and only complete appliance-owned blocks are taken.
+    for profile in shell_profiles():
+        if remove_path_entry(profile):
+            print(f"  Removed the appliance PATH line from {profile}.")
+
     # A DIFFERENT `embabel` may still answer, and saying so is the point: otherwise the next
     # `which embabel` shows a hit and the uninstall looks like it failed again, which is exactly
     # the confusion this function exists to end.
@@ -559,6 +592,7 @@ def uninstall() -> None:
     print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
     print(f"    the '{MCP_SERVER_NAME}' MCP registration — only where it points at THIS appliance")
     print("    its marked Codex token block in supported shell profiles — only when registration ownership is verified")
+    print("    its marked PATH block in supported shell profiles — the line setup added to reach the command")
     for path in cli_shim_paths():
         if os.path.exists(path) and is_our_shim(path):
             print(f"    {path} — the 'embabel' command setup put on your PATH")
