@@ -122,10 +122,23 @@ services:
       # Nothing else is required of an operator — the model itself is pulled on the
       # HOST by `embabel embeddings use local`, outside the composition.
       #
+      # ENDING AT `/v1` IS LOAD-BEARING, and the framework's own default does not.
+      # Two consumers read this one value and they disagree: the model listing appends
+      # `/v1/models`, while the openai-java SDK appends the bare `/embeddings`. With
+      # the value the default implies, discovery lists a runner's models and every call
+      # to one 404s on `/engines/embeddings` — chat as well as embedding.
+      #
+      # `/engines/v1` is the one value that satisfies both, because the runner answers
+      # a doubled version segment: `/engines/v1/v1/models` 200 (discovery) and
+      # `/engines/v1/embeddings` 200 (the SDK). Both verified against Docker Model
+      # Runner. It stays right once embabel/embabel-agent#2058 lands too — that fix
+      # leaves a base already ending at the version alone — so this is not a hack
+      # waiting to be reverted.
+      #
       # Costs nothing where there is no runner. Discovery fails and registers no
       # models, which is the same posture as the two lines above and the reason they
       # are unconditional too.
-      - EMBABEL_AGENT_MODELS_DOCKER_BASE_URL=${DOCKER_MODELS_BASE_URL:-http://model-runner.docker.internal/engines}
+      - EMBABEL_AGENT_MODELS_DOCKER_BASE_URL=${DOCKER_MODELS_BASE_URL:-http://model-runner.docker.internal/engines/v1}
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:${ASSISTANT_PORT:-11042}}
       # The code-mode sandbox image, so the app launches whatever the pre-pull in
       # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
