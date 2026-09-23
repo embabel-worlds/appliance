@@ -107,6 +107,25 @@ services:
       # a person would think to set.
       - EMBABEL_AGENT_PLATFORM_MODELS_LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
       - EMBABEL_AGENT_PLATFORM_MODELS_OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # DOCKER MODEL RUNNER, named on every boot rather than only when the local
+      # embedder overlay is composed in. It was conditional, and that made
+      # `embabel embeddings use local` cost a restart for a reason that had nothing
+      # to do with the model: the container simply did not know where the runner was
+      # until it was recreated with this variable present. The framework's default is
+      # `http://localhost:12434/engines` — the CONTAINER's loopback, never the host's —
+      # so unset meant "discover nothing", silently, exactly as LM Studio and Ollama
+      # did before the note above.
+      #
+      # `model-runner.docker.internal` rather than `host.docker.internal:12434`:
+      # both reach the runner from in here, but the host port exists only when
+      # Docker Desktop's host-side TCP is switched on, and this name does not need it.
+      # Nothing else is required of an operator — the model itself is pulled on the
+      # HOST by `embabel embeddings use local`, outside the composition.
+      #
+      # Costs nothing where there is no runner. Discovery fails and registers no
+      # models, which is the same posture as the two lines above and the reason they
+      # are unconditional too.
+      - EMBABEL_AGENT_MODELS_DOCKER_BASE_URL=${DOCKER_MODELS_BASE_URL:-http://model-runner.docker.internal/engines}
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:${ASSISTANT_PORT:-11042}}
       # The code-mode sandbox image, so the app launches whatever the pre-pull in
       # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
