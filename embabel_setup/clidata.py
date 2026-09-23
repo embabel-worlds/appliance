@@ -353,16 +353,19 @@ def cmd_sandbox(args) -> int:
 def _applied_live(args, model: str) -> bool:
     """Put the choice into effect now, if the appliance is up and can take it.
 
-    THE LOCAL MODEL CANNOT BE DONE THIS WAY and is not attempted. It needs its compose overlay
-    composed in — a container that is not running cannot be talked into serving a model — so that
-    one restart is real and saying otherwise would be a lie the next upload would expose.
+    THE LOCAL MODEL IS ATTEMPTED TOO, and used not to be. Two separate things stopped it, and
+    both are now gone: the container was never told where Docker Model Runner listens unless the
+    embedder overlay was composed in (named unconditionally in both compose files now), and the
+    platform enumerated a runner's models once at startup, so one pulled a minute later was
+    invisible however reachable it was (resolved per call now — embabel/embabel-agent#2046).
+    Neither had anything to do with the model itself, which `choose_embeddings` has always pulled
+    on the HOST, outside the composition.
 
     Nothing here is required. A refusal, an older server that does not take a role by name, an
-    appliance that is down: each leaves .env correct and the restart still works, so every failure
-    path simply returns False and lets the caller print what it was going to print anyway.
+    appliance that is down, a runner that is not running: each leaves .env correct and the restart
+    still works, so every failure path simply returns False and lets the caller print what it was
+    going to print anyway.
     """
-    if model == s.LOCAL_EMBEDDING_MODEL:
-        return False
     base, auth = _sample_target(args)
     if not base:
         return False

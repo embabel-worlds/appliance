@@ -152,4 +152,38 @@ import urllib.error  # noqa: E402
 assert apply_with(raises=urllib.error.URLError("down")) is False
 assert apply_with(raises=OSError("connection refused")) is False
 
+# THE LOCAL CHOICE IS APPLIED LIVE, like the hosted one. It used to be refused outright, for two
+# reasons that were true and are not any more: the container was not told where Docker Model
+# Runner listens unless the embedder overlay was composed in, and the platform enumerated a
+# runner's models once at startup (embabel/embabel-agent#2046). A silent return to refusing it
+# would look exactly like an appliance that simply needs a restart, which is the sentence this
+# whole file exists to stop anybody printing when it is not true.
+import inspect  # noqa: E402
+
+from embabel_setup import clidata  # noqa: E402
+
+_applied_live_source = inspect.getsource(clidata._applied_live)
+assert "return False" in _applied_live_source, "sanity: the soft-failure paths should still exist"
+assert "if model == s.LOCAL_EMBEDDING_MODEL:" not in _applied_live_source, \
+    "`use local` must be attempted on the running appliance, not short-circuited"
+
+# BOTH compose files name the Model Runner endpoint, on every boot. Naming it in one is the
+# failure this guards: the two modes share one graph and one embedding model, so a door that
+# cannot reach the runner is a door where `use local` needs a restart and the other does not.
+_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for compose in ("docker-compose-me.yml", "docker-compose-worlds.yml"):
+    text = open(os.path.join(_repo, compose)).read()
+    assigned = [
+        line.split("=", 1)[1].strip()
+        for line in text.splitlines()
+        if "EMBABEL_AGENT_MODELS_DOCKER_BASE_URL=" in line and not line.lstrip().startswith("#")
+    ]
+    assert assigned, \
+        f"{compose} must name the Model Runner endpoint unconditionally, beside LM Studio and Ollama"
+    # The assignment only, never the prose around it: the comment explaining why the framework's
+    # own default is wrong has to be free to quote that default.
+    for value in assigned:
+        assert "localhost:12434" not in value, \
+            f"{compose} points at the CONTAINER's own loopback, which discovers nothing"
+
 print("embeddings role: ok")
