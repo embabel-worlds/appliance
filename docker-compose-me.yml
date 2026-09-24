@@ -125,7 +125,17 @@ services:
       # Costs nothing where there is no runner. Discovery fails and registers no
       # models, which is the same posture as the two lines above and the reason they
       # are unconditional too.
-      - EMBABEL_AGENT_MODELS_DOCKER_BASE_URL=${DOCKER_MODELS_BASE_URL:-http://model-runner.docker.internal/engines}
+      # ENDS AT /v1, because the runner's inference paths do.
+      #
+      # `/engines` can LIST models and 404s on every inference call, which is the worst shape this
+      # can take: discovery succeeds, the model is offered in the console, and choosing it fails
+      # when something asks the model its dimensions — a live embed call — with
+      # `404: Unknown` out of the OpenAI SDK. Verified from inside the container:
+      # POST /engines/embeddings is 404 and POST /engines/v1/embeddings is 200.
+      #
+      # The openai SDK appends bare paths like `/embeddings`, so the version has to be in the base
+      # URL; nothing downstream adds it.
+      - EMBABEL_AGENT_MODELS_DOCKER_BASE_URL=${DOCKER_MODELS_BASE_URL:-http://model-runner.docker.internal/engines/v1}
       - ASSISTANT_PUBLIC_BASE_URL=${ASSISTANT_PUBLIC_BASE_URL:-http://localhost:${ASSISTANT_PORT:-11042}}
       # The code-mode sandbox image, so the app launches whatever the pre-pull in
       # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
@@ -198,7 +208,21 @@ services:
       # the same artifact.
       #
       # Spring reads this as embabel.models.default-embedding-model.
-      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-}
+      # `hosted`, NOT EMPTY, and that is a decision reversed rather than a typo fixed.
+      #
+      # The empty value was deliberate: an appliance shipped unable to embed, so passing nothing
+      # here beat the image's own default and kept document features off until somebody chose. The
+      # premise was that every embedder cost a key or a gigabyte.
+      #
+      # It no longer does. The image carries all-MiniLM-L6-v2 in process (embabel/me#1556), and
+      # the appliance profile maps the `hosted` role to it, so the default now resolves to
+      # something that works with no key, no runner and no download. Passing empty here is what
+      # stopped that: it overrode the role with nothing, and a fresh appliance sat on the
+      # placeholder with ONNX loaded and unreachable.
+      #
+      # A ROLE rather than a name, for the reason the role exists: it is resolved per call, so a
+      # provider key arriving later moves embeddings onto the better model without a restart.
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-hosted}
       # MCP bearer credentials. First-run setup normally mints these into the data
       # volume (setup.py, the "Connect coding agents" step); the values below are the
       # scripted-deploy fallback from .env. They are EMBABEL_* rather than the
