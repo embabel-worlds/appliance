@@ -222,7 +222,19 @@ services:
       #
       # A ROLE rather than a name, for the reason the role exists: it is resolved per call, so a
       # provider key arriving later moves embeddings onto the better model without a restart.
-      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-hosted}
+      # THE MODEL BY NAME, not the `hosted` role, and the difference is not cosmetic.
+      #
+      # A role resolves against whichever provider is ACTIVE, and `embedding-roles.<role>.<provider>`
+      # names a model BELONGING TO that provider — so there is no way to say "when this key cannot
+      # embed, use the built-in". Pointing anthropic at `all-MiniLM-L6-v2` asks the platform to
+      # build MiniLM as an Anthropic model and fails with "Nothing built an embedding service for
+      # provider 'anthropic'" — the same error as naming nothing at all. Tried, on a real install.
+      #
+      # The built-in is registered under its own provider and is always there, so naming it
+      # resolves whatever key is or is not present. It does not upgrade itself when a better key
+      # arrives, and that is deliberate: switching re-embeds every stored vector, so the upgrade is
+      # offered on the Embeddings tab rather than taken on somebody's behalf.
+      - EMBABEL_MODELS_DEFAULT_EMBEDDING_MODEL=${ASSISTANT_EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       # MCP bearer credentials. First-run setup normally mints these into the data
       # volume (setup.py, the "Connect coding agents" step); the values below are the
       # scripted-deploy fallback from .env. They are EMBABEL_* rather than the
