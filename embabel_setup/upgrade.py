@@ -17,7 +17,7 @@ from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
 from .settings import source_ref, source_repo
 
-from .dockerlib import _compose, _docker, find_mode_container
+from .dockerlib import _compose, _docker, find_mode_container, retire_monitoring
 from .versions import image_identity, mode_image
 
 def _head() -> str | None:
@@ -141,6 +141,7 @@ def upgrade(mode: str) -> dict:
         raise SetupError("docker compose pull failed — see the output above.")
     if _compose(mode, "up", "-d").returncode != 0:
         raise SetupError("docker compose up failed — see the output above.")
+    retire_monitoring(mode)
 
     after = image_identity(mode_image(mode) or "")
     if before.get("digest") and after.get("digest") and before["digest"] != after["digest"]:

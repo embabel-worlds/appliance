@@ -21,6 +21,7 @@ import shutil
 from .colour import MIDDOT, dim, warn
 from .dockerlib import _docker, graph_engine
 from .memory import describe, plan, resolve
+from .settings import monitoring_enabled
 
 # Measured on a working worlds appliance, idle: worlds 2.47 GiB, neo4j 2.09 GiB, console
 # 7.5 MiB. Rounded up, because a code sandbox is another container and nobody installs
@@ -104,7 +105,7 @@ def capacity_notes() -> list[tuple[bool, str]]:
         notes.append((False, f"Docker has {gb(memory)} of memory and {have['cpus']} CPU(s)."))
     if memory:
         # The limits `embabel up` will apply (#111), from the same probe.
-        notes.append((False, f"Memory limits: {describe(resolve(plan(memory, graph_engine())))}."))
+        notes.append((False, f"Memory limits: {describe(resolve(plan(memory, graph_engine(), monitoring_enabled())))}."))
 
     if disk and disk < CORE_DISK_BYTES:
         notes.append((True,

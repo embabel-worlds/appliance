@@ -350,7 +350,8 @@ genuinely too little, and the first thing to give room to is the appliance rathe
 the graph.
 
 **Each container has its own memory limit.** `embabel up` splits Docker's memory between
-the app, the graph and docling, and `embabel doctor` prints the split. Before this, every
+the app, the graph and docling, and `embabel doctor` prints the split. Prometheus and
+Grafana are off unless `EMBABEL_MONITORING=on`, and only then is memory held back for them. Before this, every
 service sized itself against the whole VM: during a large ingest the VM ran out, the kernel
 killed the app with nothing in its log, and the console showed 502 until it rebooted. With
 limits, a spike stays in the service that caused it. A large PDF can now fail conversion
@@ -368,8 +369,8 @@ Defaults; `EMBABEL_PORT_BASE` in `.env` shifts the whole block.
 | 11044 | the Worlds console |
 | 11045 | Neo4j browser |
 | 11046 | Neo4j bolt, for `cypher-shell` |
-| 11047 | Grafana |
-| 11048 | Prometheus |
+| 11047 | Grafana, when `EMBABEL_MONITORING=on` |
+| 11048 | Prometheus, when `EMBABEL_MONITORING=on` |
 
 ---
 

@@ -23,8 +23,8 @@ from .core import (
 )
 from .memory import memory_env
 from .settings import (
-    compose_project, configured_mode, env_file_value, env_path, instance, phone_home_on,
-    port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
+    compose_project, configured_mode, env_file_value, env_path, instance, monitoring_enabled,
+    phone_home_on, port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
@@ -33,6 +33,8 @@ from .settings import (
 # before handing over the terminal meant staring at a progress bar for several
 # gigabytes to reach a login page that needed one.
 DEFERRED_SERVICES = ("sandbox-image", "prometheus", "grafana", "docling")
+# Behind the `monitoring` profile, off unless EMBABEL_MONITORING is on (#112).
+MONITORING_SERVICES = ("prometheus", "grafana")
 # What each is for, in the one line the operator sees while it arrives.
 DEFERRED_WHY = {
     "docling": "structured PDF and Office conversion",
@@ -161,19 +163,44 @@ def compose_env() -> dict:
     env["EMBABEL_INSTANCE"] = instance()
     # Container memory limits sized from what Docker has (#111). Already resolved
     # against .env and the environment, so a value the operator set is passed through.
-    env.update(memory_env(graph_engine()))
+    env.update(memory_env(graph_engine(), monitoring_enabled()))
     # The switch resolved to an address. Empty is the off state the compose files
     # already default to; this only ever turns it ON.
     env["ASSISTANT_PHONE_HOME_ENDPOINT"] = PHONE_HOME_ENDPOINT if phone_home_on() else ""
-    # The opt-in SQL endpoint is a compose PROFILE, off unless enabled. Turning it on here —
+    # Opt-in services are compose PROFILES, off unless enabled. Turning them on here —
     # in the environment compose runs with — rather than in .env keeps the compose files
     # pull-only and means a profile the operator set by hand is merged, not clobbered.
-    if sql_enabled():
+    wanted = [name for name, on in (("world-sql", sql_enabled()), ("monitoring", monitoring_enabled())) if on]
+    if wanted:
         profiles = [p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()]
-        if "world-sql" not in profiles:
-            profiles.append("world-sql")
-        env["COMPOSE_PROFILES"] = ",".join(profiles)
+        env["COMPOSE_PROFILES"] = ",".join(profiles + [p for p in wanted if p not in profiles])
     return env
+
+
+def deferred_services() -> tuple[str, ...]:
+    """The services started after the mode is up. Naming a profiled service to
+    `up` starts it whatever COMPOSE_PROFILES says, so monitoring is left out here
+    when it is off, not merely left out of the profile list."""
+    skip = () if monitoring_enabled() else MONITORING_SERVICES
+    return tuple(name for name in DEFERRED_SERVICES if name not in skip)
+
+
+def retire_monitoring(mode: str) -> None:
+    """Remove Prometheus and Grafana when monitoring is off.
+
+    An install from before monitoring was opt-in still has both, and `up` leaves a
+    service outside the active profiles alone rather than stopping it — while the
+    memory split no longer holds anything back for them. Their volumes stay, so the
+    metric history is there if monitoring is turned back on.
+    """
+    if monitoring_enabled():
+        return
+    try:
+        _compose(mode, "rm", "--stop", "--force", *MONITORING_SERVICES, capture=True)
+    except SetupError as e:
+        print(dim(f"  Could not remove the monitoring containers ({e}); `embabel down` stops them."))
+
+
 def announce_github_token() -> None:
     """Say once, before the containers start, whether private realms will resolve. Never print the
     token itself — this runs in terminals people screen-share."""

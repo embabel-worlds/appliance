@@ -28,8 +28,9 @@ def check(ok: bool, message: str) -> None:
         failures.append(message)
 
 
-def budget(docker_memory: int) -> int:
-    return docker_memory - memory.RESERVE_BYTES - sum(memory.MONITORING_LIMITS.values())
+def budget(docker_memory: int, monitoring: bool = False) -> int:
+    held = sum(memory.MONITORING_LIMITS.values()) if monitoring else 0
+    return docker_memory - memory.RESERVE_BYTES - held
 
 
 # The crash that prompted this: 7.65GB of Docker memory. Every byte of the budget is
@@ -65,6 +66,23 @@ check(memory.plan(small, "MEMORY")["APP_MEM_LIMIT"] > memory.plan(small)["APP_ME
 heap, pagecache = memory.neo4j_memory(4 * GIB)
 check(heap + pagecache + memory.NEO4J_OVERHEAD == 4 * GIB, f"neo4j 4GB: heap {heap} + cache {pagecache}")
 
+# Neo4j's own non-heap memory was measured at ~500 MiB during an ingest (#111). An
+# allowance below that is how it was OOM-killed inside its limit at 384.
+check(memory.NEO4J_OVERHEAD >= 512 * memory.MIB, f"NEO4J_OVERHEAD {memory.NEO4J_OVERHEAD} is below the measured need")
+for monitoring in (False, True):
+    sized = memory.plan(small, monitoring=monitoring)
+    check(sized["NEO4J_HEAP"] + sized["NEO4J_PAGECACHE"] + memory.NEO4J_OVERHEAD <= sized["NEO4J_MEM_LIMIT"],
+          f"7.65GB, monitoring={monitoring}: neo4j heap + page cache + overhead exceed its limit: {sized}")
+    check(sized["NEO4J_PAGECACHE"] >= memory.NEO4J_PAGECACHE_MIN, f"7.65GB: page cache below its minimum: {sized}")
+
+# Monitoring is opt-in (#112): off, nothing is held back for it and the services
+# that do the work get that memory; on, both are capped.
+off, on = memory.plan(small), memory.plan(small, monitoring=True)
+check(not any(var in off for var in memory.MONITORING_LIMITS), f"monitoring off still reserves memory: {off}")
+check(all(var in on for var in memory.MONITORING_LIMITS), f"monitoring on does not cap it: {on}")
+check(sum(off[s.var] for s in SIZED) - sum(on[s.var] for s in SIZED) >= sum(memory.MONITORING_LIMITS.values()) - len(SIZED),
+      "turning monitoring off did not pass its memory to the sized services")
+
 
 def resolved_with(settings: dict[str, str], docker_memory: int = small) -> dict[str, str]:
     with patch.object(memory, "chosen", side_effect=settings.get):
@@ -99,19 +117,38 @@ def capacity():
 
 with patch("embabel_setup.capacity.docker_capacity", side_effect=capacity), \
         patch.object(memory, "chosen", return_value=None), \
+        patch.object(dockerlib, "monitoring_enabled", return_value=False), \
+        patch.object(dockerlib, "sql_enabled", return_value=False), \
         patch.object(dockerlib, "github_token", return_value=None):
     env = dockerlib.compose_env()
     dockerlib.compose_env()
+    deferred_off = dockerlib.deferred_services()
 check(all(var in env for var in ("APP_MEM_LIMIT", "NEO4J_MEM_LIMIT", "DOCLING_MEM_LIMIT")),
       "compose_env does not carry the memory limits")
 check(len(calls) == 1, f"docker was asked for its memory {len(calls)} times")
+check("monitoring" not in env.get("COMPOSE_PROFILES", ""), f"monitoring profile on by default: {env.get('COMPOSE_PROFILES')}")
+check(not set(dockerlib.MONITORING_SERVICES) & set(deferred_off),
+      f"monitoring off, yet started by name (which overrides the profile): {deferred_off}")
+
+# On, the profile is added — merged with one the operator set, never replacing it.
+with patch("embabel_setup.capacity.docker_capacity", side_effect=capacity), \
+        patch.object(memory, "chosen", return_value=None), \
+        patch.object(dockerlib, "monitoring_enabled", return_value=True), \
+        patch.object(dockerlib, "sql_enabled", return_value=False), \
+        patch.object(dockerlib, "github_token", return_value=None), \
+        patch.dict(os.environ, {"COMPOSE_PROFILES": "openwebui"}):
+    env_on = dockerlib.compose_env()
+    deferred_on = dockerlib.deferred_services()
+check(env_on.get("COMPOSE_PROFILES") == "openwebui,monitoring", f"monitoring profile not merged: {env_on.get('COMPOSE_PROFILES')}")
+check(set(dockerlib.MONITORING_SERVICES) <= set(deferred_on), f"monitoring on, but not started: {deferred_on}")
+check("GRAFANA_MEM_LIMIT" in env_on, "monitoring on, but its memory is not capped")
 memory.memory_env.cache_clear()
 
 # Every limit the plan computes is read by a compose file; one nobody reads is a
 # limit that silently does not apply.
 compose_text = "".join(open(os.path.join(ROOT, f)).read()
                        for f in ("infra.yml", "docker-compose-worlds.yml", "docker-compose-me.yml"))
-for var in memory.plan(small):
+for var in memory.plan(small, monitoring=True):
     check(f"${{{var}:-" in compose_text, f"no compose file reads {var}")
 
 if failures:

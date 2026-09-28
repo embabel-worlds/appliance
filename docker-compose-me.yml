@@ -248,10 +248,13 @@ services:
       # `none` drops document conversion to raw Tika and makes the docling service
       # (a multi-GB image) unnecessary.
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
-      # A percentage of THIS container's limit (mem_limit below). 60 rather than 75:
-      # the other 40% holds what the JVM keeps outside its heap, the in-process
-      # embedding model included.
-      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=60}
+      # Measured on a 2.79 GiB limit ingesting 28 books at once (#111): at 60% heap the
+      # container reached 97% of its limit and stayed there, because G1 never returns
+      # committed heap and the JVM keeps ~1 GB outside it. At 45%, with committed heap
+      # returned when idle and glibc held to two malloc arenas, it peaked at 58-66%.
+      # The live heap after that ingest was ~300 MB, so 45% is still generous.
+      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000}
+      - MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
       # Reported in the usage payload as `packaging`, so we can tell an appliance from a
       # bare jar — and this mode from the worlds mode. It is a constant, not information
       # about you — see PHONE_HOME.md.

@@ -13,7 +13,7 @@ the service that caused it: docling dies on a huge PDF and restarts, and docker
 records OOMKilled against the container that actually ran out.
 
 HOW THE SHARES ARE DECIDED. A fixed reserve for the VM and everything uncapped (the
-console, sandboxes), a fixed cap for monitoring, then every sized service gets its
+console, sandboxes), a fixed cap for monitoring when it is on, then every sized service gets its
 minimum, the rest is split by weight, and a service stops at the maximum past which
 more memory buys it nothing — its excess goes to the others. Past every maximum, the
 remainder is left unallocated, which is the right answer on a large machine.
@@ -41,6 +41,8 @@ RESERVE_BYTES = GIB // 2
 
 # Measured idle at 249MB (grafana) and 90MB (prometheus). Fixed, because neither
 # grows with how much the appliance is used in any way that matters to one person.
+# Held back only when monitoring is on (#112): off, it is memory for the services
+# that do the work.
 MONITORING_LIMITS = {"GRAFANA_MEM_LIMIT": 384 * MIB, "PROMETHEUS_MEM_LIMIT": 384 * MIB}
 
 
@@ -67,7 +69,12 @@ DOCLING = Share("DOCLING_MEM_LIMIT", minimum=3 * GIB // 2, weight=25, maximum=8 
 NEO4J_HEAP_SHARE = 0.4
 NEO4J_HEAP_MIN = GIB
 NEO4J_HEAP_MAX = 4 * GIB
-NEO4J_OVERHEAD = 384 * MIB
+# Measured, not estimated: ingesting 28 books at once, Neo4j's JVM held ~500 MiB outside
+# its heap (metaspace 152, code 70, GC 69, other 104, class 29, threads 10), and its
+# page cache sits outside that again. At 384 the heap, page cache and this filled the
+# limit exactly, and Neo4j was OOM-killed inside it (#111). The margin is for GC
+# structures, which grow with the heap: that ingest only committed half of it.
+NEO4J_OVERHEAD = 640 * MIB
 NEO4J_PAGECACHE_MIN = 256 * MIB
 
 
@@ -110,10 +117,11 @@ def neo4j_memory(limit: int, heap: int | None = None) -> tuple[int, int]:
     return heap, max(limit - heap - NEO4J_OVERHEAD, NEO4J_PAGECACHE_MIN)
 
 
-def plan(docker_memory: int, engine: str = "NEO4J") -> dict[str, int]:
+def plan(docker_memory: int, engine: str = "NEO4J", monitoring: bool = False) -> dict[str, int]:
     """Every limit, in bytes, keyed by the variable the compose files read."""
-    budget = docker_memory - RESERVE_BYTES - sum(MONITORING_LIMITS.values())
-    limits = {**MONITORING_LIMITS, **split(budget, shares_for(engine))}
+    held = MONITORING_LIMITS if monitoring else {}
+    budget = docker_memory - RESERVE_BYTES - sum(held.values())
+    limits = {**held, **split(budget, shares_for(engine))}
     if "NEO4J_MEM_LIMIT" in limits:
         heap, pagecache = neo4j_memory(limits["NEO4J_MEM_LIMIT"])
         limits["NEO4J_HEAP"] = heap
@@ -167,7 +175,7 @@ def resolve(limits: dict[str, int]) -> dict[str, str]:
 
 
 @lru_cache(maxsize=None)
-def memory_env(engine: str) -> dict[str, str]:
+def memory_env(engine: str, monitoring: bool) -> dict[str, str]:
     """The limits `docker compose` runs with, or nothing if Docker cannot be asked.
 
     Cached: every compose call builds its environment, and `docker info` is a round
@@ -180,7 +188,7 @@ def memory_env(engine: str) -> dict[str, str]:
     have = docker_capacity()
     if not have or not have["memory"]:
         return {}
-    return resolve(plan(have["memory"], engine))
+    return resolve(plan(have["memory"], engine, monitoring))
 
 
 def describe(env: dict[str, str]) -> str:

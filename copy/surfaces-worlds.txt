@@ -3,7 +3,7 @@
                    Everything you need is here.
 
     {api}   ((what the console calls — a machine surface, not a page to visit))
-    {dashboards}   ·   Metrics  {metrics}
+    {dashboards}
 
     {mcp}         ((embabel-chat — chat clients, the assistant surface))
     {mcp_code}    ((embabel-code — coding agents: realms, authoring))

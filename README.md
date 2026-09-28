@@ -240,7 +240,7 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 | +2 | **11044** | worlds-console | **Worlds' front door** |
 | +3 | 11045 | neo4j | the knowledge graph, browser |
 | +4 | 11046 | neo4j | the same, Bolt |
-| +5 | 11047 | grafana | dashboards over the metrics — on by default |
+| +5 | 11047 | grafana | dashboards over the metrics — off by default, `EMBABEL_MONITORING=on` |
 | +6 | 11048 | prometheus | scrapes and stores them, 15 days by default |
 | +7 | 11049 | open-webui | optional alternative chat front-end, off by default |
 | +8…+15 | 11050–11057 | — | spare, so the next service does not need a new block |
@@ -414,11 +414,11 @@ reconciles the project to exactly those profiles on every `up`.
 |---|---|
 | `openwebui` | Open WebUI on 11049 with the assistant pre-wired as an MCP tool server. Create an account on first visit; the first account is the admin. |
 
-Grafana and Prometheus are **not** profile-gated — they are ordinary services and start
-with everything else. A compose profile can only ever be *off* by default, since compose
-activates one only when `COMPOSE_PROFILES` names it, and this appliance is designed to run
-with no `.env` at all. To turn the dashboards off, delete those two services from
-`docker-compose.yml`.
+Grafana and Prometheus are behind the `monitoring` profile and are **off by default**:
+together they held back 768 MiB of a small machine's memory for dashboards most people
+never open. Turn them on with `EMBABEL_MONITORING=on` in `.env`, then `embabel up`, which
+adds the profile and reserves their memory in the split. Turning them off again removes
+the two containers on the next `embabel up`; their volumes, and so the metric history, stay.
 
 | Variable | Notes |
 |---|---|
@@ -432,7 +432,7 @@ would silently stop anything started under an ad-hoc profile.
 
 ### Metrics
 
-Open <http://localhost:11047>. It lands on **Surface Health**; six more dashboards — LLM,
+Off by default; `EMBABEL_MONITORING=on` in `.env`, then `embabel up`. Then open <http://localhost:11047>. It lands on **Surface Health**; six more dashboards — LLM,
 MCP Surface, HTTP & JVM, Graph & Tenancy, Code Mode & Sandbox, Virtual Cypher — are in
 the dashboard list. There is no login: like every other port here it binds to
 `127.0.0.1`, so anyone who can reach 11047 is an admin.
@@ -673,7 +673,7 @@ move between versions.
 | `assistant` restarts during boot | Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
 | An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
-| Nothing on 11047 | `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
+| Nothing on 11047 | Monitoring is off by default: `EMBABEL_MONITORING=on` in `.env`, then `embabel up`. If it is on, `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
 | Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:11048/api/v1/targets` — the `embabel-assistant` target should be `up` |
 | Port already in use | Change the port variables in `.env` |
 

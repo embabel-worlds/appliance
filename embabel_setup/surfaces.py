@@ -18,7 +18,7 @@ import sys
 
 from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
-from .settings import console_url, sql_enabled, surface_urls
+from .settings import console_url, monitoring_enabled, sql_enabled, surface_urls
 from .words import say
 
 # THE VERB, which every ending was missing.
@@ -78,8 +78,7 @@ def print_worlds_surfaces(base: str) -> None:
         # should be — the console is the surface. The label carries that now instead
         # of leaving it to the aside.
         api="API (no UI)    " + url(base) + "  ",
-        dashboards="Dashboards     " + url(surface_urls()["dashboards"]),
-        metrics=url(surface_urls()["metrics"]),
+        dashboards=monitoring_line(),
         mcp="MCP servers    " + url(base + "/mcp/chat"),
         mcp_code="               " + url(base + "/mcp/code"))
     # Only when the operator turned it on — an off endpoint is not a surface. Shown as a
@@ -91,6 +90,15 @@ def print_worlds_surfaces(base: str) -> None:
               + "  " + dim("(BI / dbt / notebooks)"))
     print()
     print_next()
+
+
+def monitoring_line() -> str:
+    """Where the dashboards are, or how to have them. Off by default (#112), and the
+    line stays either way: somebody looking for dashboards should find the switch."""
+    if not monitoring_enabled():
+        return "Dashboards     " + dim("off — EMBABEL_MONITORING=on in .env, then embabel up")
+    return ("Dashboards     " + url(surface_urls()["dashboards"])
+            + "   ·   Metrics  " + url(surface_urls()["metrics"]))
 
 
 def print_me_surfaces(base: str) -> None:
