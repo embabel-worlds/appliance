@@ -452,6 +452,7 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=60` | JVM memory, as a share of the app container's limit. |
 | `APP_MEM_LIMIT` · `NEO4J_MEM_LIMIT` · `DOCLING_MEM_LIMIT` | sized from Docker's memory | Container memory limits. `embabel up` splits what Docker has between the app, the graph and docling (`embabel doctor` prints the split); set one to override it. |
 | `NEO4J_PASSWORD` | `embabel-assistant` | Change before the appliance is anything but local. |
+| `DOCLING_WORKERS` | derived from `DOCLING_MEM_LIMIT` | Docling's worker count, and how many docling requests the app keeps in flight. One per 3.5 GiB of docling's limit, at least one: each worker loads its own models. |
 | `NEO4J_HEAP` · `NEO4J_PAGECACHE` | derived from `NEO4J_MEM_LIMIT` | Neo4j's heap and page cache. Set by hand, they are kept and the limit grows to hold them. |
 | `TZ` | your host's zone (written by `setup.py`; `Etc/UTC` if undetectable) | The containers' — and so the assistant's — clock. Set it yourself only to override the detected zone (IANA name, e.g. `Australia/Sydney`). |
 

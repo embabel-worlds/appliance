@@ -115,6 +115,11 @@ services:
     mem_limit: ${DOCLING_MEM_LIMIT:-8g}
     environment:
       - DOCLING_SERVE_ENABLE_UI=0
+      # Each worker loads its own models and converts its own document, so the limit
+      # above must hold every worker at its peak together. `embabel up` derives the count
+      # from the limit (one below 7 GiB) and gives the app the same number, so it never
+      # sends more at once (embabel/me#1730). 2 is docling's default, for a hand-run compose.
+      - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=${DOCLING_WORKERS:-2}
 
   # ── Code sandbox image, pre-pulled ──────────────────────────────────────────
   # Not a running service: a one-shot that exists so `docker compose up` pulls the

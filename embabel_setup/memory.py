@@ -77,6 +77,24 @@ NEO4J_HEAP_MAX = 4 * GIB
 NEO4J_OVERHEAD = 640 * MIB
 NEO4J_PAGECACHE_MIN = 256 * MIB
 
+# Inside docling's limit: its workers. Each docling-serve worker loads its own copy of the
+# models and converts its own document, so the limit has to hold every worker at its peak
+# at once. Docling's default is 2 at any size, which is how a 1.85 GiB docling was
+# OOM-killed twice converting windows of several PDFs together (embabel/me#1730).
+# Measured: with default options, 35-130 page PDFs needed more than 3 GiB per worker; one
+# worker converting one page per request finished inside 2.5 GiB. 3.5 GiB per worker keeps
+# a whole-document conversion (an office file, or a PDF under the app's page window) inside
+# the limit, so one worker below 7 GiB, and two at docling's 8 GiB maximum.
+# The app caps its requests at the same number (me#1730), so windows beyond it wait in the
+# app rather than queueing inside docling against their poll deadline.
+DOCLING_BYTES_PER_WORKER = 7 * GIB // 2
+DOCLING_WORKERS = "DOCLING_WORKERS"
+
+
+def docling_workers(limit: int) -> int:
+    """How many workers a docling limit holds at their peak together: at least one."""
+    return max(1, limit // DOCLING_BYTES_PER_WORKER)
+
 
 def shares_for(engine: str) -> list[Share]:
     """Which services are sized. With the in-memory engine the graph lives inside the
@@ -156,7 +174,8 @@ def resolve(limits: dict[str, int]) -> dict[str, str]:
 
     Neo4j's three numbers are kept consistent with whatever was set by hand: the
     troubleshooting guide tells people to set NEO4J_HEAP=1G, and a limit sized for a
-    different heap would give the page cache the wrong remainder.
+    different heap would give the page cache the wrong remainder. Docling's worker count
+    follows its limit the same way, hand-set or not, unless it was set itself.
     """
     resolved = {var: chosen(var) or as_size(size) for var, size in limits.items()}
     if "NEO4J_MEM_LIMIT" in limits:
@@ -171,6 +190,9 @@ def resolve(limits: dict[str, int]) -> dict[str, str]:
             resolved["NEO4J_MEM_LIMIT"] = as_size(needed)
         resolved["NEO4J_HEAP"] = chosen("NEO4J_HEAP") or as_size(heap)
         resolved["NEO4J_PAGECACHE"] = chosen("NEO4J_PAGECACHE") or as_size(pagecache)
+    if "DOCLING_MEM_LIMIT" in limits:
+        limit = parse_size(resolved["DOCLING_MEM_LIMIT"]) or limits["DOCLING_MEM_LIMIT"]
+        resolved[DOCLING_WORKERS] = chosen(DOCLING_WORKERS) or str(docling_workers(limit))
     return resolved
 
 
@@ -195,4 +217,7 @@ def describe(env: dict[str, str]) -> str:
     """The split in one line a person reads."""
     names = (("APP_MEM_LIMIT", "app"), ("NEO4J_MEM_LIMIT", "graph"), ("DOCLING_MEM_LIMIT", "docling"))
     parts = [f"{label} {parse_size(env[var]) / GIB:.1f} GB" for var, label in names if var in env]
+    if DOCLING_WORKERS in env and "DOCLING_MEM_LIMIT" in env:
+        workers = env[DOCLING_WORKERS]
+        parts[-1] += f" ({workers} worker{'' if workers == '1' else 's'})"
     return ", ".join(parts)

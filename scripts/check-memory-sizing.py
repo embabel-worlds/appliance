@@ -105,6 +105,23 @@ check(memory.parse_size(grown["NEO4J_MEM_LIMIT"]) >= 6 * GIB + memory.NEO4J_OVER
 # Any limit set by hand passes through untouched.
 check(resolved_with({"APP_MEM_LIMIT": "5g"})["APP_MEM_LIMIT"] == "5g", "hand-set APP_MEM_LIMIT was replaced")
 
+# Docling's workers follow its limit: each loads its own models, so the limit must hold
+# all of them at their peak (embabel/me#1730). The appliance that OOM-killed docling had
+# 7.65GB and gave docling 1.85 GiB with docling's default of two workers.
+check(resolved_with({})[memory.DOCLING_WORKERS] == "1", f"7.65GB: docling not at one worker: {resolved_with({})}")
+check(memory.docling_workers(memory.DOCLING.minimum) == 1, "docling's minimum limit runs more than one worker")
+check(memory.docling_workers(memory.DOCLING_BYTES_PER_WORKER * 2 - 1) == 1, "two workers below twice the per-worker need")
+check(memory.docling_workers(memory.DOCLING_BYTES_PER_WORKER * 2) == 2, "no second worker at twice the per-worker need")
+check(memory.DOCLING_BYTES_PER_WORKER > 3 * GIB,
+      f"DOCLING_BYTES_PER_WORKER {memory.DOCLING_BYTES_PER_WORKER} is not above the measured 3 GiB per worker")
+check(resolved_with({}, docker_memory=64 * GIB)[memory.DOCLING_WORKERS] == "2",
+      f"64GB: docling at its maximum does not run two workers: {resolved_with({}, docker_memory=64 * GIB)}")
+# A docling limit set by hand decides the workers; a worker count set by hand wins outright.
+check(resolved_with({"DOCLING_MEM_LIMIT": "16g"})[memory.DOCLING_WORKERS] == "4",
+      "hand-set DOCLING_MEM_LIMIT=16g did not size the workers from it")
+check(resolved_with({"DOCLING_WORKERS": "3"})[memory.DOCLING_WORKERS] == "3", "hand-set DOCLING_WORKERS was replaced")
+check("(1 worker)" in memory.describe(resolved_with({})), f"the split does not say docling's workers: {memory.describe(resolved_with({}))}")
+
 # compose_env carries the limits, and asks docker once however often it is built.
 memory.memory_env.cache_clear()
 calls = []
@@ -123,8 +140,8 @@ with patch("embabel_setup.capacity.docker_capacity", side_effect=capacity), \
     env = dockerlib.compose_env()
     dockerlib.compose_env()
     deferred_off = dockerlib.deferred_services()
-check(all(var in env for var in ("APP_MEM_LIMIT", "NEO4J_MEM_LIMIT", "DOCLING_MEM_LIMIT")),
-      "compose_env does not carry the memory limits")
+check(all(var in env for var in ("APP_MEM_LIMIT", "NEO4J_MEM_LIMIT", "DOCLING_MEM_LIMIT", memory.DOCLING_WORKERS)),
+      "compose_env does not carry the memory limits and docling's workers")
 check(len(calls) == 1, f"docker was asked for its memory {len(calls)} times")
 check("monitoring" not in env.get("COMPOSE_PROFILES", ""), f"monitoring profile on by default: {env.get('COMPOSE_PROFILES')}")
 check(not set(dockerlib.MONITORING_SERVICES) & set(deferred_off),
@@ -151,7 +168,16 @@ compose_text = "".join(open(os.path.join(ROOT, f)).read()
 for var in memory.plan(small, monitoring=True):
     check(f"${{{var}:-" in compose_text, f"no compose file reads {var}")
 
+# Docling runs the workers, and the app caps its requests at the same number: both read
+# the one variable, or the cap and the workers drift apart.
+infra_text = open(os.path.join(ROOT, "infra.yml")).read()
+check("DOCLING_SERVE_ENG_LOC_NUM_WORKERS=${DOCLING_WORKERS:-" in infra_text, "docling does not read DOCLING_WORKERS")
+for app_file in ("docker-compose-me.yml", "docker-compose-worlds.yml"):
+    text = open(os.path.join(ROOT, app_file)).read()
+    check("ASSISTANT_INFRASTRUCTURE_DOCUMENTPIPELINE_DOCLING_MAXCONCURRENTREQUESTS=${DOCLING_WORKERS:-" in text,
+          f"{app_file}: the app's docling request cap does not read DOCLING_WORKERS")
+
 if failures:
     print("\n".join(f"FAIL: {f}" for f in failures))
     sys.exit(1)
-print("ok: container memory limits are sized from Docker's memory, and hand-set values win")
+print("ok: container memory limits and docling's workers are sized from Docker's memory, and hand-set values win")
