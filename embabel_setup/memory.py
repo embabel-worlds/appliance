@@ -56,13 +56,17 @@ class Share:
 
 
 # The app idled at 2.47GB with an unlimited heap; a single user's chat and ingest do
-# not use 8GB. Neo4j under 1.75GB cannot hold a 1GB heap and a useful page cache.
+# not use 8GB. Bounded, it needs far less: at MaxRAMPercentage=45 it peaked at 2.06 GiB
+# of a 3.13 GiB limit during a 28-EPUB + 6-PDF bulk ingest, and its live heap after that
+# ingest was ~300 MB. Neo4j under 1.75GB cannot hold a 1GB heap and a useful page cache.
 # Docling's peak is one document: a 10-K-sized PDF was measured past 6GB, so it gets
 # a real ceiling, and on a small machine a large PDF fails conversion rather than the
-# app dying.
-APP = Share("APP_MEM_LIMIT", minimum=5 * GIB // 2, weight=45, maximum=8 * GIB)
+# app dying. Its minimum is one worker converting one page per request, measured inside
+# 2.5 GiB; at 1.85 GiB that same bulk ingest OOM-killed it (embabel/me#1730). The gigabyte
+# docling's minimum gained came from the app's.
+APP = Share("APP_MEM_LIMIT", minimum=3 * GIB // 2, weight=45, maximum=8 * GIB)
 NEO4J = Share("NEO4J_MEM_LIMIT", minimum=7 * GIB // 4, weight=30, maximum=8 * GIB)
-DOCLING = Share("DOCLING_MEM_LIMIT", minimum=3 * GIB // 2, weight=25, maximum=8 * GIB)
+DOCLING = Share("DOCLING_MEM_LIMIT", minimum=5 * GIB // 2, weight=25, maximum=8 * GIB)
 
 # Inside Neo4j's limit: the heap is a share of it, the page cache is what is left after
 # the heap and the process's own off-heap needs (netty, metaspace, APOC).

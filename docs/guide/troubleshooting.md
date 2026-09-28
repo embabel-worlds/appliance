@@ -350,7 +350,8 @@ genuinely too little, and the first thing to give room to is the appliance rathe
 the graph.
 
 **Each container has its own memory limit.** `embabel up` splits Docker's memory between
-the app, the graph and docling, and `embabel doctor` prints the split. Prometheus and
+the app, the graph and docling, and `embabel doctor` prints the split — on a 7.65 GB
+Docker VM, app 2.1 GB, graph 2.2 GB, docling 2.8 GB with one docling worker. Prometheus and
 Grafana are off unless `EMBABEL_MONITORING=on`, and only then is memory held back for them. Before this, every
 service sized itself against the whole VM: during a large ingest the VM ran out, the kernel
 killed the app with nothing in its log, and the console showed 502 until it rebooted. With

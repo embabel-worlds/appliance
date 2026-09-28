@@ -107,7 +107,14 @@ check(resolved_with({"APP_MEM_LIMIT": "5g"})["APP_MEM_LIMIT"] == "5g", "hand-set
 
 # Docling's workers follow its limit: each loads its own models, so the limit must hold
 # all of them at their peak (embabel/me#1730). The appliance that OOM-killed docling had
-# 7.65GB and gave docling 1.85 GiB with docling's default of two workers.
+# 7.65GB and gave docling 1.85 GiB with docling's default of two workers. One worker at
+# one page per request was measured inside 2.5 GiB, so that is docling's least.
+check(memory.DOCLING.minimum >= 5 * GIB // 2, f"docling's minimum {memory.DOCLING.minimum} is below one worker's measured need")
+check(memory.plan(small)["DOCLING_MEM_LIMIT"] >= 5 * GIB // 2, f"7.65GB: docling below 2.5 GiB: {memory.plan(small)}")
+# The minimums must fit the machine that prompted them, or the limits overcommit it.
+check(sum(s.minimum for s in SIZED) <= budget(small), "7.65GB: the minimums alone exceed the budget")
+# The app peaked at 2.06 GiB during that ingest; it must keep at least that on 7.65GB.
+check(memory.plan(small)["APP_MEM_LIMIT"] >= int(2.06 * GIB), f"7.65GB: the app below its measured peak: {memory.plan(small)}")
 check(resolved_with({})[memory.DOCLING_WORKERS] == "1", f"7.65GB: docling not at one worker: {resolved_with({})}")
 check(memory.docling_workers(memory.DOCLING.minimum) == 1, "docling's minimum limit runs more than one worker")
 check(memory.docling_workers(memory.DOCLING_BYTES_PER_WORKER * 2 - 1) == 1, "two workers below twice the per-worker need")
