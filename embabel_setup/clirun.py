@@ -73,12 +73,10 @@ def cmd_status(args) -> int:
     print(f"\n  Core            {len(core)} container(s) up")
 
     # Named individually because the interesting answer is WHICH one is missing.
-    pending = []
-    for name, why in (("embabel-appliance-docling", "structured PDF and Office conversion"),
-                      ("embabel-appliance-grafana", "dashboards"),
-                      ("embabel-appliance-prometheus", "metrics")):
-        if name not in running:
-            pending.append(why)
+    # By prefix: compose names a container <project>-<service>-N, never the bare service.
+    pending = [s.DEFERRED_WHY[name] for name in s.deferred_services()
+               if name in ("docling", *s.MONITORING_SERVICES)
+               and not any(n.startswith(f"{s.compose_project()}-{name}-") for n in running)]
     if pending:
         print(f"  Still arriving  {', '.join(pending)}")
         print("                  (downloading in the background; the appliance works without them,")
@@ -285,6 +283,9 @@ def cmd_open(args) -> int:
     console regardless sent every Me user to a port with nothing behind it."""
     urls = s.surface_urls()
     what = args.what or ("me" if resolved_mode(None) == "me" else "console")
+    if what == "dashboards" and not s.monitoring_enabled():
+        print("  Dashboards are off. Set EMBABEL_MONITORING=on in .env, then run `embabel up`.")
+        return 1
     url = urls[what]
     print(f"  {url}")
     # The URL is printed FIRST and unconditionally: on a headless box, or over ssh,
@@ -321,7 +322,7 @@ def cmd_ps(args) -> int:
         line = f"{c['name']:<{width}}  {c['status']}"
         print(f"  {mark} " + (line if up else s.dim(line)))
 
-    missing = [name for name in s.DEFERRED_WHY
+    missing = [name for name in s.deferred_services()
                if not any(name in c["name"] for c in containers)]
     if missing:
         print("\n  Not here yet   " + ", ".join(s.DEFERRED_WHY[m] for m in missing))

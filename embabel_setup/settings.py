@@ -88,10 +88,27 @@ def phone_home_on() -> bool:
 SQL_VAR = "EMBABEL_SQL"
 
 
+def _switched_on(var: str) -> bool:
+    """An opt-in switch read from the environment or .env. False unless it says true."""
+    value = (os.environ.get(var) or env_file_value(var) or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
 def sql_enabled() -> bool:
     """Whether the SQL endpoint runs alongside the worlds mode. False unless .env says true."""
-    value = (os.environ.get(SQL_VAR) or env_file_value(SQL_VAR) or "").strip().lower()
-    return value in ("1", "true", "yes", "on")
+    return _switched_on(SQL_VAR)
+
+
+# Prometheus and Grafana: OFF by default (embabel-worlds/appliance#112). Together they
+# held back 768 MiB of a small machine's memory for dashboards most people never open,
+# while docling could not convert a scan in what was left. Enabling it turns on the
+# `monitoring` compose profile (see dockerlib.compose_env) and reserves their memory.
+MONITORING_VAR = "EMBABEL_MONITORING"
+
+
+def monitoring_enabled() -> bool:
+    """Whether Prometheus and Grafana run. False unless .env says true."""
+    return _switched_on(MONITORING_VAR)
 
 
 def escape_for_env(value: str) -> str:

@@ -21,6 +21,10 @@ services:
     # <project>-<service>-N, which is per-instance for free. Find a container by
     # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
+    # Sized by `embabel up` from Docker's memory (embabel_setup/memory.py, #111), with
+    # the heap and page cache below derived from it. 0 — no limit — is what a hand-run
+    # `docker compose up` gets, which is how the appliance ran before sizing existed.
+    mem_limit: ${NEO4J_MEM_LIMIT:-0}
     ports:
       - "127.0.0.1:${NEO4J_BROWSER_PORT:-11045}:7474"   # browser
       - "127.0.0.1:${NEO4J_BOLT_PORT:-11046}:7687"      # bolt, for cypher-shell
@@ -43,6 +47,9 @@ services:
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
       - NEO4J_server_memory_heap_max__size=${NEO4J_HEAP:-2G}
+      # Named rather than left to Neo4j, which sizes it from the memory it can SEE —
+      # the whole VM, not this container's limit.
+      - NEO4J_server_memory_pagecache_size=${NEO4J_PAGECACHE:-512M}
     healthcheck:
       # The app's Drivine pool connects during startup; without this gate it
       # races Neo4j's plugin load and the first boot fails on a fresh volume.
@@ -101,6 +108,10 @@ services:
     # document. The app treats a mid-conversion death as a failed conversion (logged
     # at ERROR; strict-conversion mode fails the ingest instead of falling back to
     # flat Tika text). Raise on hosts that routinely convert very large filings.
+    #
+    # `embabel up` sizes this from Docker's memory alongside the app and the graph
+    # (#111): 8g was more than a typical Docker Desktop VM has in total, so it was
+    # never a limit at all. The 8g default remains for a hand-run compose.
     mem_limit: ${DOCLING_MEM_LIMIT:-8g}
     environment:
       - DOCLING_SERVE_ENABLE_UI=0
@@ -129,18 +140,20 @@ services:
   #
   #   open http://localhost:11047       (no login, lands on Surface Health)
   #
-  # NO PROFILE, deliberately. These once carried a `metrics` profile so they could be
-  # switched off from `.env`, but a compose profile cannot be active by default: it is
-  # only on when COMPOSE_PROFILES names it, and this appliance is designed to start with
-  # no `.env` at all (`./setup.py` collects everything). The result was documentation
-  # promising dashboards on by default and a fresh install silently having none.
+  # OFF BY DEFAULT, behind the `monitoring` profile (embabel-worlds/appliance#112).
+  # Always-on, they held back 768 MiB of a small machine's memory for dashboards most
+  # people never open, while docling could not convert a scanned PDF in what was left.
+  # `EMBABEL_MONITORING=on` in .env turns them on: `embabel up` adds the profile to the
+  # environment compose runs with and reserves their memory in the split (#111).
   #
-  # So they are ordinary services. To turn them off, delete these two services and their
-  # volumes below — the same way you would drop any other service. `--scale grafana=0
-  # --scale prometheus=0` works for one run, but the next plain `up -d` brings them back.
+  # (They were profile-gated once before, and a fresh install silently had none while
+  # the docs promised dashboards. The fix for that is docs that say they are off, and a
+  # surfaces line that says how to turn them on — which is what there is now.)
   prometheus:
+    profiles: ["monitoring"]
     image: prom/prometheus:v3.1.0
     restart: unless-stopped
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-0}
     ports:
       - "127.0.0.1:${PROMETHEUS_PORT:-11048}:9090"
     configs:
@@ -155,11 +168,13 @@ services:
       - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
 
   grafana:
+    profiles: ["monitoring"]
     # Stock Grafana with the Embabel dashboards baked in, because a pull-only
     # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
     # the dashboards match the metrics the app of that version actually emits.
     image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-latest}
     restart: unless-stopped
+    mem_limit: ${GRAFANA_MEM_LIMIT:-0}
     depends_on:
       - prometheus
     ports:

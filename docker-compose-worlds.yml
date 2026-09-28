@@ -32,6 +32,8 @@ services:
     # <project>-<service>-N, which is per-instance for free. Find a container by
     # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
+    # Sized by `embabel up` from Docker's memory (#111); no limit on a hand-run compose.
+    mem_limit: ${APP_MEM_LIMIT:-0}
     depends_on:
       neo4j:
         condition: service_healthy
@@ -217,7 +219,13 @@ services:
       - ASSISTANT_INFRASTRUCTURE_MCP_DEFAULT_MODE=${WORLDS_MCP_MODE:-ASSISTANT}
       - EMBABEL_MCP_API_TOKEN_USER=${EMBABEL_MCP_API_TOKEN_USER:-}
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
-      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
+      # Measured on a 2.79 GiB limit ingesting 28 books at once (#111): at 60% heap the
+      # container reached 97% of its limit and stayed there, because G1 never returns
+      # committed heap and the JVM keeps ~1 GB outside it. At 45%, with committed heap
+      # returned when idle and glibc held to two malloc arenas, it peaked at 58-66%.
+      # The live heap after that ingest was ~300 MB, so 45% is still generous.
+      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000}
+      - MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
       # Distinguishes this mode from the Me mode in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose-worlds

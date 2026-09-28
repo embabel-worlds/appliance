@@ -74,7 +74,7 @@ quarter of an hour "not everything is up" is the normal state and a flat
 container list cannot tell that apart from broken.
 
 It ends with every surface of whichever mode is up: for Worlds the console, the
-API, the MCP endpoint, the graph browser and dashboards; for Me the assistant
+API, the MCP endpoint, the graph browser and dashboards (when monitoring is on); for Me the assistant
 itself, its MCP endpoint and the graph.
 
 ### `embabel doctor`
