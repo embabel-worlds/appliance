@@ -28,7 +28,7 @@ services:
   falkordb:
     # The engine profile decision (embabel/me#1005) owns the version pin; until it
     # lands, this follows the conformance rig's policy of measuring today's engine.
-    image: falkordb/falkordb:${FALKORDB_VERSION:-latest}
+    image: falkordb/falkordb:${FALKORDB_VERSION:-<falkordb-version>}
     restart: unless-stopped
     ports:
       # redis-cli / FalkorDB browser access from the host, localhost-only like

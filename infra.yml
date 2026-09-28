@@ -131,7 +131,7 @@ services:
   # the container the app launches follow it — a single world can still override it
   # further with `sandboxDockerimage` in its config/world.yml.
   sandbox-image:
-    image: ${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:latest}
+    image: ${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:0.2.0-rc.1}
     restart: "no"
     command: ["true"]
 
@@ -172,7 +172,7 @@ services:
     # Stock Grafana with the Embabel dashboards baked in, because a pull-only
     # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
     # the dashboards match the metrics the app of that version actually emits.
-    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-latest}
+    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-0.2.0-rc.1}
     restart: unless-stopped
     mem_limit: ${GRAFANA_MEM_LIMIT:-0}
     depends_on:

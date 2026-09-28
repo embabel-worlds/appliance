@@ -26,7 +26,7 @@ services:
 
   # ── The world runtime ───────────────────────────────────────────────────────
   worlds:
-    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-latest}
+    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-0.2.0-rc.1}
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers
     # <project>-<service>-N, which is per-instance for free. Find a container by
@@ -91,7 +91,7 @@ services:
       # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
       # value as unset, because a compose file forwarding an unset variable sets it
       # to the empty string, and a set-but-empty value outranks every default.
-      - ASSISTANT_SANDBOX_IMAGE=${EMBABEL_SANDBOX_IMAGE:-}
+      - ASSISTANT_SANDBOX_IMAGE=${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:0.2.0-rc.1}
       # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
       # (see application-appliance.yml) — the browser holds the encrypted blob and
       # nothing decryptable rests here — but WITHOUT this the server generates a key
@@ -301,7 +301,7 @@ services:
   # repository — the same lesson mirror-docling records, which is why docling sits
   # in that namespace too. Its CI could not publish at all until this moved.
   worlds-console:
-    image: ghcr.io/embabel-worlds/worlds-console:${EMBABEL_VERSION:-latest}
+    image: ghcr.io/embabel-worlds/worlds-console:${EMBABEL_VERSION:-0.2.0-rc.1}
     restart: unless-stopped
     depends_on:
       - worlds
