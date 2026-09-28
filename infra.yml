@@ -102,7 +102,7 @@ services:
     restart: unless-stopped
     # Conversion memory is bounded by the LARGEST single document, not corpus size:
     # one 10-K-sized PDF was measured pushing docling past 6GB (2026-08-13, dev).
-    # Uncapped, it competes with neo4j and the app JVM (MaxRAMPercentage=75) for the
+    # Uncapped, it competes with neo4j and the app JVM (MaxRAMPercentage=45) for the
     # whole host and the OOM killer picks a victim at random — capped, an OOM stays
     # inside docling and `restart: unless-stopped` brings it back for the next
     # document. The app treats a mid-conversion death as a failed conversion (logged
