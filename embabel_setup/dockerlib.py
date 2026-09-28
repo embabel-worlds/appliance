@@ -21,6 +21,7 @@ from .core import (
     APPLIANCE_DIR, EMBEDDING_MODEL, MODE_COMPOSE, MODE_CORE, MODE_SERVICE, MODE_SERVICES, OVERRIDE_FILE,
     SetupError, prompt,
 )
+from .memory import memory_env
 from .settings import (
     compose_project, configured_mode, env_file_value, env_path, instance, phone_home_on,
     port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
@@ -158,6 +159,9 @@ def compose_env() -> dict:
     for var, value in ports_for(port_base()).items():
         env[var] = str(value)
     env["EMBABEL_INSTANCE"] = instance()
+    # Container memory limits sized from what Docker has (#111). Already resolved
+    # against .env and the environment, so a value the operator set is passed through.
+    env.update(memory_env(graph_engine()))
     # The switch resolved to an address. Empty is the off state the compose files
     # already default to; this only ever turns it ON.
     env["ASSISTANT_PHONE_HOME_ENDPOINT"] = PHONE_HOME_ENDPOINT if phone_home_on() else ""

@@ -26,6 +26,8 @@ services:
     # <project>-<service>-N, which is per-instance for free. Find a container by
     # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
+    # Sized by `embabel up` from Docker's memory (#111); no limit on a hand-run compose.
+    mem_limit: ${APP_MEM_LIMIT:-0}
     depends_on:
       neo4j:
         condition: service_healthy
@@ -246,7 +248,10 @@ services:
       # `none` drops document conversion to raw Tika and makes the docling service
       # (a multi-GB image) unnecessary.
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
-      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75}
+      # A percentage of THIS container's limit (mem_limit below). 60 rather than 75:
+      # the other 40% holds what the JVM keeps outside its heap, the in-process
+      # embedding model included.
+      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=60}
       # Reported in the usage payload as `packaging`, so we can tell an appliance from a
       # bare jar — and this mode from the worlds mode. It is a constant, not information
       # about you — see PHONE_HOME.md.

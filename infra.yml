@@ -21,6 +21,10 @@ services:
     # <project>-<service>-N, which is per-instance for free. Find a container by
     # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
+    # Sized by `embabel up` from Docker's memory (embabel_setup/memory.py, #111), with
+    # the heap and page cache below derived from it. 0 — no limit — is what a hand-run
+    # `docker compose up` gets, which is how the appliance ran before sizing existed.
+    mem_limit: ${NEO4J_MEM_LIMIT:-0}
     ports:
       - "127.0.0.1:${NEO4J_BROWSER_PORT:-11045}:7474"   # browser
       - "127.0.0.1:${NEO4J_BOLT_PORT:-11046}:7687"      # bolt, for cypher-shell
@@ -43,6 +47,9 @@ services:
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
       - NEO4J_server_memory_heap_max__size=${NEO4J_HEAP:-2G}
+      # Named rather than left to Neo4j, which sizes it from the memory it can SEE —
+      # the whole VM, not this container's limit.
+      - NEO4J_server_memory_pagecache_size=${NEO4J_PAGECACHE:-512M}
     healthcheck:
       # The app's Drivine pool connects during startup; without this gate it
       # races Neo4j's plugin load and the first boot fails on a fresh volume.
@@ -101,6 +108,10 @@ services:
     # document. The app treats a mid-conversion death as a failed conversion (logged
     # at ERROR; strict-conversion mode fails the ingest instead of falling back to
     # flat Tika text). Raise on hosts that routinely convert very large filings.
+    #
+    # `embabel up` sizes this from Docker's memory alongside the app and the graph
+    # (#111): 8g was more than a typical Docker Desktop VM has in total, so it was
+    # never a limit at all. The 8g default remains for a hand-run compose.
     mem_limit: ${DOCLING_MEM_LIMIT:-8g}
     environment:
       - DOCLING_SERVE_ENABLE_UI=0
@@ -141,6 +152,7 @@ services:
   prometheus:
     image: prom/prometheus:v3.1.0
     restart: unless-stopped
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-0}
     ports:
       - "127.0.0.1:${PROMETHEUS_PORT:-11048}:9090"
     configs:
@@ -160,6 +172,7 @@ services:
     # the dashboards match the metrics the app of that version actually emits.
     image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-latest}
     restart: unless-stopped
+    mem_limit: ${GRAFANA_MEM_LIMIT:-0}
     depends_on:
       - prometheus
     ports:
