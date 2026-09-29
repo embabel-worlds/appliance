@@ -32,6 +32,19 @@ services:
     # <project>-<service>-N, which is per-instance for free. Find a container by
     # its compose labels (setup.py does), never by a name you wrote down.
     restart: unless-stopped
+    # NOT PID 1, so the watchdog below can end a wedged JVM: PID 1 ignores a SIGKILL sent
+    # from inside its own container. Docker's own init runs first and reaps orphans too.
+    init: true
+    # The image's healthcheck, with a watchdog in it (container/health-watchdog.sh): Docker
+    # only LABELS a container unhealthy, so a JVM that stops answering without exiting was
+    # left up until somebody restarted it by hand. Same probe, interval and start period
+    # as the image's own.
+    healthcheck:
+      test: ["CMD", "sh", "/opt/embabel/health-watchdog.sh"]
+      interval: 15s
+      timeout: 10s
+      start_period: 180s
+      retries: 10
     # Sized by `embabel up` from Docker's memory (#111); no limit on a hand-run compose.
     mem_limit: ${APP_MEM_LIMIT:-0}
     depends_on:
@@ -234,6 +247,9 @@ services:
       # unless-stopped` bring it back. Its own variable, read by the java launcher, so a
       # JAVA_OPTS set in .env cannot drop it.
       - JDK_JAVA_OPTIONS=${JDK_JAVA_OPTIONS:--XX:+ExitOnOutOfMemoryError}
+      # Consecutive health checks with no answer at all before the watchdog restarts the
+      # app (15 s apart, so 5 is about 75 s); 0 turns it off. See container/health-watchdog.sh.
+      - APP_WATCHDOG_FAILURES=${APP_WATCHDOG_FAILURES:-5}
       - MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
       # Distinguishes this mode from the Me mode in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
@@ -298,6 +314,8 @@ services:
       # build runs inside cloneRepo, so it never fires for a local reference;
       # a realm that needs npm must be built on the host first.
       - ${EMBABEL_REALMS_DIR:-./realms}:/realms:ro
+      # The healthcheck's watchdog script, read-only: see the service's `healthcheck:`.
+      - ./container/health-watchdog.sh:/opt/embabel/health-watchdog.sh:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
