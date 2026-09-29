@@ -722,6 +722,11 @@ async function init() {
   void loadSchema()
   void loadHandlers()
   void loadSignalTypes()
+  /* Sent here from an agent's routine: once at load, from the query the window was opened with,
+     and again for each Edit while it is already open. */
+  const requested = new URLSearchParams(location.search).get('open')
+  if (requested) void openHandler(requested, els.handlersStatus)
+  window.me.onHandlerOpenRequest((name) => void openHandler(name, els.handlersStatus))
 }
 
 void init()

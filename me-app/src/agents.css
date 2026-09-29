@@ -1,0 +1,7 @@
+/*
+ * The kit's feature stylesheet, for the one window that mounts a kit feature surface.
+ *
+ * Not part of `kit.css`: the kit keeps its feature rules out of its base cascade so that pages
+ * without a React surface do not carry them, and only the Agents window has one.
+ */
+@import '@embabel/appliance-kit/css/features.css';

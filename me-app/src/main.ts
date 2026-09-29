@@ -23,6 +23,7 @@ import { platform } from './platform'
 import * as pkg from '../package.json'
 import type { Fact, ScanOptions, Settings, StreamState, VerbConsent } from './types'
 import type { AskRequest } from './wire'
+import type { RequestSpec } from '@embabel/appliance-kit'
 /** The appliance's own property name for its default model. */
 const DEFAULT_LLM_KEY = 'EMBABEL_MODELS_DEFAULT_LLM'
 
@@ -692,16 +693,21 @@ handle('query:popout', () => {
 // same one-instance rule, same reasons.
 let handlersWindow: BrowserWindow | null = null
 
-handle('handlers:popout', () => {
+/*
+ * `open` names a routine to put in the editor: the Agents window's Edit. A studio already open is
+ * told, rather than reloaded over whatever is being written in it.
+ */
+handle('handlers:popout', (open?: string) => {
   if (handlersWindow) {
     handlersWindow.show()
     handlersWindow.focus()
+    if (open) handlersWindow.webContents.send('handlers:open-request', open)
     return
   }
   handlersWindow = new BrowserWindow({
     width: 1180,
     height: 840,
-    title: 'Embabel Me — Handler Studio',
+    title: 'Embabel Me — Routine Studio',
     backgroundColor: '#000000',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
@@ -711,10 +717,47 @@ handle('handlers:popout', () => {
       sandbox: true,
     },
   })
-  void handlersWindow.loadFile(path.join(__dirname, '..', 'handler-studio.html'))
+  void handlersWindow.loadFile(path.join(__dirname, '..', 'handler-studio.html'), open ? { query: { open } } : undefined)
   handlersWindow.on('closed', () => {
     handlersWindow = null
   })
+})
+
+/*
+ * Agents: the kit's Agents surface in a window of its own, one instance, like the studios. Its
+ * requests arrive as the kit client's RequestSpecs and go out through `api.agentsSend`, which
+ * refuses any path outside the agents surface.
+ */
+let agentsWindow: BrowserWindow | null = null
+
+handle('agents:popout', () => {
+  if (agentsWindow) {
+    agentsWindow.show()
+    agentsWindow.focus()
+    return
+  }
+  agentsWindow = new BrowserWindow({
+    width: 1180,
+    height: 840,
+    title: 'Embabel Me — Agents',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  void agentsWindow.loadFile(path.join(__dirname, '..', 'agents.html'))
+  agentsWindow.on('closed', () => {
+    agentsWindow = null
+  })
+})
+handle('agents:send', (settings: Settings, spec: RequestSpec) => {
+  // A change is worth a line in the log; a read is not.
+  if (spec?.method === 'POST') log(`[me-app] agents ${spec.path}`)
+  return api.agentsSend(settings, spec)
 })
 
 // Handlers — the admin surface behind the Handler Studio. Effects only ever

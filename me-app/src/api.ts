@@ -9,6 +9,7 @@
 // (DICE propositions), coarser receipts.
 
 import { diagnose } from './appliance'
+import { HttpTransport, type Outcome, type RequestSpec } from '@embabel/appliance-kit'
 import type { ConnectionResult, Fact, FocusSample, SendResult, Settings } from './types'
 
 const SOURCE = 'me-app'
@@ -650,6 +651,26 @@ async function kgExecute(settings: Settings, cypher: string) {
 }
 
 /*
+ * AGENTS, through the kit's own client. The Agents window's `AgentsClient` shapes each request and
+ * reads each answer; this only sends it, with the kit's `HttpTransport`, from the one process here
+ * that has a network. The window never names a URL, so the paths it may reach are fixed here: the
+ * agents surface and nothing else, whatever a compromised page might ask for.
+ */
+// A dot segment is refused as a name: `agents/..` would resolve to somewhere that is not agents.
+const AGENT_PATH = /^\/api\/v1\/agents(\/(?!\.\.?(?:\/|$))[^/?#]+(\/(stage|sign|versions))?)?$/
+
+async function agentsSend(settings: Settings, spec: RequestSpec): Promise<Outcome<unknown>> {
+  if (!AGENT_PATH.test(spec?.path ?? '') || (spec.method !== 'GET' && spec.method !== 'POST')) {
+    return { ok: false, kind: 'refused', message: `Not an agents request: ${spec?.method} ${spec?.path}` }
+  }
+  const transport = new HttpTransport({
+    baseUrl: settings.baseUrl,
+    headers: () => ({ Authorization: auth(settings) }),
+  })
+  return transport.send({ method: spec.method, path: spec.path, body: spec.body })
+}
+
+/*
  * Handlers — the user's TypeScript event handlers, over the same admin surface
  * the appliance's own console and MCP tools use. The studio adds an editor,
  * not a mechanism: save is tsc-gated server-side, dry-run is observe-only and
@@ -1096,6 +1117,7 @@ export {
   kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation, hintRandom,
   toursList, tourStepStatus, tourExport, tourImport, tourDelete, tourAsset,
+  agentsSend,
   handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
   handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }

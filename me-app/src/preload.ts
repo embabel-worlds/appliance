@@ -4,6 +4,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Fact, ScanOptions, Settings, VerbConsent } from './types'
+import type { RequestSpec } from '@embabel/appliance-kit'
 
 const api = {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
@@ -38,7 +39,16 @@ const api = {
   vcLensModel: (settings: Settings) => ipcRenderer.invoke('vc:lens-model', settings),
   vcSetLensModel: (settings: Settings, model: string) => ipcRenderer.invoke('vc:set-lens-model', settings, model),
   openQueryStudio: () => ipcRenderer.invoke('query:popout'),
-  openHandlerStudio: () => ipcRenderer.invoke('handlers:popout'),
+  /** Opens the routine studio; `open` puts that routine in its editor. */
+  openHandlerStudio: (open?: string) => ipcRenderer.invoke('handlers:popout', open),
+  onHandlerOpenRequest: (callback: (name: string) => void) => {
+    const listener = (_e: unknown, name: string) => callback(name)
+    ipcRenderer.on('handlers:open-request', listener)
+    return () => ipcRenderer.removeListener('handlers:open-request', listener)
+  },
+  openAgents: () => ipcRenderer.invoke('agents:popout'),
+  /** One kit RequestSpec to the agents surface; main refuses any other path. */
+  agentsSend: (settings: Settings, spec: RequestSpec) => ipcRenderer.invoke('agents:send', settings, spec),
   // Handlers — the Handler Studio's surface. All effects happen server-side.
   handlersList: (settings: Settings) => ipcRenderer.invoke('handlers:list', settings),
   handlerOpen: (settings: Settings, name: string) => ipcRenderer.invoke('handlers:open', settings, name),

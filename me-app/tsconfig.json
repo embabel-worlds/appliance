@@ -26,11 +26,13 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    // The Agents window mounts the kit's React surface; nothing else here is JSX.
+    "jsx": "react-jsx",
     // esbuild is the emitter; tsc never writes anything.
     "noEmit": true,
     // The vendored builds and Electron's own d.ts are not ours to answer for.
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.mjs"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.mjs"],
   "exclude": ["node_modules", "src/vendor", "dist", "release"]
 }
