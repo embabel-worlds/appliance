@@ -34,7 +34,7 @@ The same appliance opens two ways, and which one you came through changes what y
 your memory of what happened. It is a single-user panel and it is deliberately quiet
 about realms and graphs.
 
-**Embabel Worlds** is the world runtime and its console — realms, queries, handlers,
+**Embabel Worlds** is the world runtime and its console — realms, queries, agents,
 apps, models, and a chat that acts inside the world. It is the developer door, and it
 is the one this guide is mostly about.
 

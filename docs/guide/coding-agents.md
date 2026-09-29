@@ -43,8 +43,8 @@ actually reached anything.
 
 The connection is deliberately narrow. Over MCP the agent reaches **the appliance and
 nothing else** — no shell, no filesystem, no network beyond the world. It can query the
-graph, install realms, author actions and handlers, run them, and read back what
-happened.
+graph, install realms, write routines, put the agents that hold them on duty when you
+say so, and read back what happened.
 
 What it cannot do through that connection is look at your disk. That is on purpose: the
 surface that reaches your world should not also be a way to read your machine.

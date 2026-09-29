@@ -19,7 +19,7 @@ most realms are declarations rather than code.
 | **Types** | the things this realm knows about, and how they join onto what the world already holds |
 | **Actions** | things it can do — fetch, search, create, update |
 | **Views** | saved questions worth asking more than once |
-| **Handlers** | reactions: when this happens, do that |
+| **Agents** | named colleagues that run its routines: when this happens, do that |
 | **Apps** | small purpose-built surfaces over the above |
 
 You do not need all of them. A useful realm can be one type file that says "these
