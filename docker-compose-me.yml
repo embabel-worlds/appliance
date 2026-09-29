@@ -248,6 +248,10 @@ services:
       # `none` drops document conversion to raw Tika and makes the docling service
       # (a multi-GB image) unnecessary.
       - ASSISTANT_DOC_CONVERTER=${ASSISTANT_DOC_CONVERTER:-docling}
+      # Docling requests the app keeps in flight: docling's worker count, from the same
+      # variable, so windows past it wait in the app rather than inside docling
+      # (embabel/me#1730). 2 is docling's own default, for a hand-run compose.
+      - ASSISTANT_INFRASTRUCTURE_DOCUMENTPIPELINE_DOCLING_MAXCONCURRENTREQUESTS=${DOCLING_WORKERS:-2}
       # Measured on a 2.79 GiB limit ingesting 28 books at once (#111): at 60% heap the
       # container reached 97% of its limit and stayed there, because G1 never returns
       # committed heap and the JVM keeps ~1 GB outside it. At 45%, with committed heap

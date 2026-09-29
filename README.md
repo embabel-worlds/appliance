@@ -449,9 +449,10 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 | `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. |
 | `ASSISTANT_DOC_CONVERTER` | `docling` | `none` uses plain text extraction and makes the multi-GB docling image unnecessary — faster to start, worse fidelity on tables and figures in PDFs. |
 | `ASSISTANT_PUBLIC_BASE_URL` | `http://localhost:11042` | The externally visible origin. OAuth callbacks, MCP resource indicators and app links compose from it. Set it when running behind a proxy or on another host. No trailing slash. |
-| `JAVA_OPTS` | `-XX:MaxRAMPercentage=60` | JVM memory, as a share of the app container's limit. |
+| `JAVA_OPTS` | `-XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000` | JVM memory, as a share of the app container's limit. |
 | `APP_MEM_LIMIT` · `NEO4J_MEM_LIMIT` · `DOCLING_MEM_LIMIT` | sized from Docker's memory | Container memory limits. `embabel up` splits what Docker has between the app, the graph and docling (`embabel doctor` prints the split); set one to override it. |
 | `NEO4J_PASSWORD` | `embabel-assistant` | Change before the appliance is anything but local. |
+| `DOCLING_WORKERS` | derived from `DOCLING_MEM_LIMIT` | Docling's worker count, and how many docling requests the app keeps in flight. One per 3.5 GiB of docling's limit, at least one: each worker loads its own models. |
 | `NEO4J_HEAP` · `NEO4J_PAGECACHE` | derived from `NEO4J_MEM_LIMIT` | Neo4j's heap and page cache. Set by hand, they are kept and the limit grows to hold them. |
 | `TZ` | your host's zone (written by `setup.py`; `Etc/UTC` if undetectable) | The containers' — and so the assistant's — clock. Set it yourself only to override the detected zone (IANA name, e.g. `Australia/Sydney`). |
 
