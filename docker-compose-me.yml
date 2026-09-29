@@ -258,6 +258,11 @@ services:
       # returned when idle and glibc held to two malloc arenas, it peaked at 58-66%.
       # The live heap after that ingest was ~300 MB, so 45% is still generous.
       - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000}
+      # A JVM out of heap does not exit: it stays up, answers nothing, and the healthcheck
+      # marks it unhealthy, which Docker does not act on. Exiting lets `restart:
+      # unless-stopped` bring it back. Its own variable, read by the java launcher, so a
+      # JAVA_OPTS set in .env cannot drop it.
+      - JDK_JAVA_OPTIONS=${JDK_JAVA_OPTIONS:--XX:+ExitOnOutOfMemoryError}
       - MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
       # Reported in the usage payload as `packaging`, so we can tell an appliance from a
       # bare jar — and this mode from the worlds mode. It is a constant, not information
