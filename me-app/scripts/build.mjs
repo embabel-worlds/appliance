@@ -77,14 +77,14 @@ const node = [
 const styles = [
   { ...common, entryPoints: ['src/kit.css'], outfile: 'dist/kit.css' },
   { ...common, entryPoints: ['src/editor.css'], outfile: 'dist/editor.css' },
-  { ...common, entryPoints: ['src/agents.css'], outfile: 'dist/agents.css' },
+  { ...common, entryPoints: ['src/features.css'], outfile: 'dist/features.css' },
 ]
 
 /** One bundle per window, named for the page that loads it. */
 const browser = [
   { entryPoints: ['src/renderer.ts'], outfile: 'dist/renderer.js' },
   { entryPoints: ['src/query-studio.ts'], outfile: 'dist/query-studio.js' },
-  { entryPoints: ['src/handler-studio.ts'], outfile: 'dist/handler-studio.js' },
+  { entryPoints: ['src/handler-studio.tsx'], outfile: 'dist/handler-studio.js' },
   { entryPoints: ['src/logview.ts'], outfile: 'dist/logview.js' },
   { entryPoints: ['src/agents-window.tsx'], outfile: 'dist/agents-window.js' },
 ].map((c) => ({

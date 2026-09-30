@@ -651,185 +651,29 @@ async function kgExecute(settings: Settings, cypher: string) {
 }
 
 /*
- * AGENTS, through the kit's own client. The Agents window's `AgentsClient` shapes each request and
- * reads each answer; this only sends it, with the kit's `HttpTransport`, from the one process here
- * that has a network. The window never names a URL, so the paths it may reach are fixed here: the
- * agents surface and nothing else, whatever a compromised page might ask for.
+ * THE KIT'S CLIENTS, sent from here. The Agents window and the Routine Studio are the kit's own
+ * surfaces: their clients shape each request and read each answer, and this only sends it, with the
+ * kit's `HttpTransport`, from the one process here that has a network. A page never names a URL, so
+ * what it may reach is fixed here, per method, whatever a compromised page might ask for.
  */
-// A dot segment is refused as a name: `agents/..` would resolve to somewhere that is not agents.
-const AGENT_PATH = /^\/api\/v1\/agents(\/(?!\.\.?(?:\/|$))[^/?#]+(\/(stage|sign|versions))?)?$/
+const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
+  // A dot segment is refused as a name: `agents/..` would resolve to somewhere that is not agents.
+  { method: 'GET', path: /^\/api\/v1\/agents(\/(?!\.\.?(?:\/|$))[^/?#]+(\/versions)?)?$/ },
+  { method: 'POST', path: /^\/api\/v1\/agents\/(?!\.\.?(?:\/|$))[^/?#]+\/(stage|sign)$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/handlers\/(list|open|validate|generate|dry-run|save|delete|set-enabled)$/ },
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/schema$/ },
+  { method: 'GET', path: /^\/api\/v1\/signal-types$/ },
+  { method: 'GET', path: /^\/api\/v1\/world\/skills$/ },
+]
 
-async function agentsSend(settings: Settings, spec: RequestSpec): Promise<Outcome<unknown>> {
-  if (!AGENT_PATH.test(spec?.path ?? '') || (spec.method !== 'GET' && spec.method !== 'POST')) {
-    return { ok: false, kind: 'refused', message: `Not an agents request: ${spec?.method} ${spec?.path}` }
-  }
+async function kitSend(settings: Settings, spec: RequestSpec): Promise<Outcome<unknown>> {
+  const allowed = KIT_ROUTES.some((r) => r.method === spec?.method && r.path.test(spec?.path ?? ''))
+  if (!allowed) return { ok: false, kind: 'refused', message: `Not a request this app sends: ${spec?.method} ${spec?.path}` }
   const transport = new HttpTransport({
     baseUrl: settings.baseUrl,
     headers: () => ({ Authorization: auth(settings) }),
   })
-  return transport.send({ method: spec.method, path: spec.path, body: spec.body })
-}
-
-/*
- * Handlers — the user's TypeScript event handlers, over the same admin surface
- * the appliance's own console and MCP tools use. The studio adds an editor,
- * not a mechanism: save is tsc-gated server-side, dry-run is observe-only and
- * binds a real sampled signal, and generation reports the compiler's verdict
- * alongside the source. Every endpoint acts as the authenticated user.
- */
-
-/** The user's handlers plus inactive realm-shipped ones available to adopt. */
-async function handlersList(settings: Settings) {
-  try {
-    const res = await post(settings, '/api/v1/admin/handlers/list', {})
-    if (res.status === 404) return { ok: false, message: 'no handlers surface — older appliance' }
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-    const body = await readJson(res)
-    return { ok: true, yours: body?.yours ?? [], available: body?.available ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** One handler's source and metadata, for open → edit → save. */
-async function handlerOpen(settings: Settings, name: string) {
-  try {
-    const res = await post(settings, `/api/v1/admin/handlers/open?name=${encodeURIComponent(name)}`, {})
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return {
-      ok: true,
-      name: body?.name ?? name,
-      description: body?.description ?? '',
-      source: body?.source ?? '',
-      signalType: body?.signalType ?? '*',
-      schedule: body?.schedule ?? null,
-      autonomous: body?.autonomous === true,
-    }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** Create or update a handler — the appliance type-checks before persisting. */
-async function handlerSave(settings: Settings, spec: { name?: string }) {
-  try {
-    const res = await post(settings, '/api/v1/admin/handlers/save', spec, 60_000)
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return { ok: body?.ok === true, message: body?.message ?? (body?.ok ? 'saved' : 'save failed') }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** Delete a user-authored handler (realm handlers can only be disabled). */
-async function handlerDelete(settings: Settings, name: string) {
-  try {
-    const res = await post(settings, `/api/v1/admin/handlers/delete?name=${encodeURIComponent(name)}`, {})
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return { ok: body?.ok === true, message: body?.message ?? '' }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** Enable (adopt) or disable a handler for this user. */
-async function handlerSetEnabled(settings: Settings, name: string, enabled: boolean) {
-  try {
-    const res = await post(settings, `/api/v1/admin/handlers/set-enabled?name=${encodeURIComponent(name)}&enabled=${enabled}`, {})
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-    return { ok: true }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** Set (or clear, with blank) a per-user cron schedule for a handler. */
-async function handlerSetSchedule(settings: Settings, name: string, schedule: string) {
-  try {
-    const query = `name=${encodeURIComponent(name)}${schedule ? `&schedule=${encodeURIComponent(schedule)}` : ''}`
-    const res = await post(settings, `/api/v1/admin/handlers/set-schedule?${query}`, {})
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-    return { ok: true }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/**
- * Run a handler OBSERVE-ONLY against the most recent real signal of the given
- * type (or a cron tick), changing nothing external. The studio's primary verb.
- */
-async function handlerDryRun(settings: Settings, source: string, signalType: string) {
-  try {
-    const res = await post(settings, '/api/v1/admin/handlers/dry-run', { source, signalType: signalType || null }, 120_000)
-    if (res.status === 404) return { ok: false, message: 'no handlers surface — older appliance' }
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return {
-      ok: true,
-      ran: body?.ok === true,
-      ranAgainst: body?.ranAgainst ?? null,
-      stdout: body?.stdout ?? '',
-      error: body?.error ?? null,
-    }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** English → handler source, with the server's tsc verdict on the result. With
- *  [current], the request is a REVISION of that source — the editor's Refine. */
-async function handlerGenerate(settings: Settings, english: string, current: string) {
-  try {
-    const res = await post(settings, '/api/v1/admin/handlers/generate', { english, current: current || null }, 180_000)
-    if (res.status === 404) return { ok: false, message: 'no generate endpoint — older appliance' }
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return {
-      ok: true,
-      source: body?.source ?? '',
-      valid: typeof body?.valid === 'boolean' ? body.valid : null,
-      violations: body?.violations ?? [],
-      attempts: body?.attempts ?? null,
-      durationMs: body?.durationMs ?? null,
-    }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** Type-check a handler body without saving or running — the editor's debounced verdict. */
-async function handlerValidate(settings: Settings, source: string) {
-  try {
-    const res = await post(settings, '/api/v1/admin/handlers/validate', { source }, 60_000)
-    if (res.status === 404) return { ok: false, message: 'no validate endpoint — older appliance' }
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return { ok: true, valid: body?.valid === true, violations: body?.violations ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/**
- * English → a 6-field cron expression, through the appliance's own compiler —
- * the same one the Vaadin cron drawer uses. The user never writes cron: a 200
- * carries either a cron key (parse-validated server-side) or an error key
- * worth showing verbatim, since it says how to rephrase.
- */
-async function compileSchedule(settings: Settings, schedule: string) {
-  try {
-    const res = await post(settings, '/api/v1/cron/compile-schedule', { schedule }, 60_000)
-    if (res.status === 404) return { ok: false, message: 'no schedule compiler — older appliance' }
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return { ok: true, cron: body?.cron ?? null, error: body?.error ?? null }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
+  return transport.send({ method: spec.method, path: spec.path, query: spec.query, body: spec.body })
 }
 
 /**
@@ -1117,9 +961,7 @@ export {
   kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
   listViews, saveView, deleteView, viewInvocation, hintRandom,
   toursList, tourStepStatus, tourExport, tourImport, tourDelete, tourAsset,
-  agentsSend,
-  handlersList, handlerOpen, handlerSave, handlerDelete, handlerSetEnabled, handlerSetSchedule,
-  handlerDryRun, handlerGenerate, handlerValidate, gatewaySurface, compileSchedule,
+  kitSend, gatewaySurface,
   uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }
 
 // ---------------------------------------------------------------------------

@@ -6,26 +6,20 @@
  * What this file adds is the host: a transport that reaches the appliance, a question before a
  * signature, and a way from a routine to the editor for its body.
  *
- * THE TRANSPORT IS THE KIT'S CLIENT OVER IPC. The page has no network of its own (the sandbox
- * and the CSP both see to that), so each request the kit's `AgentsClient` shapes crosses the
- * bridge as its `RequestSpec` and is sent by the kit's `HttpTransport` in the main process. The
- * client's own reading of the answer, including lifting a refusal's sentence out of a 409, runs
- * here unchanged.
+ * Its requests go through `kit-transport.ts`, the kit's own client over the bridge.
  */
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { AgentsClient, type Agent, type Outcome, type RequestSpec, type Transport } from '@embabel/appliance-kit'
+import { AgentsClient, type Agent } from '@embabel/appliance-kit'
 import { AgentsSurface, type AgentsServices } from '@embabel/appliance-kit/react/features'
 import { restoreTheme } from './theme'
 import { EMPTY_SETTINGS } from './studio-deps'
+import { ipcTransport } from './kit-transport'
 import type { Settings } from './types'
 
 let settings: Settings = EMPTY_SETTINGS
 
-const ipc: Transport = {
-  send: <T,>(spec: RequestSpec) => window.me.agentsSend(settings, spec) as Promise<Outcome<T>>,
-}
-const client = new AgentsClient(ipc)
+const client = new AgentsClient(ipcTransport(() => settings))
 
 const services: AgentsServices = {
   listAgents: () => client.list(),
@@ -42,15 +36,27 @@ const confirmSign = (agent: Agent) => Promise.resolve(window.confirm(
   `Sign ${agent.name} version ${agent.version + 1}?\n\nThe signed version is what runs from now on. Later edits wait for the next signature.`,
 ))
 
+/*
+ * Opened at an agent: once from the query the window was opened with, and again for each request
+ * while it is open. A new request remounts the surface, since `initialAgent` is where it starts.
+ */
+function AgentsWindow() {
+  const [start, setStart] = React.useState(() => ({ agent: new URLSearchParams(location.search).get('open'), n: 0 }))
+  React.useEffect(() => window.me.onAgentOpenRequest((agent) => setStart((s) => ({ agent, n: s.n + 1 }))), [])
+  return (
+    <AgentsSurface
+      key={start.n}
+      services={services}
+      initialAgent={start.agent ?? undefined}
+      host={{ confirmSign, editRoutine: (name) => void window.me.openHandlerStudio(name) }}
+    />
+  )
+}
+
 async function init() {
   settings = await window.me.loadSettings()
   void restoreTheme(settings)
-  createRoot(document.getElementById('agents')).render(
-    <AgentsSurface
-      services={services}
-      host={{ confirmSign, editRoutine: (name) => void window.me.openHandlerStudio(name) }}
-    />,
-  )
+  createRoot(document.getElementById('agents')).render(<AgentsWindow />)
 }
 
 void init()
