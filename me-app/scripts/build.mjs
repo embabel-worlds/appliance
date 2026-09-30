@@ -77,15 +77,25 @@ const node = [
 const styles = [
   { ...common, entryPoints: ['src/kit.css'], outfile: 'dist/kit.css' },
   { ...common, entryPoints: ['src/editor.css'], outfile: 'dist/editor.css' },
+  { ...common, entryPoints: ['src/features.css'], outfile: 'dist/features.css' },
 ]
 
 /** One bundle per window, named for the page that loads it. */
 const browser = [
   { entryPoints: ['src/renderer.ts'], outfile: 'dist/renderer.js' },
   { entryPoints: ['src/query-studio.ts'], outfile: 'dist/query-studio.js' },
-  { entryPoints: ['src/handler-studio.ts'], outfile: 'dist/handler-studio.js' },
+  { entryPoints: ['src/handler-studio.tsx'], outfile: 'dist/handler-studio.js' },
   { entryPoints: ['src/logview.ts'], outfile: 'dist/logview.js' },
-].map((c) => ({ ...common, ...c, platform: 'browser' }))
+  { entryPoints: ['src/agents-window.tsx'], outfile: 'dist/agents-window.js' },
+].map((c) => ({
+  ...common,
+  ...c,
+  platform: 'browser',
+  /* React picks its build from NODE_ENV, and esbuild guesses "development" whenever it is not
+     minifying, so the Agents window would ship React's dev checks inside the packaged app. A
+     watch build keeps them: that is where their warnings are read. */
+  define: { 'process.env.NODE_ENV': watch ? '"development"' : '"production"' },
+}))
 
 const configs = [...node, ...browser, ...styles]
 

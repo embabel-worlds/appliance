@@ -4,6 +4,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Fact, ScanOptions, Settings, VerbConsent } from './types'
+import type { RequestSpec } from '@embabel/appliance-kit'
 
 const api = {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
@@ -38,19 +39,24 @@ const api = {
   vcLensModel: (settings: Settings) => ipcRenderer.invoke('vc:lens-model', settings),
   vcSetLensModel: (settings: Settings, model: string) => ipcRenderer.invoke('vc:set-lens-model', settings, model),
   openQueryStudio: () => ipcRenderer.invoke('query:popout'),
-  openHandlerStudio: () => ipcRenderer.invoke('handlers:popout'),
-  // Handlers — the Handler Studio's surface. All effects happen server-side.
-  handlersList: (settings: Settings) => ipcRenderer.invoke('handlers:list', settings),
-  handlerOpen: (settings: Settings, name: string) => ipcRenderer.invoke('handlers:open', settings, name),
-  handlerSave: (settings: Settings, spec: unknown) => ipcRenderer.invoke('handlers:save', settings, spec),
-  handlerDelete: (settings: Settings, name: string) => ipcRenderer.invoke('handlers:delete', settings, name),
-  handlerSetEnabled: (settings: Settings, name: string, enabled: boolean) => ipcRenderer.invoke('handlers:set-enabled', settings, name, enabled),
-  handlerSetSchedule: (settings: Settings, name: string, schedule: string) => ipcRenderer.invoke('handlers:set-schedule', settings, name, schedule),
-  handlerDryRun: (settings: Settings, source: string, signalType: string) => ipcRenderer.invoke('handlers:dry-run', settings, source, signalType),
-  handlerGenerate: (settings: Settings, english: string, current: string) => ipcRenderer.invoke('handlers:generate', settings, english, current),
-  handlerValidate: (settings: Settings, source: string) => ipcRenderer.invoke('handlers:validate', settings, source),
+  /** Opens the routine studio; `open` puts that routine in its editor. */
+  openHandlerStudio: (open?: string) => ipcRenderer.invoke('handlers:popout', open),
+  onHandlerOpenRequest: (callback: (name: string) => void) => {
+    const listener = (_e: unknown, name: string) => callback(name)
+    ipcRenderer.on('handlers:open-request', listener)
+    return () => { ipcRenderer.removeListener('handlers:open-request', listener) }
+  },
+  /** Opens the Agents window; `open` shows that agent, as a routine's agent button asks. */
+  openAgents: (open?: string) => ipcRenderer.invoke('agents:popout', open),
+  onAgentOpenRequest: (callback: (name: string) => void) => {
+    const listener = (_e: unknown, name: string) => callback(name)
+    ipcRenderer.on('agents:open-request', listener)
+    return () => { ipcRenderer.removeListener('agents:open-request', listener) }
+  },
+  /** One kit RequestSpec, from the Agents window or the Routine Studio; main refuses any other route. */
+  kitSend: (settings: Settings, spec: RequestSpec) => ipcRenderer.invoke('kit:send', settings, spec),
+  /** The gateway's TypeScript declarations: text, so not a kit request. */
   gatewaySurface: (settings: Settings) => ipcRenderer.invoke('handlers:surface', settings),
-  compileSchedule: (settings: Settings, english: string) => ipcRenderer.invoke('handlers:compile-schedule', settings, english),
   // Themes: the appliance owns the list and the CSS; the renderer only paints it.
   listThemes: (settings: Settings) => ipcRenderer.invoke('themes:list', settings),
   themeCss: (settings: Settings, name: string) => ipcRenderer.invoke('themes:css', settings, name),

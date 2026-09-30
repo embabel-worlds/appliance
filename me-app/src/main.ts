@@ -23,6 +23,7 @@ import { platform } from './platform'
 import * as pkg from '../package.json'
 import type { Fact, ScanOptions, Settings, StreamState, VerbConsent } from './types'
 import type { AskRequest } from './wire'
+import type { RequestSpec } from '@embabel/appliance-kit'
 /** The appliance's own property name for its default model. */
 const DEFAULT_LLM_KEY = 'EMBABEL_MODELS_DEFAULT_LLM'
 
@@ -692,16 +693,21 @@ handle('query:popout', () => {
 // same one-instance rule, same reasons.
 let handlersWindow: BrowserWindow | null = null
 
-handle('handlers:popout', () => {
+/*
+ * `open` names a routine to put in the editor: the Agents window's Edit. A studio already open is
+ * told, rather than reloaded over whatever is being written in it.
+ */
+handle('handlers:popout', (open?: string) => {
   if (handlersWindow) {
     handlersWindow.show()
     handlersWindow.focus()
+    if (open) handlersWindow.webContents.send('handlers:open-request', open)
     return
   }
   handlersWindow = new BrowserWindow({
     width: 1180,
     height: 840,
-    title: 'Embabel Me — Handler Studio',
+    title: 'Embabel Me — Routine Studio',
     backgroundColor: '#000000',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
@@ -711,40 +717,54 @@ handle('handlers:popout', () => {
       sandbox: true,
     },
   })
-  void handlersWindow.loadFile(path.join(__dirname, '..', 'handler-studio.html'))
+  void handlersWindow.loadFile(path.join(__dirname, '..', 'handler-studio.html'), open ? { query: { open } } : undefined)
   handlersWindow.on('closed', () => {
     handlersWindow = null
   })
 })
 
-// Handlers — the admin surface behind the Handler Studio. Effects only ever
-// happen server-side; dry-run is observe-only by construction there.
-handle('handlers:list', (settings: Settings) => api.handlersList(settings))
-handle('handlers:open', (settings: Settings, name: string) => api.handlerOpen(settings, name))
-handle('handlers:save', (settings: Settings, spec: { name?: string }) => {
-  log(`[me-app] handler save '${spec?.name}'`)
-  return api.handlerSave(settings, spec)
+/*
+ * Agents: the kit's Agents surface in a window of its own, one instance, like the studios. Its
+ * requests arrive as the kit client's RequestSpecs and go out through `api.kitSend`, which
+ * refuses any route the app's two kit surfaces do not use.
+ */
+let agentsWindow: BrowserWindow | null = null
+
+/* `open` names an agent to show: the Routine Studio's way to the agent that sets a routine's stage. */
+handle('agents:popout', (open?: string) => {
+  if (agentsWindow) {
+    agentsWindow.show()
+    agentsWindow.focus()
+    if (open) agentsWindow.webContents.send('agents:open-request', open)
+    return
+  }
+  agentsWindow = new BrowserWindow({
+    width: 1180,
+    height: 840,
+    title: 'Embabel Me — Agents',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  void agentsWindow.loadFile(path.join(__dirname, '..', 'agents.html'), open ? { query: { open } } : undefined)
+  agentsWindow.on('closed', () => {
+    agentsWindow = null
+  })
 })
-handle('handlers:delete', (settings: Settings, name: string) => {
-  log(`[me-app] handler delete '${name}'`)
-  return api.handlerDelete(settings, name)
+handle('kit:send', (settings: Settings, spec: RequestSpec) => {
+  // A change is worth a line in the log; a read is not, and the studio's validate runs per keystroke.
+  if (spec?.method === 'POST' && !/\/(list|validate)$/.test(spec.path ?? '')) log(`[me-app] ${spec.path}`)
+  return api.kitSend(settings, spec)
 })
-handle('handlers:set-enabled', (settings: Settings, name: string, enabled: boolean) => {
-  log(`[me-app] handler '${name}' enabled=${enabled}`)
-  return api.handlerSetEnabled(settings, name, enabled)
-})
-handle('handlers:set-schedule', (settings: Settings, name: string, schedule: string) => {
-  log(`[me-app] handler '${name}' schedule='${schedule ?? ''}'`)
-  return api.handlerSetSchedule(settings, name, schedule)
-})
-handle('handlers:dry-run', (settings: Settings, source: string, signalType: string) => api.handlerDryRun(settings, source, signalType))
-handle('handlers:generate', (settings: Settings, english: string, current: string) => {
-  log(`[me-app] handler generate${current ? ' (refining)' : ''}`)
-  return api.handlerGenerate(settings, english, current)
-})
-handle('handlers:validate', (settings: Settings, source: string) => api.handlerValidate(settings, source))
+
+// The one thing the Routine Studio still asks for over its own channel: the gateway's TypeScript
+// declarations, which are a text file and not the JSON the kit transport reads.
 handle('handlers:surface', (settings: Settings) => api.gatewaySurface(settings))
-handle('handlers:compile-schedule', (settings: Settings, english: string) => api.compileSchedule(settings, english))
 
 /*
  * Container logs — what the appliance is actually doing, in its own window.

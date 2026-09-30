@@ -30,7 +30,8 @@ a type error never stops you launching the app and the build stays in
 milliseconds. `npm run watch` rebuilds on save.
 
 The renderer is bundled **per window** — one IIFE bundle each for
-`index.html`, `query-studio.html`, `handler-studio.html` and `logs.html`. That
+`index.html`, `query-studio.html`, `handler-studio.html`, `logs.html` and
+`agents.html`. That
 shape is not a preference: pages load via `loadFile`, so their origin is
 `file://`, and Chromium refuses ES module scripts from there; `nodeIntegration`
 is off and `sandbox` on, so `require` is out too. A classic script is what is
@@ -60,6 +61,15 @@ Worlds console, which is the point. The remaining three followed for the same
 three reasons: their own `.d.ts` files apply, `npm update` is the upgrade rather
 than a copy script somebody has to remember to run, and the packaged app's
 `files` list stops carrying a second copy of code npm already installed.
+
+The Agents window and the Routine Studio are React pages that mount the kit's
+`AgentsSurface` and `HandlerStudioSurface`, so the Me app and the Worlds console
+show agents and edit routines through the same components. Their requests are
+the kit clients' `RequestSpec`s, carried by `src/kit-transport.ts` over one IPC
+channel and sent by the kit's `HttpTransport` in the main process, behind the
+per-method route allow-list in `src/api.ts`: a route not on it does not exist for
+these pages. `src/features.css` brings the kit's feature stylesheet, which
+`kit.css` leaves out.
 
 CSS arrives the same way, because a `<link>` at a `file://` origin needs a real
 path on disk and `dist/` is one: `src/kit.css` imports the shared visual language
