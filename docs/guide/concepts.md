@@ -20,7 +20,7 @@ the missing piece: typed, governed, queryable, and yours. It runs on your own
 machine, and one appliance can hold several.
 
 Concretely a world is a directory of declarative configuration — types, views,
-handlers, apps, the realms it installs — plus the graph those things populate
+agents, apps, the realms it installs — plus the graph those things populate
 and query.
 
 ## Realm
@@ -52,16 +52,43 @@ project, no sync to fall behind.
 ## View
 
 **A saved query, referenced by name as if it were a label.** The questions worth
-asking twice become views; the ones worth asking continuously become handlers
-that tell you when the answer changes.
+asking twice become views; the ones worth asking continuously become routines
+that an agent runs to tell you when the answer changes.
 
 A view composes: because its rows are nodes of a real or virtual type, you can
 `MATCH` a view and keep traversing from it.
 
-## Handler
+## Agent
 
-**Work the world does without being asked** — a scheduled job, or a reaction to a
-signal. Cron-driven or event-driven, declared in the world or shipped by a realm.
+**A named colleague that does work in your world.** An agent has a job, said in one
+sentence, and a sponsor: the person who answers for it. It holds the routines that do
+the work.
+
+An agent is always at one of three stages:
+
+| | |
+|---|---|
+| **Off duty** | nothing it holds runs |
+| **On duty, observing** | its routines run, and every change they would make is held back and reported instead |
+| **On duty** | its routines run and may change things |
+
+It runs the version its sponsor last **signed**. Editing a routine, updating the realm
+it came from, or changing a view it relies on shows up on the agent as an unsigned
+change, and nothing different happens until the sponsor signs. So an update cannot
+change what an agent does behind the back of the person who answers for it.
+
+A realm can bring agents with it. They arrive off duty, apart from routines that only
+read, which may already be observing. An agent is adopted by putting it on duty, and
+whoever does becomes its sponsor. An agent
+that still needs something, such as a sponsor or a first signature, says so, and is
+refused on duty until it has it.
+
+## Routine
+
+**Work an agent does without being asked** — a scheduled job, or a reaction to a signal.
+A short TypeScript program, cron-driven or event-driven, written in the world or shipped
+by a realm. Every routine belongs to an agent; one that no agent names is gathered into
+an agent for its realm, or into your own.
 
 ## Appliance
 

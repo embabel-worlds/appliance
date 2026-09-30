@@ -86,7 +86,7 @@ one will make everything else on the machine slower while it works.
 
 If you want nothing leaving at all: set every job in **Models** to a local model, leave
 embeddings on their local default, and remove your provider keys from `.env`. The
-appliance will run — the graph, realms, documents, handlers, scheduled work and the
+appliance will run — the graph, realms, documents, agents, scheduled work and the
 console are all local machinery — and the quality ceiling becomes whatever your
 hardware runs.
 
