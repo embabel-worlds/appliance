@@ -664,6 +664,7 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   { method: 'GET', path: /^\/api\/v1\/admin\/kg\/schema$/ },
   { method: 'GET', path: /^\/api\/v1\/signal-types$/ },
   { method: 'GET', path: /^\/api\/v1\/world\/skills$/ },
+  { method: 'POST', path: /^\/api\/v1\/cron\/compile-schedule$/ },
 ]
 
 async function kitSend(settings: Settings, spec: RequestSpec): Promise<Outcome<unknown>> {
@@ -673,7 +674,8 @@ async function kitSend(settings: Settings, spec: RequestSpec): Promise<Outcome<u
     baseUrl: settings.baseUrl,
     headers: () => ({ Authorization: auth(settings) }),
   })
-  return transport.send({ method: spec.method, path: spec.path, query: spec.query, body: spec.body })
+  // The deadline travels too: compiling a schedule is a model call and gets longer than a read.
+  return transport.send({ method: spec.method, path: spec.path, query: spec.query, body: spec.body, timeoutMs: spec.timeoutMs })
 }
 
 /**

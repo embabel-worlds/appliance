@@ -14,6 +14,7 @@ import {
   KgClient,
   ok,
   AgentsClient,
+  CronClient,
   type HandlerGenerated,
   type Outcome,
 } from '@embabel/appliance-kit'
@@ -28,11 +29,13 @@ let settings: Settings = EMPTY_SETTINGS
 const transport = ipcTransport(() => settings)
 const handlers = new HandlersClient(transport)
 const agents = new AgentsClient(transport)
+const cron = new CronClient(transport)
 
 const services: HandlerStudioServices = {
   kg: new KgClient(transport),
   handlers,
   listAgents: () => agents.list(),
+  compileSchedule: (schedule) => cron.compileSchedule(schedule),
   // Sent whole rather than through `handlers.generate`, which does not yet carry the skills.
   generateHandler: (english, current, skills) => transport.send<HandlerGenerated>({
     method: 'POST', path: '/api/v1/admin/handlers/generate', body: { english, current, skills },
