@@ -756,6 +756,36 @@ handle('agents:popout', (open?: string) => {
     agentsWindow = null
   })
 })
+/*
+ * Approvals: the kit's Approvals surface in a window of its own, one instance — what agents ask
+ * before they act. Its requests go out through `api.kitSend`, like the Agents window's.
+ */
+let approvalsWindow: BrowserWindow | null = null
+
+handle('approvals:popout', () => {
+  if (approvalsWindow) {
+    approvalsWindow.show()
+    approvalsWindow.focus()
+    return
+  }
+  approvalsWindow = new BrowserWindow({
+    width: 980,
+    height: 840,
+    title: 'Embabel Me — Approvals',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  void approvalsWindow.loadFile(path.join(__dirname, '..', 'approvals.html'))
+  approvalsWindow.on('closed', () => {
+    approvalsWindow = null
+  })
+})
 handle('kit:send', (settings: Settings, spec: RequestSpec) => {
   // A change is worth a line in the log; a read is not, and the studio's validate runs per keystroke.
   if (spec?.method === 'POST' && !/\/(list|validate)$/.test(spec.path ?? '')) log(`[me-app] ${spec.path}`)

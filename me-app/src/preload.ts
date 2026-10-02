@@ -48,6 +48,7 @@ const api = {
   },
   /** Opens the Agents window; `open` shows that agent, as a routine's agent button asks. */
   openAgents: (open?: string) => ipcRenderer.invoke('agents:popout', open),
+  openApprovals: () => ipcRenderer.invoke('approvals:popout'),
   onAgentOpenRequest: (callback: (name: string) => void) => {
     const listener = (_e: unknown, name: string) => callback(name)
     ipcRenderer.on('agents:open-request', listener)

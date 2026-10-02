@@ -40,6 +40,7 @@
       "query-studio.html",
       "handler-studio.html",
       "agents.html",
+      "approvals.html",
       "logs.html",
       "package.json"
     ],
