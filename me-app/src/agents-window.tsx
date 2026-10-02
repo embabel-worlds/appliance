@@ -26,6 +26,10 @@ const services: AgentsServices = {
   setStage: (name, stage, routine) => client.setStage(name, stage, routine),
   sign: (name) => client.sign(name),
   versions: (name) => client.versions(name),
+  checkDuty: (name, duty) => client.checkDuty(name, duty),
+  haltStatus: () => client.haltStatus(),
+  halt: (reason) => client.halt(reason),
+  resume: () => client.resume(),
 }
 
 /*

@@ -660,9 +660,15 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   // A dot segment is refused as a name: `agents/..` would resolve to somewhere that is not agents.
   { method: 'GET', path: /^\/api\/v1\/agents(\/(?!\.\.?(?:\/|$))[^/?#]+(\/versions)?)?$/ },
   { method: 'POST', path: /^\/api\/v1\/agents\/(?!\.\.?(?:\/|$))[^/?#]+\/(stage|sign)$/ },
+  // A duty's test run, from its card: both names are single segments, neither a dot segment.
+  { method: 'POST', path: /^\/api\/v1\/agents\/(?!\.\.?(?:\/|$))[^/?#]+\/duties\/(?!\.\.?(?:\/|$))[^/?#]+\/check$/ },
   // Approvals: the requests agents raise, one of them, and the decision on one.
   { method: 'GET', path: /^\/api\/v1\/requests(\/(?!\.\.?(?:\/|$))[^/?#]+)?$/ },
   { method: 'POST', path: /^\/api\/v1\/requests\/(?!\.\.?(?:\/|$))[^/?#]+\/decision$/ },
+  // The kill switch: read, thrown with a reason, lifted. Its own path, not under agents.
+  { method: 'GET', path: /^\/api\/v1\/halt$/ },
+  { method: 'POST', path: /^\/api\/v1\/halt$/ },
+  { method: 'DELETE', path: /^\/api\/v1\/halt$/ },
   { method: 'POST', path: /^\/api\/v1\/admin\/handlers\/(list|open|validate|generate|dry-run|save|delete|set-enabled)$/ },
   { method: 'GET', path: /^\/api\/v1\/admin\/kg\/schema$/ },
   { method: 'GET', path: /^\/api\/v1\/signal-types$/ },
