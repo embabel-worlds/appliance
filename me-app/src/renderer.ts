@@ -872,6 +872,7 @@ docIngestButton.addEventListener('click', () => void runIngest())
 $('vc-open').addEventListener('click', () => void window.me.openQueryStudio())
 $('handlers-open').addEventListener('click', () => void window.me.openHandlerStudio())
 $('agents-open').addEventListener('click', () => void window.me.openAgents())
+$('approvals-open').addEventListener('click', () => void window.me.openApprovals())
 
 // ---------------------------------------------------------------------------
 // Models: which model does what.

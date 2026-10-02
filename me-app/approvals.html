@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>Embabel Me — Approvals</title>
+  <link rel="stylesheet" href="dist/kit.css" />
+  <link rel="stylesheet" href="dist/features.css" />
+  <style id="theme"></style>
+  <style>
+    .dragbar {
+      -webkit-app-region: drag; height: 40px; flex: none;
+      display: flex; align-items: center; padding: 0 16px 0 84px;
+      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--mid);
+    }
+    body { font-size: 13px; }
+    #approvals { padding: 0 16px 16px; }
+  </style>
+</head>
+<body>
+  <div class="dragbar">Approvals · what your agents ask before they act</div>
+  <div id="approvals"></div>
+  <script src="dist/approvals-window.js"></script>
+</body>
+</html>

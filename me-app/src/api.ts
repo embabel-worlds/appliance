@@ -660,6 +660,9 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   // A dot segment is refused as a name: `agents/..` would resolve to somewhere that is not agents.
   { method: 'GET', path: /^\/api\/v1\/agents(\/(?!\.\.?(?:\/|$))[^/?#]+(\/versions)?)?$/ },
   { method: 'POST', path: /^\/api\/v1\/agents\/(?!\.\.?(?:\/|$))[^/?#]+\/(stage|sign)$/ },
+  // Approvals: the requests agents raise, one of them, and the decision on one.
+  { method: 'GET', path: /^\/api\/v1\/requests(\/(?!\.\.?(?:\/|$))[^/?#]+)?$/ },
+  { method: 'POST', path: /^\/api\/v1\/requests\/(?!\.\.?(?:\/|$))[^/?#]+\/decision$/ },
   { method: 'POST', path: /^\/api\/v1\/admin\/handlers\/(list|open|validate|generate|dry-run|save|delete|set-enabled)$/ },
   { method: 'GET', path: /^\/api\/v1\/admin\/kg\/schema$/ },
   { method: 'GET', path: /^\/api\/v1\/signal-types$/ },

@@ -87,6 +87,7 @@ const browser = [
   { entryPoints: ['src/handler-studio.tsx'], outfile: 'dist/handler-studio.js' },
   { entryPoints: ['src/logview.ts'], outfile: 'dist/logview.js' },
   { entryPoints: ['src/agents-window.tsx'], outfile: 'dist/agents-window.js' },
+  { entryPoints: ['src/approvals-window.tsx'], outfile: 'dist/approvals-window.js' },
 ].map((c) => ({
   ...common,
   ...c,
