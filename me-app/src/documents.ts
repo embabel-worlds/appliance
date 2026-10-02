@@ -180,11 +180,20 @@ async function ask(settings: Settings, request: AskRequest, onStep: (step: any) 
   // what separates THIS question's steps from every other window's.
   const operationId = `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const progress = onStep ? await watchProgress(settings, operationId, onStep) : { close: () => {} }
+  /* ONE `window` OBJECT, which is what the appliance reads. `dateField`, `from` and `to` used to go
+     at the top level, where the request type has no such fields: they were ignored, so a date
+     filter narrowed nothing and nothing said so — and an appliance that refuses unknown fields
+     answers 400. A field alone is not a range, so the window goes only with a bound. */
+  const window = request.from || request.to
+    ? {
+        field: request.dateField || 'modified',
+        ...(request.from ? { from: request.from } : {}),
+        ...(request.to ? { to: request.to } : {}),
+      }
+    : undefined
   const body = {
     question: request.question,
-    dateField: request.dateField || undefined,
-    from: request.from || undefined,
-    to: request.to || undefined,
+    window,
     topK: request.topK || undefined,
     history: request.history || [],
     answer: true,
