@@ -346,6 +346,30 @@ services:
       # them (chat, memory, document ingest). Empty by default: the console asks.
       - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
       - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
+    volumes:
+      # THE GUIDES, FOR SETUP TO PUT INTO THE NEW WORLD. A world starts empty, so the
+      # first question anybody has — what is this, and what can I ask it — was one it
+      # could not answer about itself. The terminal installer uploaded these files
+      # itself (embabel_setup/seed.py); setup that finishes in the browser cannot,
+      # because a page cannot read this checkout. So the console is handed them:
+      # nginx lists /guides/ and the last step of setup ingests what it finds.
+      #
+      # FROM THE CHECKOUT, NOT BAKED INTO THE IMAGE, so a world is told about the
+      # appliance that is installed rather than the one the console was built beside.
+      #
+      # The same set seed.py names, and for its reasons: CONTRIBUTING, CLAUDE.md and
+      # AGENT_GUIDE.md are instructions to people and agents working ON or WITH an
+      # appliance, and somebody searching their world should not get them back.
+      #
+      # Read-only. The top four are single-file mounts, which pin the file as it was
+      # when the container started — an upgrade recreates the container, so that is
+      # the version that should be served.
+      - ./README.md:/usr/share/nginx/guides/README.md:ro
+      - ./CLI.md:/usr/share/nginx/guides/CLI.md:ro
+      - ./PHONE_HOME.md:/usr/share/nginx/guides/PHONE_HOME.md:ro
+      - ./WORLD_TEMPLATES.md:/usr/share/nginx/guides/WORLD_TEMPLATES.md:ro
+      - ./docs/guide:/usr/share/nginx/guides/guide:ro
+      - ./skills:/usr/share/nginx/guides/skills:ro
 
   # ── SQL endpoint (opt-in) ────────────────────────────────────────────────────
   # A Postgres-wire surface onto the world, so BI tools, dbt and notebooks can query
