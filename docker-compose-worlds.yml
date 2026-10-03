@@ -100,6 +100,9 @@ services:
       # removes live sessions belonging to the other one.
       - EMBABEL_INSTANCE=${EMBABEL_INSTANCE:-appliance}
       - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:${WORLDS_PORT:-11043}}
+      # Where people open the console, so a request an agent raises in a conversation held elsewhere
+      # (an OpenAI client) links to its Approvals window.
+      - ASSISTANT_CONSOLE_URL=${WORLDS_CONSOLE_PUBLIC_URL:-http://localhost:${WORLDS_CONSOLE_PORT:-11044}}
       # The code-mode sandbox image, so the app launches whatever the pre-pull in
       # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
       # value as unset, because a compose file forwarding an unset variable sets it
