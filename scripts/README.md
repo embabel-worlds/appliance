@@ -7,6 +7,7 @@ the root because a one-line installer with a path in it is not a one-line instal
 | Script | What it builds |
 |---|---|
 | [`build-me-app.sh`](build-me-app.sh) | The Me sensor app as a real `Embabel Me.app`, and optionally a DMG |
+| [`build-realm-index.py`](build-realm-index.py) | `realm-index.yml`, the installable realms an appliance lists without a GitHub token; rebuilt hourly by the realm-index workflow |
 
 And the ones that check rather than build — each drives a path a user actually takes,
 because the failures worth catching are the ones a person meets rather than the ones a

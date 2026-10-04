@@ -1,0 +1,49 @@
+name: Realm index
+
+# realm-index.yml is the list of installable realms an appliance reads by default
+# (assistant.directory.realm-index-url). It exists so that browsing realms needs no GitHub
+# token: scanning GitHub's API allows 60 anonymous requests an hour per public IP address,
+# shared by every appliance on a network, and an install that lost that race listed no
+# realms at all. One raw file is not subject to that limit.
+#
+# Rebuilt every hour, and on demand, from the public realm-* repositories in embabel-worlds,
+# each described by its own realm.yml. Committed only when it changed, so the history is a
+# record of realms arriving, leaving and changing — and a failed run leaves the last good
+# index in place, because the script refuses to write an empty one.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: realm-index
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Build the index
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/build-realm-index.py > realm-index.yml.new && mv realm-index.yml.new realm-index.yml
+      - name: Commit it if it changed
+        run: |
+          if git diff --quiet -- realm-index.yml && git ls-files --error-unmatch realm-index.yml >/dev/null 2>&1; then
+            echo "realm-index.yml unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add realm-index.yml
+          git commit -m "Realm index: $(grep -c '^- name:' realm-index.yml) realms"
+          git push
