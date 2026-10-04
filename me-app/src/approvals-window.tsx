@@ -8,18 +8,19 @@
  */
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { AgentsClient, RequestsClient } from '@embabel/appliance-kit'
+import { RequestsClient } from '@embabel/appliance-kit'
 import { ApprovalsSurface, type ApprovalsServices } from '@embabel/appliance-kit/react/features'
 import { restoreTheme } from './theme'
 import { EMPTY_SETTINGS } from './studio-deps'
 import { ipcTransport } from './kit-transport'
+import { worldQueries } from './world-queries'
 import type { Settings } from './types'
 
 let settings: Settings = EMPTY_SETTINGS
 
 const transport = ipcTransport(() => settings)
 const requests = new RequestsClient(transport)
-const agents = new AgentsClient(transport)
+const { lists } = worldQueries(() => settings)
 
 const services: ApprovalsServices = {
   listRequests: () => requests.list(),
@@ -27,11 +28,14 @@ const services: ApprovalsServices = {
   reject: (id, reason) => requests.reject(id, reason),
 }
 
-/* A request names the routine that raised it; the Agents window opens at the agent holding it. */
+/*
+ * A request names the routine that raised it; the Agents window opens at the agent holding it. One
+ * query for the one holder, rather than every agent's whole card to search through. No answer opens
+ * the window at the routine's name, which is no worse than not knowing.
+ */
 async function openAgentHolding(routine: string) {
-  const roster = await agents.list()
-  const holder = roster.ok ? roster.value.find((a) => a.routines.some((r) => r.name === routine)) : undefined
-  void window.me.openAgents(holder?.name ?? routine)
+  const holder = await lists.agentHolding(routine)
+  void window.me.openAgents((holder.ok ? holder.value : null) ?? routine)
 }
 
 async function init() {

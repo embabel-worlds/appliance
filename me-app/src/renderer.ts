@@ -12,10 +12,12 @@ import { restoreTheme } from './theme'
 import { paint } from './markdown'
 import { TipRotation, renderTipCard } from '@embabel/appliance-kit/tips'
 import { mountTours } from './tours'
-import { ok } from '@embabel/appliance-kit'
+import { isOk, ok } from '@embabel/appliance-kit'
 import './graph'
 import type { Control } from './dom'
-import type { AskStep, ChatMessage, DocSource, ModelInfo, ModelsInUse, RealmSummary, RealmUpdateResult } from './wire'
+import type { AskStep, ChatMessage, DocSource, ModelInfo, ModelsInUse, RealmUpdateResult } from './wire'
+import type { CatalogRealm } from '@embabel/appliance-kit'
+import { worldQueries } from './world-queries'
 
 const baseUrlInput = $('baseUrl')
 const usernameInput = $('username')
@@ -1090,17 +1092,20 @@ for (const tab of document.querySelectorAll<HTMLElement>('.tab')) {
 }
 
 /* ---------------------------------------------------------------------------
- * Realms — what the appliance can do, and what it could. The same surface the
- * Worlds console speaks: installed realms from the world, the discovery
- * catalog from the directory (a live scan of realm repos, grouped by
- * provider), install by repo. Installing rebuilds the world server-side, so
- * the refreshed lists ARE the receipt. No realm declares an icon, so the tile
- * is a synthesized monogram.
+ * Realms — what the appliance can do, and what it could. Installed and on
+ * offer are the same `(:Realm)` rows in Virtual Cypher with a different WHERE,
+ * and the idle APIs are rows too, so this panel and chat answer "which realms
+ * could I install?" from one place; the queries are the kit's RealmCatalog
+ * and WorldLists, shared with the Worlds console. Install and update stay
+ * calls, because they act. Installing rebuilds the world server-side, so the
+ * refreshed lists ARE the receipt. A realm without an icon gets a monogram.
  */
 const realmInstalledEl = $('realm-installed')
 const realmCatalogEl = $('realm-catalog')
 const realmGapsEl = $('realm-gaps')
 const realmStatus = $('realm-status')
+const realmExperimentalEl = $('realm-experimental')
+const { catalog: realmCatalog, lists: worldLists, kg: worldKg } = worldQueries(currentSettings)
 
 /**
  * @param {{name?: string, version?: string, description?: string, meta?: string}} entry
@@ -1131,7 +1136,17 @@ function paintIcon(tile: HTMLElement, settings: Settings, iconUrl: string | unde
   })
 }
 
-function realmRow(entry: RealmSummary & { meta?: string }, ...actions: (HTMLElement | undefined)[]) {
+/** What a row shows of a realm, installed or on offer. */
+interface RealmRowEntry {
+  name: string
+  description?: string
+  iconUrl?: string
+  meta?: string
+  /** The author's own word that it may change or break: said on the row, installed or not. */
+  experimental?: boolean
+}
+
+function realmRow(entry: RealmRowEntry, ...actions: (HTMLElement | undefined)[]) {
   const row = document.createElement('div')
   row.className = 'card realm'
   const tile = document.createElement('div')
@@ -1146,7 +1161,15 @@ function realmRow(entry: RealmSummary & { meta?: string }, ...actions: (HTMLElem
   const meta = document.createElement('span')
   meta.className = 'meta'
   meta.textContent = entry.meta ?? ''
-  body.append(name, meta)
+  body.append(name)
+  if (entry.experimental) {
+    const badge = document.createElement('span')
+    badge.className = 'realm-maturity'
+    badge.textContent = 'experimental'
+    badge.title = "Its author says it may change or break"
+    body.append(badge)
+  }
+  body.append(meta)
 
   // Descriptions are realm.yml prose — often paragraphs of markdown. The row
   // shows ONE plain line; "more" expands to the full text through the same
@@ -1189,17 +1212,39 @@ function realmRow(entry: RealmSummary & { meta?: string }, ...actions: (HTMLElem
 /** Which installed realms ship a tour, by realm name. Filled beside the realm list. */
 const realmToursByName = new Map<string, { id: string; name: string }[]>()
 
+/*
+ * Experimental realms on offer are left out until asked for, and the control that asks says how many
+ * were left out: an opt-in nobody can find is not one. Installed experimental realms are always
+ * listed, because they are part of this world whatever their author thinks of them.
+ */
+let showExperimental = false
+
+/*
+ * Installed realms' icons, by name. The `(:Realm)` row carries `iconUrl`, but the kit's catalogue
+ * row leaves it out, so this one column is asked for beside it. Silent on failure, as icons are.
+ */
+async function installedRealmIcons(): Promise<Map<string, string>> {
+  const result = await worldKg.execute('MATCH (r:Realm) WHERE r.installed RETURN r.name AS name, r.iconUrl AS iconUrl')
+  const icons = new Map<string, string>()
+  if (!result.ok || !('rows' in result.value)) return icons
+  for (const row of (result.value.rows ?? []) as Record<string, unknown>[]) {
+    if (typeof row['name'] === 'string' && typeof row['iconUrl'] === 'string' && row['iconUrl']) icons.set(row['name'], row['iconUrl'])
+  }
+  return icons
+}
+
 async function loadRealms() {
   setStatus(realmStatus, null, 'loading…')
   const settings = currentSettings()
-  const [installed, catalog, gaps, updates] = await Promise.all([
-    window.me.listRealms(settings),
-    window.me.realmCatalog(settings),
-    window.me.realmGaps(settings),
+  const [installed, icons, skipped, updates] = await Promise.all([
+    realmCatalog.realms({ show: 'installed' }),
+    installedRealmIcons(),
+    worldLists.skippedApis(),
     // Cheap server-side (ls-remote: refs, no objects) and asked once for every realm, so the
     // button appears only where pressing it does something.
     window.me.realmUpdates(settings),
   ])
+  void loadOffered()
 
   /* behind: true has something to pull, false is current, undefined means the appliance could not
    * say — no network, a private repo, an appliance older than the endpoint. Unknown KEEPS its
@@ -1209,9 +1254,9 @@ async function loadRealms() {
   )
 
   realmInstalledEl.innerHTML = ''
-  if (!installed.ok) {
+  if (!isOk(installed)) {
     setStatus(realmStatus, false, installed.message)
-  } else if (installed.realms.length === 0) {
+  } else if (installed.value.length === 0) {
     realmInstalledEl.textContent = 'No realms installed yet — pick one below.'
     setStatus(realmStatus, null, '')
   } else {
@@ -1224,7 +1269,7 @@ async function loadRealms() {
       const name = typeof t.presentation?.['name'] === 'string' ? (t.presentation['name'] as string) : t.id
       realmToursByName.set(t.source, [...(realmToursByName.get(t.source) ?? []), { id: t.id, name }])
     }
-    for (const realm of installed.realms) {
+    for (const realm of installed.value) {
       /* The server's summary is the receipt and it differs in kind: a pulled
        * checkout reports what moved, a local `path:` reference reports that it
        * was already live. Show it verbatim rather than flattening both to
@@ -1263,61 +1308,97 @@ async function loadRealms() {
         name: realm.name,
         description: realm.description,
         // Only an INSTALLED realm has an icon here: the appliance has its
-        // checkout and can serve the file. A catalogue entry is a GitHub repo
+        // checkout and can serve the file. A realm on offer is a repository
         // nobody has cloned yet, so those keep their letters.
-        iconUrl: realm.iconUrl,
-        meta: [realm.version ? `v${realm.version}` : '', (realm.tags ?? []).join(' ')].filter(Boolean).join(' · '),
+        iconUrl: icons.get(realm.name),
+        meta: [realm.version ? `v${realm.version}` : '', realm.tags.join(' ')].filter(Boolean).join(' · '),
+        experimental: realm.maturity === 'experimental',
       }, update, takeTour))
     }
-    setStatus(realmStatus, true, `${installed.realms.length} installed`)
+    setStatus(realmStatus, true, `${installed.value.length} installed`)
+  }
+
+  // Inert capability is invisible unless someone says so: name what unlocks
+  // each idle API, in the same breath as discovery.
+  realmGapsEl.innerHTML = ''
+  for (const api of skipped.ok ? skipped.value : []) {
+    const line = document.createElement('p')
+    line.className = 'hint'
+    line.textContent = api.unlockedBy
+      ? `${api.name} is installed but idle — set ${api.unlockedBy} to unlock it.`
+      : `${api.name} is installed but idle${api.reason ? ` — ${api.reason}` : ''}.`
+    realmGapsEl.append(line)
+  }
+}
+
+/* What is on offer, sorted by name: the catalogue states no popularity to rank by. */
+async function loadOffered() {
+  const filter = { show: 'available', experimental: showExperimental } as const
+  const [offered, hidden] = await Promise.all([realmCatalog.realms(filter), realmCatalog.hiddenExperimental(filter)])
+  const hiddenCount = hidden.ok ? hidden.value : 0
+
+  realmExperimentalEl.innerHTML = ''
+  if (hiddenCount > 0 || showExperimental) {
+    const toggle = document.createElement('button')
+    toggle.className = 'realm-experimental-toggle'
+    toggle.setAttribute('aria-pressed', String(showExperimental))
+    toggle.title = 'Realms their own authors call experimental — they may change or break, and installing one asks you to confirm'
+    toggle.textContent = showExperimental ? 'Hide experimental' : `Show ${hiddenCount} experimental`
+    toggle.addEventListener('click', () => {
+      showExperimental = !showExperimental
+      void loadOffered()
+    })
+    realmExperimentalEl.append(toggle)
   }
 
   realmCatalogEl.innerHTML = ''
-  const have = new Set((installed.realms ?? []).map((r: RealmSummary) => r.name))
-  const discoverable = (catalog.providers ?? [])
-    .flatMap((p: { provider: string; realms?: RealmSummary[] }) =>
-      (p.realms ?? []).map((r: RealmSummary) => ({ ...r, provider: p.provider })))
-    .filter((r: RealmSummary) => !r.installed && !have.has(r.name))
-    .sort((a: RealmSummary, b: RealmSummary) => (b.metadata?.stars ?? 0) - (a.metadata?.stars ?? 0))
-  if (!catalog.ok) {
-    realmCatalogEl.textContent = `Could not reach the directory: ${catalog.message}`
-  } else if (discoverable.length === 0) {
-    realmCatalogEl.textContent = 'Nothing new — every discoverable realm is already installed.'
+  if (!isOk(offered)) {
+    realmCatalogEl.textContent = `Could not read the realm directory: ${offered.message}`
+  } else if (offered.value.length === 0) {
+    realmCatalogEl.textContent = hiddenCount > 0
+      ? 'Nothing new that is not experimental.'
+      : 'Nothing new — every discoverable realm is already installed.'
   } else {
-    for (const entry of discoverable) {
+    for (const entry of offered.value) {
       const install = document.createElement('button')
       install.textContent = 'Install'
-      install.addEventListener('click', async () => {
-        install.disabled = true
-        install.textContent = 'Installing…'
-        const result = await window.me.installRealm(settings, entry.source ?? entry.url)
-        if (result.ok) {
-          setStatus(realmStatus, true, `${result.message} — world rebuilt with it`)
-          await loadRealms()
-        } else {
-          setStatus(realmStatus, false, result.message)
-          install.disabled = false
-          install.textContent = 'Install'
-        }
-      })
-      const stars = entry.metadata?.stars
+      install.addEventListener('click', () => void installRealm(entry, install))
       realmCatalogEl.append(realmRow({
         name: entry.name,
         description: entry.description,
-        meta: [entry.provider, stars ? `★ ${stars}` : ''].filter(Boolean).join(' · '),
+        meta: [entry.provider, entry.version ? `v${entry.version}` : ''].filter(Boolean).join(' · '),
+        experimental: entry.maturity === 'experimental',
       }, install))
     }
   }
+}
 
-  // Inert capability is invisible unless someone says so: name the variable
-  // that unlocks each idle API, in the same breath as discovery.
-  realmGapsEl.innerHTML = ''
-  for (const api of gaps.inertApis ?? []) {
-    const line = document.createElement('p')
-    line.className = 'hint'
-    line.textContent = `${api.name} is installed but idle — set ${api.unlockedBy ?? 'its key'} to unlock it.`
-    realmGapsEl.append(line)
+/*
+ * An experimental realm is not refused, it is ASKED about: the appliance answers with its author's
+ * warning, the person is shown it, and only a yes retries carrying `confirmed`.
+ */
+async function installRealm(entry: CatalogRealm, button: HTMLButtonElement, confirmed = false): Promise<void> {
+  const repo = entry.source || entry.url
+  if (!repo) {
+    setStatus(realmStatus, false, `Could not install ${entry.name}: its directory entry has no repository link.`)
+    return
   }
+  button.disabled = true
+  button.textContent = 'Installing…'
+  const result = await window.me.installRealm(currentSettings(), repo, confirmed)
+  if (result.ok) {
+    setStatus(realmStatus, true, `${result.message} — world rebuilt with it`)
+    await loadRealms()
+    return
+  }
+  button.disabled = false
+  button.textContent = 'Install'
+  if (result.needsConfirmation && !confirmed) {
+    if (window.confirm(`${result.message}\n\nInstall ${entry.name} anyway?`)) return installRealm(entry, button, true)
+    setStatus(realmStatus, null, `Not installed: ${entry.name} is experimental, and that was declined.`)
+    return
+  }
+  setStatus(realmStatus, false, result.message)
 }
 
 let realmsLoaded = false

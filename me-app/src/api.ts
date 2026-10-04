@@ -671,8 +671,12 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   { method: 'DELETE', path: /^\/api\/v1\/halt$/ },
   { method: 'POST', path: /^\/api\/v1\/admin\/handlers\/(list|open|validate|generate|dry-run|save|delete|set-enabled)$/ },
   { method: 'GET', path: /^\/api\/v1\/admin\/kg\/schema$/ },
-  { method: 'GET', path: /^\/api\/v1\/signal-types$/ },
-  { method: 'GET', path: /^\/api\/v1\/world\/skills$/ },
+  /*
+   * Virtual Cypher, for what a world holds about itself: its realms, the APIs it skipped, the signal
+   * types it has seen, its skills, which agent holds a routine. Each is a row the kit's RealmCatalog
+   * and WorldLists query, so these lists answer from the same rows chat and Query Studio do.
+   */
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/execute$/ },
   { method: 'POST', path: /^\/api\/v1\/cron\/compile-schedule$/ },
 ]
 
@@ -705,13 +709,10 @@ async function gatewaySurface(settings: Settings) {
 }
 
 /*
- * Realms — the units of capability a world installs. The same three endpoints
- * the Worlds console speaks: the installed list, the discovery catalog (the
- * directory's live scan of realm-* repos, grouped by provider), and install —
- * which appends the realm to the world's realms.yml and rebuilds it, so the
- * moment install returns the world is already regaining consciousness with
- * its new capability. Gaps is the honest postscript: which installed APIs
- * are inert until a key is set, and which variable unlocks each.
+ * Realms — the units of capability a world installs. What is installed, what is on offer and which
+ * APIs sit idle are not here: they are rows the page queries in Virtual Cypher (see KIT_ROUTES).
+ * What stays is what ACTS — install, which appends the realm to the world's realms.yml and rebuilds
+ * it, and the update calls, which reach each realm's remote.
  */
 
 /**
@@ -779,41 +780,22 @@ async function mcpProbe(settings: Settings) {
   }
 }
 
-/** @param {Settings} settings */
-async function listRealms(settings: Settings) {
+/**
+ * Install a realm by repository.
+ *
+ * A 409 is one of two answers and they must not be confused. A realm whose author calls it
+ * experimental is not refused but ASKED about: `needs-confirmation`, with the appliance's own
+ * warning, which the page puts to the person and retries with `confirmed` only on a yes. Any other
+ * 409 is a realm already there.
+ * @param {Settings} settings @param {string} repo clone URL or owner/repo @param {boolean} confirmed
+ */
+async function installRealm(settings: Settings, repo: string, confirmed = false) {
   try {
-    const res = await fetch(`${settings.baseUrl}/api/v1/realms`, {
-      headers: { Authorization: auth(settings) },
-      signal: AbortSignal.timeout(30000),
-    })
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, realms: [] }
-    return { ok: true, message: '', realms: (await readJson(res)) ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e), realms: [] }
-  }
-}
-
-/** @param {Settings} settings */
-async function realmCatalog(settings: Settings) {
-  try {
-    const res = await fetch(`${settings.baseUrl}/api/v1/directory/browse/realms`, {
-      headers: { Authorization: auth(settings) },
-      /* a live GitHub scan on a cold cache — allow it time */
-      signal: AbortSignal.timeout(60000),
-    })
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, providers: [] }
+    const res = await post(settings, '/api/v1/realms', confirmed ? { repo, confirmed: true } : { repo }, 120_000)
     const body = await readJson(res)
-    return { ok: true, message: '', providers: body?.providers ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e), providers: [] }
-  }
-}
-
-/** @param {Settings} settings @param {string} repo clone URL or owner/repo */
-async function installRealm(settings: Settings, repo: string) {
-  try {
-    const res = await post(settings, '/api/v1/realms', { repo }, 120_000)
-    const body = await readJson(res)
+    if (res.status === 409 && body?.status === 'needs-confirmation') {
+      return { ok: false, needsConfirmation: true, message: body?.message ?? `${body?.name ?? 'This realm'} is experimental.` }
+    }
     if (res.status === 409) return { ok: false, message: 'already installed' }
     if (!res.ok) return { ok: false, message: body?.detail ?? body?.message ?? `HTTP ${res.status}` }
     return { ok: true, message: body?.name ? `installed ${body.name}` : 'installed' }
@@ -943,21 +925,6 @@ async function icon(settings: Settings, path: string) {
   }
 }
 
-/** @param {Settings} settings */
-async function realmGaps(settings: Settings) {
-  try {
-    const res = await fetch(`${settings.baseUrl}/api/v1/realms/gaps`, {
-      headers: { Authorization: auth(settings) },
-      signal: AbortSignal.timeout(30000),
-    })
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, inertApis: [] }
-    const body = await readJson(res)
-    return { ok: true, message: '', inertApis: body?.inertApis ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e), inertApis: [] }
-  }
-}
-
 export {
   listThemes,
   themeCss,
@@ -973,7 +940,7 @@ export {
   listViews, saveView, deleteView, viewInvocation, hintRandom,
   toursList, tourStepStatus, tourExport, tourImport, tourDelete, tourAsset,
   kitSend, gatewaySurface,
-  uploadDocument, listRealms, realmCatalog, installRealm, updateRealm, updateAllRealms, realmGaps, listApps, icon, mcpMode, setMcpMode, mcpProbe }
+  uploadDocument, installRealm, updateRealm, updateAllRealms, listApps, icon, mcpMode, setMcpMode, mcpProbe }
 
 // ---------------------------------------------------------------------------
 // Models. Everything here is the appliance's own REST surface — the app adds a
