@@ -556,12 +556,10 @@ handle('apps:open', (settings: Settings, name: string, title: string) => {
   return true
 })
 
-/* Realms: discovery and install, same surface the Worlds console speaks. */
-handle('realms:list', (settings: Settings) => api.listRealms(settings))
-handle('realms:catalog', (settings: Settings) => api.realmCatalog(settings))
-handle('realms:install', async (settings: Settings, repo: string) => {
-  log(`[me-app] realm install requested: ${repo}`)
-  const result = await api.installRealm(settings, repo)
+/* Realms: install and update. Listing them is a query; see the Realms panel in renderer.ts. */
+handle('realms:install', async (settings: Settings, repo: string, confirmed: boolean) => {
+  log(`[me-app] realm install requested: ${repo}${confirmed ? ' (experimental, confirmed)' : ''}`)
+  const result = await api.installRealm(settings, repo, confirmed === true)
   log(`[me-app] realm install: ${result.ok ? 'ok' : 'FAILED'} — ${result.message}`)
   return result
 })
@@ -579,7 +577,6 @@ handle('realms:update-all', async (settings: Settings) => {
   log(`[me-app] realm update-all: ${result.ok ? 'ok' : 'FAILED'} — ${result.results.length} realm(s)`)
   return result
 })
-handle('realms:gaps', (settings: Settings) => api.realmGaps(settings))
 handle('icon:get', (settings: Settings, path: string) => api.icon(settings, path))
 
 /* The MCP surface: which mode a connected agent is in, and whether /mcp is live. */
@@ -726,7 +723,7 @@ handle('handlers:popout', (open?: string) => {
 /*
  * Agents: the kit's Agents surface in a window of its own, one instance, like the studios. Its
  * requests arrive as the kit client's RequestSpecs and go out through `api.kitSend`, which
- * refuses any route the app's two kit surfaces do not use.
+ * refuses any route the app's kit clients do not use.
  */
 let agentsWindow: BrowserWindow | null = null
 
@@ -788,7 +785,8 @@ handle('approvals:popout', () => {
 })
 handle('kit:send', (settings: Settings, spec: RequestSpec) => {
   // A change is worth a line in the log; a read is not, and the studio's validate runs per keystroke.
-  if (spec?.method === 'POST' && !/\/(list|validate)$/.test(spec.path ?? '')) log(`[me-app] ${spec.path}`)
+  // Execute is a read here: the windows' lists, which open with every panel.
+  if (spec?.method === 'POST' && !/\/(list|validate|execute)$/.test(spec.path ?? '')) log(`[me-app] ${spec.path}`)
   return api.kitSend(settings, spec)
 })
 

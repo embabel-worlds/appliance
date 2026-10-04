@@ -43,19 +43,6 @@ export interface ModelInfo {
   purpose?: string
 }
 
-/** A realm, installed or merely discoverable. */
-export interface RealmSummary {
-  name: string
-  description?: string
-  version?: string
-  tags?: string[]
-  installed?: boolean
-  source?: string
-  url?: string
-  iconUrl?: string
-  metadata?: { stars?: number }
-}
-
 /** One realm's outcome from "update all". */
 export interface RealmUpdateResult {
   name: string

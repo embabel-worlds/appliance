@@ -146,6 +146,12 @@
     .tile.has-icon { background: none; border: none; padding: 0; overflow: hidden; }
     .tile.has-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
     .tile.lg.has-icon img { border-radius: 10px; }
+    /* A realm's author calling it experimental, said in the caution colour, as the console does. */
+    .realm-maturity { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--caution); border: 1px solid var(--caution); border-radius: 3px; padding: 0 4px;
+      margin-left: 6px; align-self: center; }
+    /* The one way to reach what was left out; dashed, like the console's maturity chip. */
+    .realm-experimental-toggle { border-style: dashed; font-size: 11.5px; margin-bottom: 8px; }
 
       /* Tours. The synopsis is deliberately a <pre> of plain text: it is the sentence somebody
          decides on, so it must be exactly what the kit derived from the file — never something a
@@ -543,6 +549,7 @@
           capability on the spot; some need a key afterwards — anything inert says
           which variable unlocks it.
         </p>
+        <div id="realm-experimental"></div>
         <div id="realm-catalog"></div>
         <div id="realm-gaps"></div>
       </div>

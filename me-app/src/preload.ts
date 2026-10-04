@@ -54,7 +54,7 @@ const api = {
     ipcRenderer.on('agents:open-request', listener)
     return () => { ipcRenderer.removeListener('agents:open-request', listener) }
   },
-  /** One kit RequestSpec, from the Agents window or the Routine Studio; main refuses any other route. */
+  /** One kit RequestSpec, from any window that uses a kit client; main refuses any other route. */
   kitSend: (settings: Settings, spec: RequestSpec) => ipcRenderer.invoke('kit:send', settings, spec),
   /** The gateway's TypeScript declarations: text, so not a kit request. */
   gatewaySurface: (settings: Settings) => ipcRenderer.invoke('handlers:surface', settings),
@@ -95,14 +95,12 @@ const api = {
   },
   listApps: (settings: Settings) => ipcRenderer.invoke('apps:list', settings),
   openApp: (settings: Settings, name: string, title: string) => ipcRenderer.invoke('apps:open', settings, name, title),
-  listRealms: (settings: Settings) => ipcRenderer.invoke('realms:list', settings),
-  realmCatalog: (settings: Settings) => ipcRenderer.invoke('realms:catalog', settings),
-  installRealm: (settings: Settings, repo: string) => ipcRenderer.invoke('realms:install', settings, repo),
+  /** `confirmed` is the person's yes to an experimental realm, given after the appliance asked. */
+  installRealm: (settings: Settings, repo: string, confirmed = false) => ipcRenderer.invoke('realms:install', settings, repo, confirmed),
   updateRealm: (settings: Settings, name: string) => ipcRenderer.invoke('realms:update', settings, name),
   /** Which installed realms have a newer version upstream — see api.realmUpdates. */
   realmUpdates: (settings: Settings) => ipcRenderer.invoke('realms:updates', settings),
   updateAllRealms: (settings: Settings) => ipcRenderer.invoke('realms:update-all', settings),
-  realmGaps: (settings: Settings) => ipcRenderer.invoke('realms:gaps', settings),
   // Icons: realms' and apps'. Bytes, not a URL — the page cannot authenticate,
   // so the main process fetches and hands back a data: URI.
   icon: (settings: Settings, path: string) => ipcRenderer.invoke('icon:get', settings, path),

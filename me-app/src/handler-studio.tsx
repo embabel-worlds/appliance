@@ -18,10 +18,11 @@ import {
   type HandlerGenerated,
   type Outcome,
 } from '@embabel/appliance-kit'
-import { HandlerStudioSurface, type HandlerStudioServices, type SignalType, type WorldSkill } from '@embabel/appliance-kit/react/features'
+import { HandlerStudioSurface, type HandlerStudioServices } from '@embabel/appliance-kit/react/features'
 import { restoreTheme } from './theme'
 import { EMPTY_SETTINGS } from './studio-deps'
 import { ipcTransport } from './kit-transport'
+import { worldQueries } from './world-queries'
 import type { Settings } from './types'
 
 let settings: Settings = EMPTY_SETTINGS
@@ -30,6 +31,7 @@ const transport = ipcTransport(() => settings)
 const handlers = new HandlersClient(transport)
 const agents = new AgentsClient(transport)
 const cron = new CronClient(transport)
+const { lists } = worldQueries(() => settings)
 
 const services: HandlerStudioServices = {
   kg: new KgClient(transport),
@@ -45,8 +47,9 @@ const services: HandlerStudioServices = {
     const result = await window.me.gatewaySurface(settings)
     return result.ok ? ok(result.text) : { ok: false, kind: 'unreachable', message: `Could not load the gateway: ${result.message}` }
   },
-  signalTypes: () => transport.send<SignalType[]>({ method: 'GET', path: '/api/v1/signal-types' }),
-  worldSkills: () => transport.send<WorldSkill[]>({ method: 'GET', path: '/api/v1/world/skills' }),
+  // What the world has seen and can do, read as Virtual Cypher: the same rows chat answers from.
+  signalTypes: () => lists.signalTypes(),
+  worldSkills: () => lists.skills(),
 }
 
 /*
