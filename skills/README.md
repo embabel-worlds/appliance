@@ -22,6 +22,15 @@ Use it when a fresh appliance is a blank page: `learn_sources` on a new install
 returns nothing, because nothing has been connected yet, and this is the thing
 that finds what to connect.
 
+## scout-agents
+
+Finds work in a business that nobody has automated — the same note written by hand
+after every failed payment, calls booked every Monday from the same list, a view run
+each week and then acted on — counts it, and proposes the colleagues to hire for it.
+Where an installed realm already proposes an agent for that work, it says adopt that
+one rather than drafting a second. It records suggestions for the console's Agents
+window and drafts only what you choose, unsigned and off duty.
+
 ## appliance-doctor
 
 For when the appliance itself is the problem — a failed install, containers that
