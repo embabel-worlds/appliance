@@ -49,6 +49,25 @@ _PEM_BLOCK = re.compile(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE---
 IMPORT_WAIT_SECONDS = 60
 
 
+# Shown with every refusal of a file, because "bring the authority" is no help to
+# somebody who does not know where it is kept. Both commands were run against a
+# real keychain and a real server before being written down here.
+#
+# The second asks the server, so it yields whatever the network presents — which
+# on an inspected network is exactly the authority wanted, and is also why the
+# fingerprint has to be checked rather than assumed.
+HOW_TO_GET = """
+
+  To get your company's authority:
+    from the macOS keychain   security find-certificate -a -c "<authority name>" -p > company-ca.crt
+    from the server itself    openssl s_client -connect <host>:443 -showcerts </dev/null > company-ca.crt
+  Then:                       embabel trust add company-ca.crt
+
+  The whole chain is fine: only the authorities in it are kept. Check the fingerprint
+  that prints against the one your IT team publishes, most of all for a file the
+  server gave you."""
+
+
 class Authority(NamedTuple):
     """One certificate authority, as a person can check it against what they were given."""
     name: str
@@ -102,13 +121,18 @@ def read_authorities(raw: bytes) -> tuple[list[Authority], int]:
     PEM or DER, one certificate or a chain. Raises when something in it is not a
     certificate at all, because that is a wrong file rather than an empty answer.
     """
+    if not raw.strip():
+        # What `security find-certificate` writes when no certificate has that name:
+        # nothing, with a zero exit status.
+        raise SetupError("That file is empty, so no certificate was found to put in it." + HOW_TO_GET)
     try:
         ders = ([ssl.PEM_cert_to_DER_cert(block.decode("ascii")) for block in _PEM_BLOCK.findall(raw)]
                 if PEM_BEGIN in raw else [raw])
     except (ValueError, UnicodeDecodeError):
         ders = []
     if not ders or not all(_is_certificate(der) for der in ders):
-        raise SetupError("That file is not a certificate. It wants PEM (-----BEGIN CERTIFICATE-----) or DER.")
+        raise SetupError("That file is not a certificate. It wants PEM (-----BEGIN CERTIFICATE-----) or DER."
+                         + HOW_TO_GET)
     found = [_authority(der) for der in ders]
     authorities = [a for a in found if a]
     return authorities, len(found) - len(authorities)
@@ -141,14 +165,14 @@ def add_trusted(path: str) -> tuple[list[tuple[str, Authority]], int]:
     """
     source = os.path.expanduser(path)
     if not os.path.isfile(source):
-        raise SetupError(f"{source} is not a file.")
+        raise SetupError(f"{source} is not a file." + HOW_TO_GET)
     with open(source, "rb") as f:
         authorities, skipped = read_authorities(f.read())
     if not authorities:
         raise SetupError(
-            "That is a server's own certificate, not the authority that signed it. "
-            "Trust is given to the authority: the LAST certificate in the chain, "
-            "which your IT team or your system keychain can export."
+            "That is a server's own certificate, not the authority that signed it.\n"
+            "  Trust is given to the authority: the LAST certificate in the chain."
+            + HOW_TO_GET
         )
     os.makedirs(CERTS_DIR, exist_ok=True)
     stored = []

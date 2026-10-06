@@ -109,7 +109,13 @@ check([a.name for a in found] == ["Example Test Root CA"] and skipped == 1, f"ch
 found, _ = trust.read_authorities(ssl.PEM_cert_to_DER_cert(AUTHORITY.decode()))
 check(len(found) == 1, f"DER authority was not read: {found}")
 
-check(refused(lambda: trust.read_authorities(b"not a certificate")) is not None, "a file that is not a certificate was accepted")
+# Every refusal of a file says how to get the right one: knowing it must be "the
+# authority" is no help to somebody who does not know where that is kept.
+for label, content in (("not a certificate", b"not a certificate"), ("empty", b"  \n")):
+    why = refused(lambda: trust.read_authorities(content))
+    check(why is not None, f"a file that is {label} was accepted")
+    check(why is not None and "security find-certificate" in why and "openssl s_client" in why and "embabel trust add" in why,
+          f"refusing a file that is {label} gives no example of getting the right one: {why}")
 
 with tempfile.TemporaryDirectory() as tmp, patch.object(trust, "CERTS_DIR", os.path.join(tmp, "certs")):
     def source(name: str, content: bytes) -> str:
@@ -121,6 +127,9 @@ with tempfile.TemporaryDirectory() as tmp, patch.object(trust, "CERTS_DIR", os.p
     # A server's own certificate is refused, and says what to bring instead.
     why = refused(lambda: trust.add_trusted(source("gateway.pem", SERVER)))
     check(why is not None and "authority" in why, f"a server certificate alone was stored: {why}")
+    check(why is not None and "openssl s_client" in why, f"refusing a server certificate gives no example: {why}")
+    why = refused(lambda: trust.add_trusted(os.path.join(tmp, "missing.crt")))
+    check(why is not None and "embabel trust add" in why, f"a missing file gives no example: {why}")
     check(trust.trusted() == [], "a refused file left something in certs/")
 
     # Stored under the importer's suffix and the authority's own name, one certificate to a
@@ -181,6 +190,9 @@ for compose in ("docker-compose-worlds.yml", "docker-compose-me.yml"):
         check("- ./certs:/certificates:ro" in f.read(), f"{compose} does not mount certs/ where the importer reads it")
 
 parser = build_parser()
+
+# A path is resolved where the command was typed, not where the launcher then moves to.
+check(os.path.isabs(parser.parse_args(["trust", "add", "ca.crt"]).file), "a relative certificate path is left relative")
 for argv in (["trust", "add", "ca.crt"], ["trust", "list"], ["trust", "remove", "ca"], ["trust"]):
     check(parser.parse_args(argv).func.__name__ == "cmd_trust", f"`embabel {' '.join(argv)}` does not reach cmd_trust")
 

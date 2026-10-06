@@ -502,6 +502,17 @@ A server's own certificate is refused: it says who the server is, not who vouche
 it, and trusting it stops working the day it is renewed. From a chain, only the
 authorities are kept.
 
+Two ways to get the file, if nobody has handed you one:
+
+```bash
+security find-certificate -a -c "<authority name>" -p > company-ca.crt          # from the macOS keychain
+openssl s_client -connect <host>:443 -showcerts </dev/null > company-ca.crt     # from the server itself
+```
+
+The second yields whatever your network presents, which on an inspected network is
+exactly the authority wanted — and is why the fingerprint is worth checking. Every
+refusal of a file prints these two commands.
+
 `add` prints each authority's name and SHA-256 fingerprint. Check the fingerprint
 against the one your IT team publishes: whoever adds an authority decides whose word
 the appliance takes for every connection it makes.

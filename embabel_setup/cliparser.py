@@ -7,6 +7,7 @@ generate shell completions — a script cannot import a script.
 
 from __future__ import annotations
 import argparse
+import os
 
 from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mode, run_setup, s
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
@@ -243,7 +244,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("trust", help="trust a company certificate authority, for an internal gateway or an inspected network")
     tr = p.add_subparsers(dest="trust_command")
     a = tr.add_parser("add", help="trust the authorities in a certificate file, and restart the app")
-    a.add_argument("file", help="a PEM or DER certificate: the authority, or the whole chain")
+    # RESOLVED WHILE PARSING. The launcher changes into the appliance directory before any
+    # verb runs, so a relative path read afterwards is looked for THERE: `embabel trust add
+    # ca.crt`, typed beside the file, answered "ca.crt is not a file".
+    a.add_argument("file", type=lambda p: os.path.abspath(os.path.expanduser(p)),
+                   help="a PEM or DER certificate: the authority, or the whole chain")
     a.set_defaults(func=cmd_trust)
     a = tr.add_parser("list", help="which authorities this appliance trusts beyond the public ones")
     a.set_defaults(func=cmd_trust)
