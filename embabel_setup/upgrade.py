@@ -17,7 +17,7 @@ from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
 from .settings import source_ref, source_repo
 
-from .dockerlib import _compose, _docker, find_mode_container, retire_monitoring
+from .dockerlib import _compose, _docker, find_mode_container, images_for, retire_monitoring
 from .versions import image_identity, mode_image
 
 def _head() -> str | None:
@@ -136,12 +136,16 @@ def upgrade(mode: str) -> dict:
 
     # Read BEFORE the pull, because the pull is what moves the tag underneath it.
     before = image_identity(mode_image(mode) or "")
+    held = _image_ids(images_for(mode))
 
     if _compose(mode, "pull").returncode != 0:
         raise SetupError("docker compose pull failed — see the output above.")
     if _compose(mode, "up", "-d").returncode != 0:
         raise SetupError("docker compose up failed — see the output above.")
     retire_monitoring(mode)
+    reclaimed = _remove_superseded(held, _image_ids(images_for(mode)))
+    if reclaimed:
+        notes.append(reclaimed)
 
     after = image_identity(mode_image(mode) or "")
     if before.get("digest") and after.get("digest") and before["digest"] != after["digest"]:
@@ -179,3 +183,51 @@ def _same_image(container: str, image: str | None) -> bool:
     if not running or not wanted or running.returncode != 0 or wanted.returncode != 0:
         return True  # cannot tell; do not cry wolf
     return running.stdout.strip() == wanted.stdout.strip()
+
+
+def _image_ids(images: list[str]) -> dict[str, str]:
+    """Local image id behind each reference the mode runs. A reference not pulled
+    yet has no id and is simply absent — there is nothing of it to supersede."""
+    ids = {}
+    for ref in images:
+        run = _docker("image", "inspect", ref, "--format", "{{.Id}}", timeout=15)
+        if run and run.returncode == 0 and run.stdout.strip():
+            ids[ref] = run.stdout.strip()
+    return ids
+
+
+def _remove_superseded(before: dict[str, str], after: dict[str, str]) -> str | None:
+    """Delete the images this upgrade just moved the appliance's tags off.
+
+    EVERY UPGRADE OF A `:latest` INSTALL LEFT ITS PREVIOUS IMAGES BEHIND — the server,
+    the sandbox and Grafana, about 4.5 GB a time — and nothing ever took them back, so
+    an appliance that kept itself current slowly filled the Docker disk.
+
+    Only those ids, and only once nothing else wants them: no tag left on the image —
+    a local build tagged `:memory` as well as `:latest` keeps its `:memory` — and no
+    container, running or stopped, made from it. Both are checked here rather than
+    left to `docker image rm` to refuse, because under the containerd image store it
+    does not: removing by id drops every tag the image still carries. This is why the
+    reclaim lives in `upgrade` rather than `prune`, which does not touch images (see
+    `cmd_prune`): here the appliance knows which images were its own a minute ago.
+    """
+    gone = {before[ref] for ref in before if after.get(ref) and after[ref] != before[ref]}
+    # A count and not a byte total: an image's size includes layers it shares with
+    # its successor, so summing them would claim space that was never freed.
+    removed = 0
+    for image_id in sorted(gone):
+        if not _unwanted(image_id):
+            continue
+        run = _docker("image", "rm", image_id, timeout=60)
+        if run and run.returncode == 0:
+            removed += 1
+    return f"removed {removed} superseded image(s)" if removed else None
+
+
+def _unwanted(image_id: str) -> bool:
+    """No tag names it and no container uses it. Anything unreadable counts as wanted."""
+    tags = _docker("image", "inspect", image_id, "--format", "{{len .RepoTags}}", timeout=15)
+    if not tags or tags.returncode != 0 or tags.stdout.strip() != "0":
+        return False
+    users = _docker("ps", "-aq", "--filter", f"ancestor={image_id}", timeout=15)
+    return bool(users) and users.returncode == 0 and not users.stdout.strip()

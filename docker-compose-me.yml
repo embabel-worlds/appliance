@@ -16,11 +16,24 @@ name: embabel-appliance
 include:
   - infra.yml
 
+# CONTAINER LOGS ARE CAPPED. Docker's json-file driver keeps a container's stdout
+# forever unless told otherwise, and the daemon default on Docker Desktop and a stock
+# Engine is "otherwise" — so a chatty or crash-looping service grows its log until the
+# VM disk is full, and the first symptom is some unrelated write failing. 3 x 50 MB
+# per container is enough to read back through an incident; `embabel bugreport` takes
+# what is there. Repeated per file because a YAML anchor does not cross an include.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
 
   # ── The assistant itself ────────────────────────────────────────────────────
   assistant:
     image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-latest}
+    logging: *logging
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers
     # <project>-<service>-N, which is per-instance for free. Find a container by
@@ -377,6 +390,7 @@ services:
   open-webui:
     profiles: ["openwebui"]
     image: ghcr.io/open-webui/open-webui:main
+    logging: *logging
     restart: unless-stopped
     depends_on:
       - assistant

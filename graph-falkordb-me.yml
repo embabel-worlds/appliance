@@ -23,12 +23,25 @@
 # loses nothing measured, and the cost on the write path is noise — the app's
 # batched statements mean one fsync per batch, not per row. `everysec` bounds loss
 # at ~1s; set FALKORDB_APPENDFSYNC=always for fsync-per-statement.
+# CONTAINER LOGS ARE CAPPED. Docker's json-file driver keeps a container's stdout
+# forever unless told otherwise, and the daemon default on Docker Desktop and a stock
+# Engine is "otherwise" — so a chatty or crash-looping service grows its log until the
+# VM disk is full, and the first symptom is some unrelated write failing. 3 x 50 MB
+# per container is enough to read back through an incident; `embabel bugreport` takes
+# what is there. Repeated per file because a YAML anchor does not cross an include.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
 
   falkordb:
     # The engine profile decision (embabel/me#1005) owns the version pin; until it
     # lands, this follows the conformance rig's policy of measuring today's engine.
     image: falkordb/falkordb:${FALKORDB_VERSION:-latest}
+    logging: *logging
     restart: unless-stopped
     ports:
       # redis-cli / FalkorDB browser access from the host, localhost-only like

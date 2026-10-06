@@ -9,6 +9,18 @@
 #
 # PULL-ONLY BY DESIGN — see the note in docker-compose.yml.
 
+# CONTAINER LOGS ARE CAPPED. Docker's json-file driver keeps a container's stdout
+# forever unless told otherwise, and the daemon default on Docker Desktop and a stock
+# Engine is "otherwise" — so a chatty or crash-looping service grows its log until the
+# VM disk is full, and the first symptom is some unrelated write failing. 3 x 50 MB
+# per container is enough to read back through an incident; `embabel bugreport` takes
+# what is there. Repeated per file because a YAML anchor does not cross an include.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
 
   # ── Knowledge graph ─────────────────────────────────────────────────────────
@@ -16,6 +28,7 @@ services:
   # store IS the product's data plane, and the modes are two surfaces over it.
   neo4j:
     image: neo4j:2026.06-community
+    logging: *logging
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers
     # <project>-<service>-N, which is per-instance for free. Find a container by
@@ -99,6 +112,7 @@ services:
     # makes — a new GHCR package is created private, and an authenticated check
     # passes happily against an image nobody else can fetch.
     image: ghcr.io/embabel-worlds/${DOCLING_IMAGE:-docling-serve-cpu}:${DOCLING_VERSION:-v1.29.0}
+    logging: *logging
     restart: unless-stopped
     # Conversion memory is bounded by the LARGEST single document, not corpus size:
     # one 10-K-sized PDF was measured pushing docling past 6GB (2026-08-13, dev).
@@ -157,6 +171,7 @@ services:
   prometheus:
     profiles: ["monitoring"]
     image: prom/prometheus:v3.1.0
+    logging: *logging
     restart: unless-stopped
     mem_limit: ${PROMETHEUS_MEM_LIMIT:-0}
     ports:
@@ -178,6 +193,7 @@ services:
     # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
     # the dashboards match the metrics the app of that version actually emits.
     image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-latest}
+    logging: *logging
     restart: unless-stopped
     mem_limit: ${GRAFANA_MEM_LIMIT:-0}
     depends_on:
