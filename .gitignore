@@ -26,6 +26,12 @@ docker-compose.override.yml
 realms/*
 !realms/README.md
 
+# Certificate authorities added with `embabel trust add` (see certs/README.md).
+# This machine's trust, not this repo's: somebody's company root has no business
+# in a public checkout.
+certs/*
+!certs/README.md
+
 # Editor and OS noise. An operator clones this repo and runs it; anything their
 # tooling drops here is theirs, not ours.
 .idea/

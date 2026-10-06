@@ -37,6 +37,7 @@ embabel sample add …  # fictional records, marked so they can be taken back ou
 embabel scenario run … # put the world in a named state, for a demo or a repro
 embabel sandbox build  # a code-mode sandbox with your own toolchain in it
 embabel embeddings use local  # turn document search on
+embabel trust add ca.crt  # trust your company's certificate authority
 ```
 
 ---
@@ -478,6 +479,38 @@ features would stay off with nothing saying why. A role is resolved per call aga
 whichever key the appliance holds, so it means "embed with the key I gave you" and keeps
 meaning that if you later swap providers. `use openai` still works and sets the same role;
 so does typing a known hosted model name.
+
+### `embabel trust`
+
+Certificate authorities the appliance trusts in addition to the public ones.
+
+```bash
+embabel trust add ~/Downloads/company-root-ca.crt   # trust it, and restart the app
+embabel trust list                                  # what is trusted, with fingerprints
+embabel trust remove company-root-ca                # stop trusting it, and restart the app
+```
+
+You need this when an address works from your terminal and not from the appliance,
+and the console says *a secure connection could not be established*. Your company
+signs with its own authority: a model gateway on an internal address, or a network
+that inspects outbound traffic and re-signs everything. Your machine trusts that
+authority because somebody installed it in the system keychain. The appliance runs in
+a container, which has only the public list.
+
+Hand it the **authority** — the root, or the whole chain as exported — in PEM or DER.
+A server's own certificate is refused: it says who the server is, not who vouches for
+it, and trusting it stops working the day it is renewed. From a chain, only the
+authorities are kept.
+
+`add` prints each authority's name and SHA-256 fingerprint. Check the fingerprint
+against the one your IT team publishes: whoever adds an authority decides whose word
+the appliance takes for every connection it makes.
+
+The certificates live in `certs/` in the appliance directory, and that folder is the
+whole of the state — nothing is written to `.env`, and an upgrade leaves it alone.
+`add` and `remove` recreate the app container (your data is untouched) and then check
+that the running app holds the certificate. If it does not, the image predates
+certificate import and `embabel upgrade` is the fix.
 
 ### `embabel sandbox`
 

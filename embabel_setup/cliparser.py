@@ -10,7 +10,7 @@ import argparse
 
 from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mode, run_setup, s
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
-                      cmd_reset_password, cmd_restore, cmd_uninstall, cmd_upgrade,
+                      cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
 from .clidata import (cmd_agents, cmd_contract, cmd_diagram, cmd_embeddings, cmd_realms, cmd_run_view,
                       cmd_sample, cmd_sandbox, cmd_scenario)
@@ -239,6 +239,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("reset-password", help="forgot the password: recreate the account, keep all data")
     p.set_defaults(func=cmd_reset_password)
+
+    p = sub.add_parser("trust", help="trust a company certificate authority, for an internal gateway or an inspected network")
+    tr = p.add_subparsers(dest="trust_command")
+    a = tr.add_parser("add", help="trust the authorities in a certificate file, and restart the app")
+    a.add_argument("file", help="a PEM or DER certificate: the authority, or the whole chain")
+    a.set_defaults(func=cmd_trust)
+    a = tr.add_parser("list", help="which authorities this appliance trusts beyond the public ones")
+    a.set_defaults(func=cmd_trust)
+    a = tr.add_parser("remove", help="stop trusting one, and restart the app")
+    a.add_argument("name", help="the name `embabel trust list` shows")
+    a.set_defaults(func=cmd_trust)
+    p.set_defaults(func=cmd_trust, trust_command=None)
 
     # argparse.SUPPRESS does NOT hide a subparser — it prints the literal
     # "==SUPPRESS==" in the list. Omitting `help` entirely is what keeps a verb

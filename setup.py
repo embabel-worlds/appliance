@@ -95,6 +95,7 @@ from embabel_setup.views import *        # noqa: F403 — saved views, listed an
 from embabel_setup.scenarios import *    # noqa: F403 — the world in a named state
 from embabel_setup.sandbox import *      # noqa: F403 — a code-mode sandbox of your own
 from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, if any
+from embabel_setup.trust import *        # noqa: F403 — company certificate authorities
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
