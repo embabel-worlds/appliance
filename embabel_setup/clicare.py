@@ -271,6 +271,53 @@ def cmd_instances(args) -> int:
     return 0
 
 
+def cmd_trust(args) -> int:
+    """Certificate authorities trusted beyond the public ones.
+
+    THE SYMPTOM THIS ANSWERS is an address that works from the terminal and not
+    from the appliance. A company's own authority is in the machine's keychain and
+    not in the container, so a gateway on an internal address — or ANY address, on
+    a network that inspects outbound traffic — is refused before a key is looked at.
+
+    The fingerprint is printed on the way in, every time. Adding an authority
+    decides whose word the appliance takes for every connection it makes, and the
+    fingerprint is the one thing a person can check against what they were given.
+    """
+    if args.trust_command in (None, "list"):
+        listed = s.trusted()
+        if not listed:
+            print("  No extra certificate authorities.  embabel trust add <file>")
+            return 0
+        for name, authorities in listed:
+            print(f"  {s.bold(name[:-len(s.SUFFIX)])}")
+            if authorities:
+                s.describe(authorities)
+            else:
+                print("    " + s.warn("not a certificate authority — the appliance will not gain trust from it"))
+        return 0
+
+    if args.trust_command == "add":
+        stored, skipped = s.add_trusted(args.file)
+        authorities = [authority for _, authority in stored]
+        for name, authority in stored:
+            print(f"  {s.TICK} Trusting {s.bold(name[:-len(s.SUFFIX)])}")
+            s.describe([authority], show_name=False)
+        if skipped:
+            print("    " + s.dim(f"{skipped} certificate{'s' if skipped > 1 else ''} in the file "
+                                 f"{'were' if skipped > 1 else 'was'} left out: not an authority"))
+        return 0 if s.apply_trust(current_mode(), authorities) else 1
+
+    if args.trust_command == "remove":
+        if not s.remove_trusted(args.name):
+            print(f"  Nothing called '{args.name}' is trusted.  embabel trust list")
+            return 1
+        print(f"  {s.TICK} Removed {args.name}")
+        return 0 if s.apply_trust(current_mode(), []) else 1
+
+    print("  embabel trust add <file> | list | remove <name>")
+    return 1
+
+
 def cmd_where(args) -> int:
     print(f"  {HERE}")
     return 0
