@@ -53,7 +53,16 @@ services:
     healthcheck:
       # The app's Drivine pool connects during startup; without this gate it
       # races Neo4j's plugin load and the first boot fails on a fresh volume.
-      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $${NEO4J_PASSWORD:-embabel-assistant} 'RETURN 1' || exit 1"]
+      #
+      # The password is read out of NEO4J_AUTH because that is the only place this
+      # container has it. `$$` leaves the expansion to the container's shell, and
+      # NEO4J_PASSWORD is a variable of the HOST: compose puts it into NEO4J_AUTH
+      # above and nowhere else. Asking for it here always fell back to the default,
+      # so an install with a password of its own created the database with one
+      # password and knocked with another, and never came up healthy. It cannot be
+      # passed in under its own name either: the image reads every NEO4J_* variable
+      # as a setting.
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#neo4j/}\" 'RETURN 1' || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 30
