@@ -243,6 +243,16 @@ only the live ones):
    emergencies?"). This is the highest-value thing you will
    get from them, it is the thing a schema cannot tell you, and it decides the join direction and
    which producer you need. Offer your best guess so they can correct rather than compose.
+2b. **Will people ask it things in words?** Ask it right after the demo question: *"will you or
+   anyone else type questions at this realm — through `kg_ask`, a chat, an app's ask box — or
+   only call its views?"* A yes is a build decision, not a test decision. The realm-authoring
+   skill's "Make it askable" section then applies to every type from the first one: closed
+   `values:` on coded properties AND on every literal-seeded anchor key, an `examples:` pair per
+   literal door, descriptions that say what the data does NOT carry, and a `tests/questions.yml`
+   battery with its adversarial half. Turn the demo sentence from question 2 into the battery's
+   first entry. A realm that answers its views but not its users' words is not done — and without
+   these the generator guesses literals, scans national tables bare, and answers confidently
+   from the wrong join (realm-fr-streets, 2026-10-06).
 3. **Identity or record?** For each entity two systems share, ask: *if each system holds one,
    are those two things or one?* Two tickets are two things — a shared parent label
    (`parents: [SupportCase]`) lets one question cover both. A CRM customer and a billing customer
@@ -310,8 +320,11 @@ Promoting is the record that a person judged it fit.
 
 `realm_status` should be `active`
 with `problems: []`, but the real test is running the sentence from question 2 and getting rows
-back that span both sides. A realm that installs clean and answers nothing is not done — say so
-rather than reporting success.
+back that span both sides. If question 2b was a yes, ask that sentence through `kg_ask` as well
+as by view, and run the realm's `tests/questions.yml` (adversarial half included, several times)
+before reporting it done — the view proves the joins, only the ask proves the realm is askable.
+A realm that installs clean and answers nothing is not done — say so rather than reporting
+success.
 
 If the MCP tools are unavailable, stop at the plan and give the exact calls. A plan the user can
 execute is a good outcome; a half-installed realm is not.
