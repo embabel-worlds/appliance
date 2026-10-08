@@ -1,0 +1,41 @@
+{
+  "name": "embabel-worlds",
+  "displayName": "Embabel Worlds",
+  "version": "0.1.0",
+  "description": "Your own Embabel appliance in Claude Code: a connection to it over MCP, and the skills that survey a business for realms and agents, author views, handlers and apps, verify them against the source system, and diagnose a realm or an install that is not working.",
+  "author": {
+    "name": "Embabel",
+    "url": "https://embabel.com"
+  },
+  "homepage": "https://github.com/embabel-worlds/appliance/tree/main/skills#readme",
+  "repository": "https://github.com/embabel-worlds/appliance",
+  "license": "Apache-2.0",
+  "keywords": [
+    "embabel",
+    "knowledge-graph",
+    "mcp",
+    "realms",
+    "agents",
+    "self-hosted"
+  ],
+  "documentationUrl": "https://github.com/embabel-worlds/appliance/tree/main/skills#readme",
+  "supportUrl": "https://github.com/embabel-worlds/appliance/issues",
+  "privacyPolicyUrl": "https://github.com/embabel-worlds/appliance/blob/main/docs/guide/privacy.md",
+  "skills": "./",
+  "userConfig": {
+    "appliance_url": {
+      "type": "string",
+      "title": "Appliance URL",
+      "description": "Where your appliance's server answers, without a trailing slash. Embabel Worlds installs on http://localhost:11043 and Embabel Me on http://localhost:11042; a remote install is its https:// address.",
+      "default": "http://localhost:11043",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API key",
+      "description": "A key from the console, under Keys to this world, or the token first-run setup minted. Sent only to the appliance URL above, as a Bearer token.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

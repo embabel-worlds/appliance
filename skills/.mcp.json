@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "embabel": {
+      "type": "http",
+      "url": "${user_config.appliance_url}/mcp/code",
+      "headers": {
+        "Authorization": "Bearer ${user_config.api_key}"
+      }
+    }
+  }
+}

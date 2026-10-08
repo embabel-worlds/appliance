@@ -1,0 +1,18 @@
+{
+  "name": "embabel-worlds",
+  "owner": {
+    "name": "Embabel",
+    "url": "https://embabel.com"
+  },
+  "metadata": {
+    "description": "Plugins for working with your own Embabel appliance from a coding agent."
+  },
+  "plugins": [
+    {
+      "name": "embabel-worlds",
+      "source": "./skills",
+      "description": "Your own Embabel appliance in Claude Code: a connection to it over MCP, and the skills that ship with it.",
+      "category": "development"
+    }
+  ]
+}
