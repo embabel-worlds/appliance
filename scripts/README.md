@@ -7,6 +7,7 @@ the root because a one-line installer with a path in it is not a one-line instal
 | Script | What it builds |
 |---|---|
 | [`build-me-app.sh`](build-me-app.sh) | The Me sensor app as a real `Embabel Me.app`, and optionally a DMG |
+| [`build-openai-plugin.py`](build-openai-plugin.py) | The skills as an archive for OpenAI's plugin directory — skills only, since that directory cannot list a server whose address is yours |
 
 And the ones that check rather than build — each drives a path a user actually takes,
 because the failures worth catching are the ones a person meets rather than the ones a
@@ -17,6 +18,7 @@ unit test can reach:
 | [`drive-install.py`](drive-install.py) | A real install in a real terminal, asserting on what a person saw |
 | [`drive-tour-share.py`](drive-tour-share.py) | Somebody exporting a tour and somebody else importing it — including that it survives a restart |
 | [`check-complete.py`](check-complete.py) · [`check-copy.py`](check-copy.py) · [`check-modules.py`](check-modules.py) | Documentation and packaging invariants |
+| [`check-plugin.py`](check-plugin.py) | `skills/` as the Claude plugin the directory reads, and the OpenAI archive built from it |
 
 The appliance's own container images are **not** built here — they are built and
 published from the `assistant` repo (`docker/build.sh`), and this repo only ever

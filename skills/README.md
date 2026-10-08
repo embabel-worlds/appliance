@@ -1,8 +1,12 @@
-# Skills
+# Embabel Worlds skills
 
-Claude Code skills that ship with the appliance. A skill is instructions, not code:
-it teaches a coding agent how to use this appliance well, and it runs on the user's
-machine with the user's own tools.
+Skills for a coding agent working against your own Embabel appliance — a knowledge graph
+and agent runtime that you install and run yourself. They survey a business for realms and
+agents worth building, author views, handlers and apps, check every figure against the
+source system, and diagnose a realm or an install that is not working.
+
+A skill is instructions, not code: it teaches a coding agent how to use the appliance well,
+and it runs on your machine with your own tools.
 
 That last part is why these are skills and not MCP tools. The MCP surface reaches
 the appliance and deliberately reaches nothing else — no filesystem, no shell. But
@@ -10,6 +14,41 @@ the evidence about what a person *could* build a realm from is on their disk: th
 `docker-compose.yml` with a Postgres in it, the OpenAPI spec, the half-finished
 realm checkout. A skill can see that; a tool on the MCP surface cannot, and
 shouldn't be able to.
+
+## Install
+
+This folder is also a Claude Code plugin, `embabel-worlds`: the skills below plus a
+connection to your appliance at `/mcp/code`, the endpoint for building on it. You need an
+appliance first — it is one command, in the [repository README](https://github.com/embabel-worlds/appliance/blob/main/README.md#quick-start).
+
+```text
+/plugin marketplace add embabel-worlds/appliance
+/plugin install embabel-worlds@embabel-worlds
+```
+
+Claude Code asks for two values when the plugin is enabled. Change them later with
+`/plugin configure embabel-worlds@embabel-worlds`.
+
+- **Appliance URL.** Embabel Worlds answers on `http://localhost:11043`, Embabel Me on
+  `http://localhost:11042`. An appliance on another machine is its `https://` address.
+- **API key.** Make one in the console under *Keys to this world*, or use the token
+  first-run setup minted. It is kept in the system's credential store, not in a settings file.
+
+If first-run setup already ran `claude mcp add embabel` for you, remove that entry
+(`claude mcp remove embabel`) — otherwise the same tools arrive twice.
+
+The plugin works in Claude Code only. Chat and Cowork in the Claude apps skip an MCP
+server whose address each person configures, and every appliance has its own address.
+Reaching an appliance from those apps needs a public `https://` address and an OAuth
+sign-in, and the appliance does not offer that sign-in yet.
+
+## What the plugin sends, and where
+
+Everything goes to the appliance URL you configured, and nowhere else. The plugin has no
+hooks and runs no code of its own: it is the skills below, as text, and one MCP connection
+that carries your API key as a Bearer token. What the appliance itself sends out — model
+calls to the provider you chose, the realms you installed, a daily anonymous usage count —
+is listed in full in [What stays on your machine](https://github.com/embabel-worlds/appliance/blob/main/docs/guide/privacy.md).
 
 ## scout-realms
 
@@ -111,8 +150,15 @@ app in a real browser, ship the harness with the realm. Born from three triviall
 failures in one evening; exists so there is never a fourth.
 
 
+## tour-authoring
 
-Symlink, so a `git pull` updates the skill too:
+Writes a tour: a short guided walk a surface runs against the vocabulary it publishes —
+narrate, open a panel, fill a field, run a view, hand control back. Ships as content in a
+realm or a world, and travels as a file.
+
+## Without the plugin
+
+Symlink a skill instead, so a `git pull` updates it too:
 
 ```sh
 mkdir -p ~/.claude/skills

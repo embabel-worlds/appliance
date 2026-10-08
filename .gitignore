@@ -40,3 +40,6 @@ certs/*
 .DS_Store
 __pycache__/
 *.pyc
+
+# Built plugin archives (scripts/build-openai-plugin.py). Uploaded by hand, never committed.
+dist/
