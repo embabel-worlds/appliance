@@ -318,8 +318,10 @@ Turn it on:
 - **Docker Engine on Linux** — install the `docker-model-plugin` package from Docker's
   repository.
 
-Docker moves this setting between releases. If it is not under AI, the command above
-still works.
+![Docker Desktop's AI settings page, with Enable Docker Model Runner ticked](images/docker-model-runner-setting.png)
+
+Docker moves this setting between releases. If it is not where the picture shows it, the
+command above still works.
 
 Check that it answers, then go back to **Models → Embeddings**, press **Check again**,
 and press **Get the better model**:
