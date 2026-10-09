@@ -21,10 +21,10 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-/** The appliance data volume: compose project `embabel-appliance` (pinned by
- *  `name:` in the compose files) + the `embabel_assistant_data` volume key.
- *  Overridable for tests and unconventional installs. */
-const VOLUME = process.env.EMBABEL_APPLIANCE_VOLUME || 'embabel-appliance_embabel_assistant_data'
+import { volumeName } from './instance'
+/** The appliance data volume: this instance's compose project plus the
+ *  `embabel_assistant_data` volume key. Overridable for tests and unconventional installs. */
+const dataVolume = () => process.env.EMBABEL_APPLIANCE_VOLUME || volumeName('embabel_assistant_data')
 const HELPER_IMAGE = 'alpine:3.20'
 const MARKER = 'Written by Embabel Me'
 
@@ -98,7 +98,13 @@ const run = (args: string[], input?: string) =>
  */
 async function provision() {
   const none: { changed: boolean; worlds: number; warnings: string[] } = { changed: false, worlds: 0, warnings: [] }
-  const volume = await run(['volume', 'inspect', VOLUME])
+  let name: string
+  try {
+    name = dataVolume()
+  } catch (e) {
+    return { ...none, error: (e as Error).message }
+  }
+  const volume = await run(['volume', 'inspect', name])
   if (volume.code !== 0) return none // fresh machine: nothing to provision yet
 
   const result = await run(
@@ -106,7 +112,7 @@ async function provision() {
       'run', '-i', '--rm',
       '-e', `TYPES_B64=${resourceB64('local-files-types.yml')}`,
       '-e', `PRODUCERS_B64=${resourceB64('local-files-producers.yml')}`,
-      '-v', `${VOLUME}:/data`,
+      '-v', `${name}:/data`,
       HELPER_IMAGE, 'sh', '-s',
     ],
     SCRIPT,

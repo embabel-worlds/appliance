@@ -10,6 +10,7 @@
     "start": "npm run build && electron .",
     "smoke": "npm run build && node dist/smoke.js",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
     "prepackage": "npm run build",
     "package": "electron-builder --mac --dir",
     "predist": "npm run build",

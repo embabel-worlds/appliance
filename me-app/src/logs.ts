@@ -12,8 +12,7 @@
  */
 
 import { spawn, execFile } from 'node:child_process'
-/** Compose pins this project name in the compose files; containers carry it as a label. */
-const PROJECT = process.env.EMBABEL_APPLIANCE_PROJECT || 'embabel-appliance'
+import { composeProject } from './instance'
 
 /** How much history to show on attach. Anything unbounded on a long-running
  *  container floods the renderer with megabytes nobody scrolls back to. */
@@ -26,9 +25,15 @@ const TAIL_CHOICES = [200, 1000, 5000]
  */
 function list() {
   return new Promise<{ok: boolean, message: string, containers: {name: string, service: string, state: string}[]}>((resolve) => {
+    let project: string
+    try {
+      project = composeProject()
+    } catch (e) {
+      return resolve({ ok: false, message: (e as Error).message, containers: [] })
+    }
     execFile(
       'docker',
-      ['ps', '-a', '--filter', `label=com.docker.compose.project=${PROJECT}`,
+      ['ps', '-a', '--filter', `label=com.docker.compose.project=${project}`,
         '--format', '{{.Names}}\t{{.Label "com.docker.compose.service"}}\t{{.State}}'],
       { timeout: 15_000 },
       (error, stdout, stderr) => {

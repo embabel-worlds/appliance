@@ -18,7 +18,7 @@ import sys
 
 from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
-from .settings import embabel_command, console_url, monitoring_enabled, sql_enabled, surface_urls
+from .settings import embabel_command, console_url, instance, monitoring_enabled, sql_enabled, surface_urls
 from .words import name_the_instance, say
 
 # THE VERB, which every ending was missing.
@@ -159,6 +159,11 @@ def seed_me_app_settings(base: str, username: str | None) -> None:
         if not isinstance(current, dict):
             return  # a settings file we do not recognise is not ours to rewrite
         seeded = dict(current)
+        # The instance goes with the URL: the app finds its containers and volume
+        # by it. Recorded only when the URL is this instance's, so an app already
+        # pointed at another appliance is not told it belongs to this one.
+        if not seeded.get("instance") and seeded.get("baseUrl") in (None, "", base):
+            seeded["instance"] = instance()
         if not seeded.get("baseUrl"):
             seeded["baseUrl"] = base
         if username and not seeded.get("username"):
@@ -264,6 +269,7 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     # Detached, output dropped: the app outlives this wizard, and Electron's
     # chatter has no business in the terminal being handed back.
     subprocess.Popen([npm, "start"], cwd=ME_APP_DIR, start_new_session=True,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     env=dict(os.environ, EMBABEL_INSTANCE=instance()))
     print('  Starting — look for "Me" in your menu bar. The appliance URL and your username')
     print("  are filled in already; enter your password and it will offer its first scan.")

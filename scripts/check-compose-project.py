@@ -23,7 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-from embabel_setup import dockerlib, lifecycle, settings, steps  # noqa: E402
+from embabel_setup import dockerlib, lifecycle, settings, steps, surfaces  # noqa: E402
 from embabel_setup.core import SetupError, Unreachable  # noqa: E402
 
 
@@ -130,6 +130,40 @@ def check_hints(name):
             assert f"EMBABEL_INSTANCE={name} " in hints[0], f"resume hint omits the instance: {hints[0]}"
 
 
+def check_me_app_compose_matches_up():
+    """The Me app's compose actions run `embabel --instance <name> compose --me ...`
+    (me-app/src/instance.ts, whose test pins that argv). That has to reach docker
+    with exactly the files, port block, memory limits and profiles the installer's
+    own `up` uses — a container recreated without its limits can take all of
+    Docker's memory."""
+    from embabel_setup import clirun, cliparser
+    limits = {"APP_MEM_LIMIT": "3072m", "NEO4J_MEM_LIMIT": "2048m", "DOCLING_MEM_LIMIT": "2560m",
+              "GRAFANA_MEM_LIMIT": "384m", "PROMETHEUS_MEM_LIMIT": "384m"}
+    seen = []
+
+    def run(cmd, **kwargs):
+        seen.append((list(cmd), kwargs.get("env")))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    args = cliparser.build_parser().parse_args(
+        ["--instance", "fresh", "compose", "--me", "up", "-d", "assistant"])
+    assert args.func is clirun.cmd_compose and args.mode == "me", "the launcher does not route to `compose --me`"
+    settings.use_instance(args.instance)
+    try:
+        with patch.object(dockerlib.subprocess, "run", side_effect=run), \
+                patch.object(dockerlib, "memory_env", return_value=limits):
+            assert args.func(args) == 0
+            dockerlib._compose("me", "up", "-d", "assistant")
+        (app_cmd, app_env), (up_cmd, up_env) = seen
+        assert app_cmd == up_cmd, f"the app's compose differs from the installer's:\n{app_cmd}\n{up_cmd}"
+        for var in [*limits, "COMPOSE_PROFILES", "ASSISTANT_PORT", "EMBABEL_INSTANCE"]:
+            assert app_env.get(var) == up_env.get(var), f"{var}: app {app_env.get(var)!r}, up {up_env.get(var)!r}"
+            assert app_env.get(var), f"{var} is not set for the app's compose"
+        assert "monitoring" in app_env["COMPOSE_PROFILES"].split(","), "the monitoring profile is missing"
+    finally:
+        settings.use_instance(settings.DEFAULT_INSTANCE)
+
+
 def check_no_literal_compose_hints():
     """No string in the code spells out a compose command for somebody to run;
     hints come from embabel_command, which names the instance."""
@@ -154,7 +188,7 @@ def check_no_default_container_names():
     compose_project and service_container, in docs through `$P` or `<instance>`."""
     pinned = "embabel-" + "appliance-"
     places = [*pathlib.Path("embabel_setup").glob("*.py"), *pathlib.Path("scripts").glob("*"),
-              *pathlib.Path("skills").rglob("*.md"), *pathlib.Path("docs").rglob("*.md"),
+              *pathlib.Path("skills").rglob("*.md"), *pathlib.Path("docs").rglob("*.md"), *pathlib.Path("me-app/src").glob("*.ts"),
               pathlib.Path("worlds.py"), pathlib.Path("me.py"), pathlib.Path("setup.py"),
               pathlib.Path("doctor.sh"), pathlib.Path("README.md"), pathlib.Path("CLI.md")]
     offenders = []
@@ -204,6 +238,38 @@ def check_no_bare_embabel_hints():
             if BARE_VERB.search(token.string):
                 offenders.append(f"{path}:{token.start[0]}")
     assert not offenders, f"embabel hints that do not name the instance: {offenders}"
+
+
+def check_me_app_handoff():
+    """The Me app is told which instance it belongs to: in its settings, beside
+    the URL the installer seeds, and in the environment it is started with."""
+    import json
+    with tempfile.TemporaryDirectory() as home:
+        path = os.path.join(home, "settings.json")
+        settings.use_instance("fresh")
+        try:
+            with patch.object(surfaces, "me_app_settings_file", return_value=path):
+                surfaces.seed_me_app_settings("http://localhost:11058", "rod")
+                with open(path) as f:
+                    assert json.load(f)["instance"] == "fresh", "the app's settings do not name the instance"
+                # An app already pointed at another appliance keeps that appliance.
+                with open(path, "w") as f:
+                    json.dump({"baseUrl": "http://localhost:11042"}, f)
+                surfaces.seed_me_app_settings("http://localhost:11058", "rod")
+                with open(path) as f:
+                    assert "instance" not in json.load(f), "another appliance's app was told it is this one's"
+            started = []
+            with patch.object(surfaces, "me_app_settings_file", return_value=None), \
+                    patch.object(surfaces, "packaged_me_app", return_value=None), \
+                    patch.object(surfaces, "prompt", return_value="y"), \
+                    patch.object(surfaces.shutil, "which", return_value="/usr/bin/npm"), \
+                    patch.object(surfaces.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
+                    patch.object(surfaces.subprocess, "Popen", side_effect=lambda cmd, **kw: started.append(kw)), \
+                    patch("builtins.print"):
+                surfaces.launch_me_app("http://localhost:11058", "rod")
+            assert started and started[0]["env"]["EMBABEL_INSTANCE"] == "fresh", "the Me app starts without its instance"
+        finally:
+            settings.use_instance(settings.DEFAULT_INSTANCE)
 
 
 def check_rendered_hints_name_the_instance():
@@ -263,6 +329,7 @@ with tempfile.TemporaryDirectory() as root:
             check_instance(settings.DEFAULT_INSTANCE, ".env", 11042)
             check_hints("fresh")
             check_hints(settings.DEFAULT_INSTANCE)
+            check_me_app_compose_matches_up()
     finally:
         settings.APPLIANCE_DIR = original_dir
         settings.use_instance(original_instance)
@@ -271,6 +338,7 @@ check_no_other_compose_commands()
 check_no_literal_compose_hints()
 check_no_default_container_names()
 check_no_bare_embabel_hints()
+check_me_app_handoff()
 check_rendered_hints_name_the_instance()
 
 print("ok: every compose call, container name and printed hint belongs to its instance")
