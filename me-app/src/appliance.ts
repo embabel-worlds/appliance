@@ -19,6 +19,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { DEFAULT_INSTANCE, applianceInstance, composeCommand, serviceContainer, serviceFilter } from './instance'
 import * as mounts from './mounts'
 
 const run = promisify(execFile)
@@ -54,6 +55,17 @@ async function dockerRunning() {
   }
 }
 
+/** How to start this instance from the appliance directory; the installer reads the instance from the environment. */
+function startCommand() {
+  let instance = DEFAULT_INSTANCE
+  try {
+    instance = applianceInstance()
+  } catch {
+    // an unusable name is reported where docker is called; the hint stays generic
+  }
+  return instance === DEFAULT_INSTANCE ? './me.py' : `EMBABEL_INSTANCE=${instance} ./me.py`
+}
+
 /**
  * Work out why the appliance could not be reached. Called only after a
  * connection attempt has already failed, so the cheap network case is settled
@@ -85,7 +97,7 @@ async function diagnose(baseUrl: string) {
     state: 'not-running',
     message: `Docker is running, but nothing answered at ${baseUrl}.`,
     action:
-      'The appliance itself is not started. In the appliance directory: ./me.py — ' +
+      `The appliance itself is not started. In the appliance directory: ${startCommand()} — ` +
       'or check the URL above if you moved it off the default port.',
   }
 }
@@ -106,7 +118,9 @@ async function tryRun(cmd: string, args: string[], timeout: number, cwd?: string
 
 /** The image the assistant container is running, or '' when it is not up. */
 async function assistantImage() {
-  const r = await tryRun('docker', ['inspect', 'embabel-assistant', '--format', '{{.Image}}'], 10_000)
+  const container = await serviceContainer('assistant')
+  if (!container) return ''
+  const r = await tryRun('docker', ['inspect', container, '--format', '{{.Image}}'], 10_000)
   return r.ok ? r.out : ''
 }
 
@@ -127,7 +141,13 @@ async function update() {
 
   // One mode at a time: plain `up -d` starts the me mode, and doing that while
   // the worlds mode runs would double every scheduled job. Same guard as Apply.
-  const worlds = await tryRun('docker', ['ps', '--filter', 'label=com.docker.compose.service=worlds', '--format', '{{.Names}}'], 15_000)
+  let instance: string
+  try {
+    instance = applianceInstance()
+  } catch (e) {
+    return { ok: false, message: (e as Error).message, appRestartAdvised: false }
+  }
+  const worlds = await tryRun('docker', ['ps', ...serviceFilter('worlds', instance), '--format', '{{.Names}}'], 15_000)
   if (worlds.ok && worlds.out) {
     return { ok: false, message: `The worlds mode is running (${worlds.out}) — stop it before updating.`, appRestartAdvised: false }
   }
@@ -153,13 +173,13 @@ async function update() {
 
   // 2. Newer images. Slow on a real update (image layers), quick when current.
   const imageBefore = await assistantImage()
-  const imagePull = await tryRun('docker', ['compose', 'pull'], 900_000, dir)
+  const imagePull = await tryRun(...composeCommand(dir, ['pull'], instance), 900_000, dir)
   if (!imagePull.ok) {
     return { ok: false, message: `docker compose pull failed: …${imagePull.out.slice(-300)}`, appRestartAdvised }
   }
 
   // 3. Reconcile. Only containers whose image (or config) changed restart.
-  const up = await tryRun('docker', ['compose', 'up', '-d'], 300_000, dir)
+  const up = await tryRun(...composeCommand(dir, ['up', '-d'], instance), 300_000, dir)
   if (!up.ok) {
     return { ok: false, message: `docker compose up failed: …${up.out.slice(-300)}`, appRestartAdvised }
   }

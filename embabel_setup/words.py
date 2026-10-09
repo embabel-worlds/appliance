@@ -48,7 +48,23 @@ def copy_text(name: str, **fields) -> str:
             raw = f.read()
     except OSError as e:
         raise SetupError(f"Missing copy file {COPY_DIR}/{name}.txt — {e}")
+    raw = name_the_instance(raw)
     return wrap_copy(raw.format(**fields) if fields else raw)
+
+
+# A command in copy is written as `embabel <verb>`, which acts on the default
+# instance. On any other instance the reader has to type --instance as well, so
+# it goes in here rather than in every file that names a command.
+COMMAND = re.compile(r"(?<![\w/.$-])embabel (?=[a-z-])")
+
+
+def name_the_instance(text: str) -> str:
+    """[text] with `--instance <name>` after every `embabel` command, unless this
+    process is talking to the default instance."""
+    from .settings import DEFAULT_INSTANCE, instance
+    if instance() == DEFAULT_INSTANCE:
+        return text
+    return COMMAND.sub(f"embabel --instance {instance()} ", text)
 
 
 # AN ASIDE, MARKED AS ONE. `((like this))` renders dim.

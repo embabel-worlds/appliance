@@ -131,7 +131,11 @@ fi
 
 # ── 3. the appliance itself ──────────────────────────────────────────────────
 head2 "The appliance"
-CONTAINERS=$(docker ps -a --filter "name=embabel-appliance" --format '{{.Names}}' 2>/dev/null | sort)
+# Which appliance: the default one unless EMBABEL_INSTANCE names another. Containers
+# are found by their compose project label, because their names depend on it.
+INSTANCE="${EMBABEL_INSTANCE:-appliance}"
+PROJECT="embabel-$INSTANCE"
+CONTAINERS=$(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}' 2>/dev/null | sort)
 if [ -z "$CONTAINERS" ]; then
   note "No Embabel containers exist on this machine yet."
   note "That is normal before the first install, and expected if the install stopped early."
@@ -152,7 +156,8 @@ for NAME in $CONTAINERS; do
   STATUS=$(docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null)
   RESTARTS=$(docker inspect -f '{{.RestartCount}}' "$NAME" 2>/dev/null)
   HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' "$NAME" 2>/dev/null)
-  SHORT=$(printf '%s' "$NAME" | sed 's/^embabel-appliance-//; s/-1$//')
+  SHORT=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$NAME" 2>/dev/null)
+  [ -n "$SHORT" ] || SHORT="$NAME"
   case "$STATUS" in
     running)
       if [ "$RESTARTS" -gt 3 ]; then
@@ -195,8 +200,10 @@ done
 # different block and checking the defaults would be checking somebody else's appliance.
 head2 "Can you reach it?"
 ENVFILE=""
+SETTINGS=".env"
+[ "$INSTANCE" = "appliance" ] || SETTINGS=".env.$INSTANCE"
 for D in "$HOME/embabel/worlds" "$HOME/embabel-worlds" "$HOME/embabel-me"; do
-  [ -f "$D/.env" ] && ENVFILE="$D/.env" && break
+  [ -f "$D/$SETTINGS" ] && ENVFILE="$D/$SETTINGS" && break
 done
 BASE=11042
 if [ -n "$ENVFILE" ]; then
@@ -225,7 +232,7 @@ case "$CODE" in
   2*|3*|4*) ok "The console answers on port $CONSOLE, and can reach the server behind it." ;;
   502|503|504)
      bad "The console is running but cannot reach the server behind it." \
-         "This usually fixes it:  docker restart embabel-appliance-worlds-console-1" ;;
+         "This usually fixes it:  docker restart $(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --filter label=com.docker.compose.service=worlds-console --format '{{.Names}}' 2>/dev/null | head -1)" ;;
   *) bad "Nothing answers on port $CONSOLE, where the console should be." \
          "Open it in a browser to confirm:  http://localhost:$CONSOLE" ;;
 esac

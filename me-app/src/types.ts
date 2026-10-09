@@ -35,6 +35,8 @@ export interface Settings {
   theme?: string
   /** Standing consent by group — see verbs.ts. */
   verbs?: VerbConsent
+  /** The appliance instance the installer set this app up for; absent means the default. */
+  instance?: string
 }
 
 export interface ConnectionResult {

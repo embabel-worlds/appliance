@@ -14,7 +14,7 @@ import subprocess
 import zlib
 
 from .core import APPLIANCE_DIR
-from .dockerlib import MODE_SERVICE, _compose, _docker, backup_mode, find_mode_container
+from .dockerlib import MODE_SERVICE, _compose, _docker, backup_mode, find_mode_container, service_container
 from .settings import compose_project, source_ref, source_repo
 
 # ── what is actually running ────────────────────────────────────────────────
@@ -224,8 +224,8 @@ def appliance_versions(mode: str | None = None) -> dict:
 def neo4j_image() -> str | None:
     """Pinned in the tracked compose files rather than in .env, so the CHECKOUT
     is its version — but read it rather than restating it here."""
-    container = "embabel-appliance-neo4j"
-    run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15)
+    container = service_container("neo4j", stopped=True)
+    run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15) if container else None
     if run and run.returncode == 0 and run.stdout.strip():
         return run.stdout.strip()
     with open(os.path.join(APPLIANCE_DIR, "infra.yml")) as f:

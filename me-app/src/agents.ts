@@ -30,6 +30,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { serviceContainer } from './instance'
 
 /** How an agent is wired, and what to say when it cannot be. */
 export interface WireResult {
@@ -48,11 +49,13 @@ const TOKEN_VAR = 'EMBABEL_SETUP_MCP_TOKEN'
  * when setup declined MCP and never minted one. Each is a normal answer, not a fault: the
  * caller falls back to asking the operator to paste one.
  */
-export function applianceToken(): Promise<string | null> {
+export async function applianceToken(): Promise<string | null> {
+  const container = await serviceContainer('assistant')
+  if (!container) return null
   return new Promise((resolve) => {
     execFile(
       'docker',
-      ['exec', 'embabel-assistant', 'sh', '-c', `grep '^${TOKEN_VAR}=' ${PROVIDER_ENV} || true`],
+      ['exec', container, 'sh', '-c', `grep '^${TOKEN_VAR}=' ${PROVIDER_ENV} || true`],
       { timeout: 15_000 },
       (error, stdout) => {
         if (error) return resolve(null)

@@ -500,8 +500,27 @@ def resume_command() -> str:
     named for the mode, because ./worlds.py and ./me.py are different doors.
     """
     if shutil.which("embabel"):
-        return "embabel up"
+        return embabel_command("up")
     entry = "worlds.py" if configured_mode() == "worlds" else "me.py"
+    # The installer reads the instance from the environment, so a second
+    # instance's way back in has to carry it or it resumes the default one.
+    if _instance != DEFAULT_INSTANCE:
+        entry = f"EMBABEL_INSTANCE={_instance} ./{entry}"
+    else:
+        entry = f"./{entry}"
     if APPLIANCE_DIR != os.getcwd():
-        return f"cd {APPLIANCE_DIR} && ./{entry}"
-    return f"./{entry}"
+        return f"cd {APPLIANCE_DIR} && {entry}"
+    return entry
+
+
+def embabel_command(*argv: str) -> str:
+    """The `embabel` command line for this instance, as a person would type it.
+
+    The default instance needs no flag; any other is named, or the command it
+    suggests would act on the default one. Before the command is on PATH it is
+    the checkout's own launcher, which is always there. Hints that need docker
+    compose suggest `embabel compose`, so whatever a person pastes runs with the
+    same settings, memory limits and profiles as `embabel up`."""
+    launcher = "embabel" if shutil.which("embabel") else os.path.join(APPLIANCE_DIR, "embabel")
+    flag = [] if _instance == DEFAULT_INSTANCE else ["--instance", _instance]
+    return " ".join([launcher, *flag, *argv])

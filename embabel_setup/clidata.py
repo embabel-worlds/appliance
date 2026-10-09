@@ -18,6 +18,7 @@ import sys
 
 from .cli import _sample_target, current_mode, run_setup, s
 from .core import SetupError
+from .settings import embabel_command
 from .core import prompt
 
 def cmd_realms(args) -> int:
@@ -32,7 +33,7 @@ def cmd_realms(args) -> int:
                 if line.startswith("EMBABEL_REALMS_DIR="):
                     realms = line.split("=", 1)[1].strip()
     if not realms:
-        print("  No realm checkouts linked.  embabel realms link <directory>")
+        print(f"  No realm checkouts linked.  {embabel_command('realms')} link <directory>")
         return 0
     path, found, notes = s.inspect_realms_dir(realms)
     if not path:
@@ -64,12 +65,12 @@ def cmd_agents(args) -> int:
     """
     mode = current_mode() or s.configured_mode()
     if not mode:
-        print("  Nothing is running.  `embabel up` starts it.")
+        print(f"  Nothing is running.  `{embabel_command('up')}` starts it.")
         return 1
     container = s.find_mode_container(mode)
     base = s.container_base_url(container) if container else None
     if not container or not base:
-        print("  The appliance is not up.  `embabel up` starts it.")
+        print(f"  The appliance is not up.  `{embabel_command('up')}` starts it.")
         return 1
 
     run = s._docker("exec", container, "sh", "-c",
@@ -120,7 +121,7 @@ def cmd_sample(args) -> int:
         print(f"  Loading {s.bold(name)}" + s.dim(f" into realm {payload.get('realm', '?')}…"))
         result = s.samples_api(base, auth, "", payload)
         print(f"  {s.TICK} Loaded {result.get('nodes', 0)} node(s), {result.get('edges', 0)} edge(s).")
-        print("  " + s.dim(f"Remove it with: embabel sample remove {name}"))
+        print("  " + s.dim(f"Remove it with: {embabel_command('sample')} remove {name}"))
         return 0
 
     if args.sample_command == "remove":
@@ -174,12 +175,12 @@ def cmd_sample(args) -> int:
                 print("  " + s.dim("Shape only: labels, property keys and edges. No values, no ids."))
             else:
                 print("  " + s.warn("Contains real values — read it before sending it anywhere."))
-            print("  " + s.dim(f"Load it elsewhere with: embabel sample add {args.output}"))
+            print("  " + s.dim(f"Load it elsewhere with: {embabel_command('sample')} add {args.output}"))
         else:
             print(text)
         return 0
 
-    print("  embabel sample add | remove | list | clear | export")
+    print(f"  {embabel_command('sample')} add | remove | list | clear | export")
     return 1
 
 
@@ -196,7 +197,7 @@ def cmd_contract(args) -> int:
     nobody checked being believed by a machine.
     """
     if args.contract_command != "generate":
-        print("  embabel contract generate --view <name>")
+        print(f"  {embabel_command('contract')} generate --view <name>")
         return 1
 
     base, auth = _sample_target(args)
@@ -251,7 +252,7 @@ def cmd_run_view(args) -> int:
         except s.SetupError as e:
             print("  " + s.warn(str(e)))
             return 1
-        print("  " + s.dim("embabel run-view <name> --arg name=value"))
+        print("  " + s.dim(f"{embabel_command('run-view')} <name> --arg name=value"))
         return 0
 
     try:
@@ -300,7 +301,7 @@ def cmd_scenario(args) -> int:
         if scenario["without"]:
             print(f"     without: {', '.join(scenario['without'])}")
             print("  " + s.dim("(what the other scenarios load, so this one clears it away)"))
-        print("  " + s.dim(f"Replay it with: embabel scenario run {args.name}"))
+        print("  " + s.dim(f"Replay it with: {embabel_command('scenario')} run {args.name}"))
         return 0
 
     if args.scenario_command == "next":
@@ -320,7 +321,7 @@ def cmd_scenario(args) -> int:
         s.apply_scenario(base, auth, following, loaded, dry_run=args.dry_run)
         return 0
 
-    print("  embabel scenario list | run | next")
+    print(f"  {embabel_command('scenario')} list | run | next")
     return 1
 
 
@@ -339,14 +340,14 @@ def cmd_sandbox(args) -> int:
     if args.sandbox_command == "build":
         tag = s.build_sandbox(dockerfile=args.file, tag=args.tag, no_cache=args.no_cache)
         print(f"  {s.TICK} Built {s.bold(tag)} and recorded it in .env")
-        print("  " + s.warn("Restart to use it: embabel down && embabel up"))
+        print("  " + s.warn(f"Restart to use it: {embabel_command('down')} && {embabel_command('up')}"))
         return 0
 
     if args.sandbox_command == "reset":
         s.reset_sandbox()
         return 0
 
-    print("  embabel sandbox show | build | reset")
+    print(f"  {embabel_command('sandbox')} show | build | reset")
     return 1
 
 
@@ -393,7 +394,7 @@ def cmd_embeddings(args) -> int:
         print("  " + s.dim(".env now says so, which is what survives a restart."))
         if _applied_live(args, model):
             return 0
-        print("  " + s.warn("Restart to apply: embabel down && embabel up"))
+        print("  " + s.warn(f"Restart to apply: {embabel_command('down')} && {embabel_command('up')}"))
         return 0
 
     # show: ask the appliance rather than infer from .env, because what is running is

@@ -33,6 +33,7 @@ from typing import NamedTuple
 
 from .colour import MIDDOT, TICK, bold, dim, warn
 from .core import APPLIANCE_DIR, MODE_SERVICE, SetupError
+from .settings import embabel_command
 from .dockerlib import _compose, _docker, find_mode_container
 
 CERTS_DIR = os.path.join(APPLIANCE_DIR, "certs")
@@ -56,12 +57,15 @@ IMPORT_WAIT_SECONDS = 60
 # The second asks the server, so it yields whatever the network presents — which
 # on an inspected network is exactly the authority wanted, and is also why the
 # fingerprint has to be checked rather than assumed.
-HOW_TO_GET = """
+def how_to_get() -> str:
+    """Where a company's authority comes from, ending in the command that adds it
+    to this instance."""
+    return f"""
 
   To get your company's authority:
     from the macOS keychain   security find-certificate -a -c "<authority name>" -p > company-ca.crt
     from the server itself    openssl s_client -connect <host>:443 -showcerts </dev/null > company-ca.crt
-  Then:                       embabel trust add company-ca.crt
+  Then:                       {embabel_command('trust')} add company-ca.crt
 
   The whole chain is fine: only the authorities in it are kept. Check the fingerprint
   that prints against the one your IT team publishes, most of all for a file the
@@ -124,7 +128,7 @@ def read_authorities(raw: bytes) -> tuple[list[Authority], int]:
     if not raw.strip():
         # What `security find-certificate` writes when no certificate has that name:
         # nothing, with a zero exit status.
-        raise SetupError("That file is empty, so no certificate was found to put in it." + HOW_TO_GET)
+        raise SetupError("That file is empty, so no certificate was found to put in it." + how_to_get())
     try:
         ders = ([ssl.PEM_cert_to_DER_cert(block.decode("ascii")) for block in _PEM_BLOCK.findall(raw)]
                 if PEM_BEGIN in raw else [raw])
@@ -132,7 +136,7 @@ def read_authorities(raw: bytes) -> tuple[list[Authority], int]:
         ders = []
     if not ders or not all(_is_certificate(der) for der in ders):
         raise SetupError("That file is not a certificate. It wants PEM (-----BEGIN CERTIFICATE-----) or DER."
-                         + HOW_TO_GET)
+                         + how_to_get())
     found = [_authority(der) for der in ders]
     authorities = [a for a in found if a]
     return authorities, len(found) - len(authorities)
@@ -165,14 +169,14 @@ def add_trusted(path: str) -> tuple[list[tuple[str, Authority]], int]:
     """
     source = os.path.expanduser(path)
     if not os.path.isfile(source):
-        raise SetupError(f"{source} is not a file." + HOW_TO_GET)
+        raise SetupError(f"{source} is not a file." + how_to_get())
     with open(source, "rb") as f:
         authorities, skipped = read_authorities(f.read())
     if not authorities:
         raise SetupError(
             "That is a server's own certificate, not the authority that signed it.\n"
             "  Trust is given to the authority: the LAST certificate in the chain."
-            + HOW_TO_GET
+            + how_to_get()
         )
     os.makedirs(CERTS_DIR, exist_ok=True)
     stored = []
@@ -246,11 +250,11 @@ def apply_trust(mode: str | None, expect: list[Authority]) -> bool:
     a certificate nothing trusts.
     """
     if not mode:
-        print(f"  {MIDDOT} The appliance is not running — this takes effect at the next `embabel up`.")
+        print(f"  {MIDDOT} The appliance is not running — this takes effect at the next `{embabel_command('up')}`.")
         return True
     print("  " + dim("Restarting the app so it starts with this trust…"))
     if _compose(mode, "up", "-d", "--force-recreate", "--no-deps", MODE_SERVICE[mode], capture=True).returncode != 0:
-        print("  " + warn("Could not restart the app. Run `embabel up`, then `embabel trust list`."))
+        print("  " + warn(f"Could not restart the app. Run `{embabel_command('up')}`, then `{embabel_command('trust')} list`."))
         return False
     wanted = {a.fingerprint for a in expect}
     if not wanted:
@@ -259,9 +263,9 @@ def apply_trust(mode: str | None, expect: list[Authority]) -> bool:
     while time.monotonic() < deadline:
         container = find_mode_container(mode)
         if container and _imported(container, wanted) == wanted:
-            print(f"  {TICK} The appliance trusts it. It is starting up now — `embabel status` says when it is ready.")
+            print(f"  {TICK} The appliance trusts it. It is starting up now — `{embabel_command('status')}` says when it is ready.")
             return True
         time.sleep(2)
     print("  " + warn("The app restarted but does not hold the certificate."))
-    print("  This image predates certificate import. Run `embabel upgrade`, and it is picked up from certs/.")
+    print(f"  This image predates certificate import. Run `{embabel_command('upgrade')}`, and it is picked up from certs/.")
     return False

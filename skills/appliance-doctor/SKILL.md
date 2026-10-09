@@ -29,6 +29,20 @@ Usually somebody who did not sign up to become a Docker expert. That changes the
    credential-helper trap and the embedding model.
 3. Only then start reading logs.
 
+**Find out which appliance first.** A machine can run more than one; `embabel instances`
+lists them. The commands below name containers as `$P-<service>-1`, where `$P` is the
+appliance's compose project — set it before running any of them:
+
+```bash
+P=embabel-appliance        # the default; another instance is embabel-<name>
+```
+
+Run compose as `embabel --instance <name> compose …`, never bare `docker compose`: the bare
+form acts on the default appliance, which may be somebody's working one, and starts
+containers without the memory limits that keep them from filling Docker's memory. Prefer a
+dedicated `embabel --instance <name>` verb when there is one, and run
+`EMBABEL_INSTANCE=<name> sh doctor.sh` for the script.
+
 The same material written for the user directly is at
 <https://github.com/embabel-worlds/appliance/blob/main/docs/guide/troubleshooting.md>, and
 in `docs/guide/troubleshooting.md` if there is a checkout. Send them the link; do not make
@@ -51,9 +65,9 @@ warnings only, and is two to six times smaller than the real log. Evidence peopl
 routinely in a file they do not know exists:
 
 ```bash
-docker logs --tail 80 embabel-appliance-worlds-1              # the filtered view
-docker exec embabel-appliance-worlds-1 tail -100 logs/assistant.log   # everything
-docker cp embabel-appliance-worlds-1:/app/logs/assistant.log ./       # works on a STOPPED container
+docker logs --tail 80 $P-worlds-1              # the filtered view
+docker exec $P-worlds-1 tail -100 logs/assistant.log   # everything
+docker cp $P-worlds-1:/app/logs/assistant.log ./       # works on a STOPPED container
 ```
 
 `/app/logs` is not on a volume: it survives a restart, not a recreate. If a container is
@@ -66,10 +80,10 @@ crash-looping, copy the log out before anyone runs `docker compose up` again.
 | `error getting credentials … docker-credential-*` | `ls "$(dirname "${DOCKER_CONFIG:-$HOME/.docker}")"` — it is PATH, not the network. See below. |
 | Install stopped, no `embabel` command | `sh doctor.sh` — the container may never have started |
 | A container "is running" but nothing works | `docker inspect -f '{{.RestartCount}}' <name>` — a climbing count is a crash loop |
-| Console stuck on "Connecting to Worlds" | `docker logs --tail 30 embabel-appliance-worlds-console-1` — read the status of the repeating `/api/v1/realms` lines |
-| Wizard: "did not answer … still waiting for OpenAI" | `docker exec embabel-appliance-worlds-1 sh -c 'curl -s -o /dev/null -w "%{http_code}\n" --max-time 20 https://api.openai.com/v1/models'` |
+| Console stuck on "Connecting to Worlds" | `docker logs --tail 30 $P-worlds-console-1` — read the status of the repeating `/api/v1/realms` lines |
+| Wizard: "did not answer … still waiting for OpenAI" | `docker exec $P-worlds-1 sh -c 'curl -s -o /dev/null -w "%{http_code}\n" --max-time 20 https://api.openai.com/v1/models'` |
 | `Bearer token resolved to user 'x' but the user could not be loaded` | Compare the token's user against the credential store — see below |
-| Neo4j errors in the log | `docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' embabel-appliance-neo4j-1` |
+| Neo4j errors in the log | `docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' $P-neo4j-1` |
 
 ## The failures that have actually happened, and what each one really is
 
@@ -88,12 +102,12 @@ appliance's own JVM starved of memory restarts repeatedly and takes the console'
 to 502 with it, which reads as a networking fault and is not one.
 
 **A repeated 502 from the console.** Either the worlds container was replaced and the console
-is still dialling its old address — `docker restart embabel-appliance-worlds-console-1` fixes
+is still dialling its old address — `docker restart $P-worlds-console-1` fixes
 that outright — or the two disagree about the port. Compare:
 
 ```bash
-docker exec embabel-appliance-worlds-console-1 sh -c 'grep -m1 -o "proxy_pass http://worlds:[0-9]*" /etc/nginx/conf.d/default.conf'
-docker exec embabel-appliance-worlds-1 sh -c 'echo $SERVER_PORT'
+docker exec $P-worlds-console-1 sh -c 'grep -m1 -o "proxy_pass http://worlds:[0-9]*" /etc/nginx/conf.d/default.conf'
+docker exec $P-worlds-1 sh -c 'echo $SERVER_PORT'
 ```
 
 **`Bearer token resolved to user 'x' but the user could not be loaded`.** An MCP client
@@ -102,7 +116,7 @@ earlier install attempt, because the data volume survives a plain reinstall. A s
 cause. Compare the two names:
 
 ```bash
-docker exec embabel-appliance-worlds-1 sh -c '
+docker exec $P-worlds-1 sh -c '
 grep -o "EMBABEL_SETUP_MCP_TOKEN_USER=.*" /data/embabel/assistant/admin/providers.env
 sed -nE "/^credentials:/,/^[a-zA-Z]/p" /data/embabel/assistant/admin/.credentials.yml | sed -E "s/^( +)([A-Za-z0-9_.-]+): .*/\1\2/"'
 ```

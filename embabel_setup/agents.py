@@ -18,7 +18,7 @@ import subprocess
 
 from .colour import TICK, bold, dim, heading, warn
 from .core import APPLIANCE_DIR, prompt
-from .settings import env_file_value, surface_urls
+from .settings import embabel_command, env_file_value, surface_urls
 from .words import say
 
 # The name setup registers with MCP clients, and therefore the name --uninstall
@@ -513,7 +513,7 @@ def wire_coding_agents(result: dict) -> None:
         print(f"\n  For a chat client — Claude Desktop, Open WebUI, anything speaking MCP:")
         print(f"    URL:    {chat_url}")
         if wired:
-            print("    Token:  `embabel agents --show-token`")
+            print(f"    Token:  `{embabel_command('agents')} --show-token`")
         else:
             print(f"    Header: Authorization: Bearer {token}")
         print("  " + dim("Same token, the assistant's tools rather than the builder's."))

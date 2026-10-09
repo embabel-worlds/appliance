@@ -14,6 +14,8 @@ import importlib.util
 import os
 import sys
 
+from .settings import embabel_command
+
 # The checkout root — the directory setup.py, the compose files and the launcher share.
 # dirname twice because this file is one level down, inside the package.
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -85,12 +87,12 @@ def _sample_target(args):
     """The running appliance, and a credential for it. Shared by every sample verb."""
     mode = current_mode() or s.configured_mode()
     if not mode:
-        print("  Nothing is running.  `embabel up` starts it.")
+        print(f"  Nothing is running.  `{embabel_command('up')}` starts it.")
         return None, None
     container = s.find_mode_container(mode)
     base = s.container_base_url(container) if container else None
     if not container or not base:
-        print("  The appliance is not up.  `embabel up` starts it.")
+        print(f"  The appliance is not up.  `{embabel_command('up')}` starts it.")
         return None, None
     return base, s.sample_credential(container)
 

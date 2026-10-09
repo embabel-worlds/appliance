@@ -14,6 +14,7 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { composeCommand, serviceContainer, serviceFilter } from './instance'
 import * as provision from './provision'
 import type { ConnectionResult, LocalMount, MountsState } from './types'
 
@@ -183,12 +184,13 @@ function setIndex(host: string, index: boolean) {
  * @param {string[]} args @param {string} cwd
  * @returns {Promise<{ ok: boolean, out: string }>}
  */
-const docker = (args: string[], cwd: string) =>
+const exec = (cmd: string, args: string[], cwd: string) =>
   new Promise<{ ok: boolean, out: string }>((resolve) => {
-    execFile('docker', args, { cwd, timeout: 180_000 }, (error, stdout, stderr) => {
+    execFile(cmd, args, { cwd, timeout: 180_000 }, (error, stdout, stderr) => {
       resolve({ ok: !error, out: (stderr || stdout).trim() })
     })
   })
+const docker = (args: string[], cwd: string) => exec('docker', args, cwd)
 
 /** The end of a long output, visibly truncated — never chopped mid-word in silence. */
 const tail = (out: string) => (out.length > 300 ? `…${out.slice(-300)}` : out)
@@ -201,8 +203,10 @@ const tail = (out: string) => (out.length > 300 ? `…${out.slice(-300)}` : out)
  * @param {string} target @returns {Promise<boolean>}
  */
 async function isLive(target: string) {
+  const container = await serviceContainer('assistant')
+  if (!container) return false
   const run = await docker(
-    ['inspect', 'embabel-assistant', '--format', '{{range .Mounts}}{{.Destination}}\n{{end}}'],
+    ['inspect', container, '--format', '{{range .Mounts}}{{.Destination}}\n{{end}}'],
     applianceDir() ?? '.',
   )
   return run.ok && run.out.split('\n').map((l) => l.trim()).includes(target)
@@ -242,10 +246,13 @@ async function apply() {
   if (!current.supported || !current.dir) return { ok: false, message: current.message }
   // One mode at a time is an appliance invariant (the modes share one graph);
   // `up` here would START the me mode, so refuse while the other one is up.
-  const worlds = await docker(
-    ['ps', '--filter', 'label=com.docker.compose.service=worlds', '--format', '{{.Names}}'],
-    current.dir,
-  )
+  let worldsFilter: string[]
+  try {
+    worldsFilter = serviceFilter('worlds')
+  } catch (e) {
+    return { ok: false, message: (e as Error).message }
+  }
+  const worlds = await docker(['ps', ...worldsFilter, '--format', '{{.Names}}'], current.dir)
   if (worlds.ok && worlds.out) {
     return { ok: false, message: `The worlds mode is running (${worlds.out}) — stop it before applying mounts.` }
   }
@@ -257,12 +264,12 @@ async function apply() {
   const wired = current.mounts.length > 0 ? await provision.provision() : { changed: false, worlds: 0, warnings: [] }
   if ('error' in wired && wired.error) return { ok: false, message: wired.error }
 
-  const up = await docker(['compose', 'up', '-d', 'assistant'], current.dir)
+  const up = await exec(...composeCommand(current.dir, ['up', '-d', 'assistant']), current.dir)
   if (!up.ok) return { ok: false, message: `docker compose up failed: ${tail(up.out)}` }
   // World config is read at boot. An unchanged mount list means `up` recreated
   // nothing — force the reload the provisioning just made necessary.
   if (wired.changed && !/recreat/i.test(up.out)) {
-    const restart = await docker(['compose', 'restart', 'assistant'], current.dir)
+    const restart = await exec(...composeCommand(current.dir, ['restart', 'assistant']), current.dir)
     if (!restart.ok) return { ok: false, message: `docker compose restart failed: ${restart.out.slice(-300)}` }
   }
 

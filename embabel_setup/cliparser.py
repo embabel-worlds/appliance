@@ -15,7 +15,7 @@ from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_version, cmd_where)
 from .clidata import (cmd_agents, cmd_contract, cmd_diagram, cmd_embeddings, cmd_realms, cmd_run_view,
                       cmd_sample, cmd_sandbox, cmd_scenario)
-from .clirun import (cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
+from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
 
@@ -75,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-f", "--follow", action="store_true")
     p.add_argument("--tail", type=int, default=200)
     p.set_defaults(func=cmd_logs)
+
+    p = sub.add_parser("compose", help="docker compose for this appliance, with the settings `up` uses")
+    mode_flags(p)
+    p.add_argument("compose_args", nargs=argparse.REMAINDER, metavar="...",
+                   help="what to hand docker compose, e.g. `ps` or `up -d assistant`")
+    p.set_defaults(func=cmd_compose)
 
     p = sub.add_parser("open", help="open a surface in your browser")
     p.add_argument("what", nargs="?", choices=["console", "graph", "dashboards", "me"],

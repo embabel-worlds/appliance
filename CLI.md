@@ -101,6 +101,14 @@ The appliance's own log by default; name a compose service for any other.
 | `-f`, `--follow` | follow |
 | `--tail N` | lines of history, default 200 |
 
+### `embabel compose [--me|--worlds] <args…>`
+
+`docker compose` for this appliance, run exactly as `embabel up` runs it: its
+project, settings file, compose files and overlays, port block, memory limits
+and profiles. `embabel compose ps`, `embabel compose --me up -d assistant`.
+Use it instead of a bare `docker compose`, which acts on the default appliance
+and starts containers with no memory limits.
+
 ### `embabel open [what]`
 
 Open a surface in your browser: `console`, `graph`, `dashboards`, `me`. With
@@ -742,7 +750,10 @@ Everything scopes: `backup` writes `embabel-backup-<instance>-<timestamp>` and
 records the instance in its manifest, `restore` says so when a backup came from
 a different one, `uninstall` removes only the instance you name (and keeps the
 `embabel` command while any other remains), and `prune` touches only the current
-instance's sandboxes.
+instance's sandboxes. Every compose command run on an instance's behalf, including
+the services that finish downloading in the background after the first `up`,
+carries that instance's project, settings file and ports, so installing or
+working on one never recreates another's containers.
 
 ### `embabel down`
 

@@ -20,6 +20,21 @@ host: Docker, compose, credential helpers, the Model Runner, the embedding model
 realm checkouts, and how much room Docker has. It does **not** check a running appliance —
 for that, keep reading.
 
+## Which appliance
+
+A machine can run more than one appliance, so the commands below name containers
+through `$P`, the appliance's compose project. Set it first:
+
+```bash
+P=embabel-appliance        # the default; another instance is embabel-<name>
+```
+
+Containers are then `$P-<service>-1`. Run compose as `embabel --instance <name>
+compose …` rather than bare `docker compose`, which acts on the default appliance and
+starts containers without their memory limits. `embabel instances` lists what is installed;
+`embabel --instance <name> doctor`, `status` and `logs` pick one for you, and
+`EMBABEL_INSTANCE=<name> sh doctor.sh` does the same for the script below.
+
 ## If there is no `embabel` command yet
 
 The install never got far enough to leave one. Nothing here needs it:
@@ -63,10 +78,10 @@ The full log lives **inside the container**:
 
 ```bash
 # the filtered operator view
-docker logs --tail 80 embabel-appliance-worlds-1
+docker logs --tail 80 $P-worlds-1
 
 # everything
-docker exec embabel-appliance-worlds-1 tail -100 logs/assistant.log
+docker exec $P-worlds-1 tail -100 logs/assistant.log
 ```
 
 **`/app/logs` is not on a volume.** It survives a restart; it does not survive the
@@ -74,7 +89,7 @@ container being recreated. If something is crash-looping and you want the log fr
 previous boot, take a copy first — this works on a stopped container too:
 
 ```bash
-docker cp embabel-appliance-worlds-1:/app/logs/assistant.log ./assistant.log
+docker cp $P-worlds-1:/app/logs/assistant.log ./assistant.log
 ```
 
 ---
@@ -118,7 +133,7 @@ a corporate firewall, a VPN.
 **Prove it, from inside the container, because that is where the blocked egress is:**
 
 ```bash
-docker exec embabel-appliance-worlds-1 sh -c \
+docker exec $P-worlds-1 sh -c \
   'curl -s -o /dev/null -w "%{http_code} in %{time_total}s\n" --max-time 20 https://api.openai.com/v1/models'
 ```
 
@@ -142,7 +157,7 @@ response and the restart ended the run with this message.
 Current versions ride the restart out and verify. If you see it on an older one:
 
 ```bash
-docker logs embabel-appliance-worlds-1 2>&1 | grep "Setup complete — restarting"
+docker logs $P-worlds-1 2>&1 | grep "Setup complete — restarting"
 embabel up
 ```
 
@@ -169,10 +184,10 @@ Docker network. That hop is what to test.
 curl -s -o /dev/null -w "%{http_code} in %{time_total}s\n" --max-time 60 http://localhost:11044/api/v1/realms
 
 # nginx records every one of those two-second retries
-docker logs --tail 30 embabel-appliance-worlds-console-1
+docker logs --tail 30 $P-worlds-console-1
 
 # ask the console container itself whether it can reach the door
-docker exec embabel-appliance-worlds-console-1 sh -c \
+docker exec $P-worlds-console-1 sh -c \
   'wget -S -T 5 -O /dev/null "$WORLDS_URL/api/v1/realms" 2>&1 | grep -E "HTTP/|wget:"'
 ```
 
@@ -194,13 +209,13 @@ nginx resolves a literal hostname once, when its config loads, and caches that a
 for the life of the process — so any `docker compose up` that recreates `worlds` strands
 the console until the *console* is restarted. Reproduced deliberately: recreating the
 worlds container turned a 401 in 10 ms into a permanent 502 in 1 ms, and only
-`docker restart embabel-appliance-worlds-console-1` cleared it. Console images built
+`docker restart $P-worlds-console-1` cleared it. Console images built
 after this was found re-resolve per request and follow the door across a move — verified
 by forcing the worlds container from `172.20.0.2` to `172.20.0.12`, after which an
 untouched console still answered 401. If yours predates that, restarting it is the fix:
 
 ```bash
-docker restart embabel-appliance-worlds-console-1
+docker restart $P-worlds-console-1
 ```
 
 **Or the two disagree about the port.** The console bakes its proxy target when the
@@ -208,16 +223,16 @@ container starts, so one created before setup settled your ports will aim at the
 one:
 
 ```bash
-docker exec embabel-appliance-worlds-console-1 sh -c \
+docker exec $P-worlds-console-1 sh -c \
   'grep -m1 -o "proxy_pass http://worlds:[0-9]*" /etc/nginx/conf.d/default.conf'
-docker exec embabel-appliance-worlds-1 sh -c 'echo "worlds SERVER_PORT=$SERVER_PORT"'
+docker exec $P-worlds-1 sh -c 'echo "worlds SERVER_PORT=$SERVER_PORT"'
 ```
 
 Those two numbers must match. If they do not, recreate the console against your current
 `.env`:
 
 ```bash
-cd ~/embabel/worlds && docker compose -f docker-compose-worlds.yml up -d worlds-console
+cd ~/embabel/worlds && ./embabel compose --worlds up -d worlds-console
 ```
 
 ---
@@ -237,7 +252,7 @@ that was later recreated under a different name. The data volume survives a plai
 reinstall; only `embabel uninstall` or `--fresh` clears it.
 
 ```bash
-docker exec embabel-appliance-worlds-1 sh -c '
+docker exec $P-worlds-1 sh -c '
 echo "token names:"; grep -o "EMBABEL_SETUP_MCP_TOKEN_USER=.*" /data/embabel/assistant/admin/providers.env
 echo "credentials hold:"; sed -nE "/^credentials:/,/^[a-zA-Z]/p" /data/embabel/assistant/admin/.credentials.yml | sed -E "s/^( +)([A-Za-z0-9_.-]+): .*/\1\2/"'
 ```
@@ -256,8 +271,8 @@ bouncing it under a live appliance: zero lines, and every surface kept answering
 So take them seriously, and start with *when*:
 
 ```bash
-docker exec embabel-appliance-worlds-1 sh -c 'grep -nE "7687|Neo4j|ServiceUnavailable" logs/assistant.log | tail -5'
-docker inspect -f 'worlds started {{.State.StartedAt}}' embabel-appliance-worlds-1
+docker exec $P-worlds-1 sh -c 'grep -nE "7687|Neo4j|ServiceUnavailable" logs/assistant.log | tail -5'
+docker inspect -f 'worlds started {{.State.StartedAt}}' $P-worlds-1
 ```
 
 Lines older than that start are from a previous life of the process and are spent. Lines
@@ -271,8 +286,8 @@ not created from these compose files. (The port a *browser* on your machine woul
 If the address is right, look at Neo4j itself:
 
 ```bash
-docker inspect -f 'health={{.State.Health.Status}} restarts={{.RestartCount}} OOM={{.State.OOMKilled}}' embabel-appliance-neo4j-1
-docker logs --tail 60 embabel-appliance-neo4j-1
+docker inspect -f 'health={{.State.Health.Status}} restarts={{.RestartCount}} OOM={{.State.OOMKilled}}' $P-neo4j-1
+docker logs --tail 60 $P-neo4j-1
 docker info --format '{{.MemTotal}}'
 ```
 

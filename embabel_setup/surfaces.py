@@ -18,8 +18,8 @@ import sys
 
 from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
-from .settings import console_url, monitoring_enabled, sql_enabled, surface_urls
-from .words import say
+from .settings import embabel_command, console_url, instance, monitoring_enabled, sql_enabled, surface_urls
+from .words import name_the_instance, say
 
 # THE VERB, which every ending was missing.
 #
@@ -36,20 +36,21 @@ from .words import say
 # not working" never has to count spaces or open this file.
 
 
-def verb(name: str) -> str:
-    """`embabel <name>`, accented and padded to the column the block aligns on.
+def verb(name: str, column: int = 16) -> str:
+    """`embabel <name>` for this instance, accented and padded to [column].
 
     ljust BEFORE accent(): padding a string that already carries escape codes
     counts them toward the width, and every row steps left.
     """
-    return accent(f"embabel {name}".ljust(16))
+    return accent(name_the_instance(f"embabel {name}").ljust(column))
 
 
 def print_next(width: int = 58) -> None:
     """What to type next. The LAST thing any run says, so it survives the scroll."""
     print("  " + heading("Next", width))
-    say("next", up=verb("up"), doctor=verb("doctor"),
-        open=verb("open"), help=verb("--help"))
+    column = max(16, *(len(name_the_instance(f"embabel {name}")) + 2 for name in ("doctor", "--help")))
+    say("next", up=verb("up", column), doctor=verb("doctor", column),
+        open=verb("open", column), help=verb("--help", column))
     print()
 
 
@@ -96,7 +97,7 @@ def monitoring_line() -> str:
     """Where the dashboards are, or how to have them. Off by default (#112), and the
     line stays either way: somebody looking for dashboards should find the switch."""
     if not monitoring_enabled():
-        return "Dashboards     " + dim("off — EMBABEL_MONITORING=on in .env, then embabel up")
+        return "Dashboards     " + dim(f"off — EMBABEL_MONITORING=on in .env, then {embabel_command('up')}")
     return ("Dashboards     " + url(surface_urls()["dashboards"])
             + "   ·   Metrics  " + url(surface_urls()["metrics"]))
 
@@ -158,6 +159,11 @@ def seed_me_app_settings(base: str, username: str | None) -> None:
         if not isinstance(current, dict):
             return  # a settings file we do not recognise is not ours to rewrite
         seeded = dict(current)
+        # The instance goes with the URL: the app finds its containers and volume
+        # by it. Recorded only when the URL is this instance's, so an app already
+        # pointed at another appliance is not told it belongs to this one.
+        if not seeded.get("instance") and seeded.get("baseUrl") in (None, "", base):
+            seeded["instance"] = instance()
         if not seeded.get("baseUrl"):
             seeded["baseUrl"] = base
         if username and not seeded.get("username"):
@@ -263,6 +269,7 @@ def launch_me_app(base: str, username: str | None = None) -> None:
     # Detached, output dropped: the app outlives this wizard, and Electron's
     # chatter has no business in the terminal being handed back.
     subprocess.Popen([npm, "start"], cwd=ME_APP_DIR, start_new_session=True,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     env=dict(os.environ, EMBABEL_INSTANCE=instance()))
     print('  Starting — look for "Me" in your menu bar. The appliance URL and your username')
     print("  are filled in already; enter your password and it will offer its first scan.")

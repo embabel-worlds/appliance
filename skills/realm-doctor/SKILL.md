@@ -17,7 +17,8 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 2. Compare `verbs` against what `wasm/handlers.ts` (or `handlers/`) actually exports. A mismatch
    IS the finding — name it before theorizing about causes.
 3. If you have host access, the container logs are the build's own voice:
-   `docker logs embabel-worlds | grep -E "RealmBundleBuilder|<realm-name>"`.
+   `docker logs embabel-<instance>-worlds-1 2>&1 | grep -E "RealmBundleBuilder|<realm-name>"`,
+   where `<instance>` is `appliance` for the default one (`embabel instances` lists them).
 
 ## Symptom: installed and active, but `verbs: []` (or a handler is missing)
 

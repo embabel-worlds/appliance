@@ -22,6 +22,7 @@ import * as agents from './agents'
 import { platform } from './platform'
 import * as pkg from '../package.json'
 import type { Fact, ScanOptions, Settings, StreamState, VerbConsent } from './types'
+import { useSavedInstance } from './instance'
 import type { AskRequest } from './wire'
 import type { RequestSpec } from '@embabel/appliance-kit'
 /** The appliance's own property name for its default model. */
@@ -335,6 +336,8 @@ async function runMenuRestore() {
 }
 
 void app.whenReady().then(() => {
+  // Which appliance: the installer records it beside the URL it seeded.
+  useSavedInstance(loadSettings().instance)
   // The About box: the mark, the version, and who made it.
   app.setAboutPanelOptions({
     applicationName: 'Embabel Me',
