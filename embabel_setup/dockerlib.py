@@ -539,12 +539,21 @@ def mode_of(container: str | None) -> str:
     """Which mode a container belongs to, for looking up its image list."""
     service = mode_service(container) if container else None
     return "me" if service == "assistant" else "worlds"
-def find_graph_container() -> str | None:
-    run = _docker("ps", "--filter", f"label=com.docker.compose.project={compose_project()}",
-                  "--filter", "label=com.docker.compose.service=neo4j",
+def service_container(service: str, stopped: bool = False) -> str | None:
+    """This instance's container for a compose service, or None.
+
+    Found by its project and service labels rather than by name, because the
+    name depends on the instance and compose picks it. `stopped` includes a
+    container that exists but is not running.
+    """
+    run = _docker("ps", *(["-a"] if stopped else []),
+                  "--filter", f"label=com.docker.compose.project={compose_project()}",
+                  "--filter", f"label=com.docker.compose.service={service}",
                   "--format", "{{.Names}}", timeout=15)
     names = run.stdout.split() if run and run.returncode == 0 else []
     return names[0] if names else None
+def find_graph_container() -> str | None:
+    return service_container("neo4j")
 def _answers(base: str) -> bool:
     """Does the door answer at all? Any HTTP status counts — 401 is an answer."""
     try:

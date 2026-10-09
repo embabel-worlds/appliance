@@ -148,6 +148,25 @@ def check_no_literal_compose_hints():
     assert not offenders, f"compose commands spelled out in printed text: {offenders}"
 
 
+def check_no_default_container_names():
+    """No file names a container, network or volume of the default appliance by
+    its full name. Those names come from the instance's project: in code through
+    compose_project and service_container, in docs through `$P` or `<instance>`."""
+    pinned = "embabel-" + "appliance-"
+    places = [*pathlib.Path("embabel_setup").glob("*.py"), *pathlib.Path("scripts").glob("*"),
+              *pathlib.Path("skills").rglob("*.md"), *pathlib.Path("docs").rglob("*.md"),
+              pathlib.Path("worlds.py"), pathlib.Path("me.py"), pathlib.Path("setup.py"),
+              pathlib.Path("doctor.sh"), pathlib.Path("README.md"), pathlib.Path("CLI.md")]
+    offenders = []
+    for path in places:
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if pinned in line:
+                offenders.append(f"{path}:{number}")
+    assert not offenders, f"the default appliance's names written out: {offenders}"
+
+
 VERBS = ("up|down|status|ps|doctor|logs|open|realms|version|backup|restore|sample|contract|run-view|"
          "diagram|scenario|embeddings|sandbox|agents|upgrade|uninstall|prune|trust|bugreport|instances")
 BARE_VERB = re.compile(rf"(?<![\w/.$-])embabel (?:{VERBS})\b")
@@ -250,6 +269,7 @@ with tempfile.TemporaryDirectory() as root:
 
 check_no_other_compose_commands()
 check_no_literal_compose_hints()
+check_no_default_container_names()
 check_no_bare_embabel_hints()
 check_rendered_hints_name_the_instance()
 

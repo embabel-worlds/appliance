@@ -37,8 +37,13 @@ import json
 import subprocess
 import sys
 import time
+import os
 import urllib.error
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from embabel_setup import dockerlib, settings  # noqa: E402
 
 # The tour every world has, used as the thing being shared: shipped by a realm, so the
 # script does not depend on the world already containing somebody's saved work.
@@ -93,13 +98,20 @@ def check(condition, message):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--base", default="http://localhost:11043")
+    p.add_argument("--instance", default=os.environ.get("EMBABEL_INSTANCE") or settings.DEFAULT_INSTANCE,
+                   help="which appliance to drive; the default one unless named")
+    p.add_argument("--base", help="the worlds API; defaults to the instance's own port")
     p.add_argument("--username", default="rod")
     p.add_argument("--password", required=True, help="the appliance password; never defaulted, this repo is public")
-    p.add_argument("--container", default="embabel-appliance-worlds-1")
+    p.add_argument("--container", help="the worlds container; defaults to the instance's own")
     p.add_argument("--world-dir", default="/data/embabel/assistant/users/{user}/default")
     p.add_argument("--no-restart", action="store_true")
     args = p.parse_args()
+    settings.use_instance(args.instance)
+    args.base = args.base or settings.surface_urls()["worlds"]
+    args.container = args.container or dockerlib.service_container("worlds")
+    if not args.container:
+        sys.exit(f"No running worlds container for the {args.instance} appliance.")
 
     me = Appliance(args.base, args.username, args.password)
     saved_file = args.world_dir.format(user=args.username) + "/" + SAVED
