@@ -93,6 +93,10 @@ docker compose down                  # stop, KEEP your data
 docker compose down -v               # stop and DELETE everything
 ```
 
+Those act on the default appliance. For a [second one](#running-more-than-one), use
+`embabel --instance <name> status`, `logs -f` or `down`, or hand compose anything
+else through `embabel --instance <name> compose ps`.
+
 ## Two modes — Me and Worlds
 
 The appliance is one product in two modes, running the **same image over the
@@ -272,7 +276,7 @@ docker compose -f docker-compose-worlds.yml exec neo4j cypher-shell -u neo4j -p 
 Through compose, not `docker exec <name>`: no service declares a
 `container_name`, so that a second appliance can exist — compose names them
 `<project>-<service>-1` and you should not be memorising that. For another
-instance, add `-p embabel-<name>`.
+instance, run it as `embabel --instance <name> compose --worlds exec neo4j …`.
 
 If you move the assistant off 11042, set `ASSISTANT_PORT` and nothing else: the container
 port moves with it deliberately. The code sandbox is handed a callback URL built from the
@@ -284,7 +288,7 @@ code-execution call dialling a port nothing listens on.
 # Environment reference
 
 Everything is configured through `.env` in this directory. Nothing is baked into an
-image, so editing `.env` and running `docker compose up -d` applies any change.
+image, so editing `.env` and running `embabel up` applies any change.
 
 Values are read by the container at start. Quote nothing unless the value contains
 spaces, and never add trailing comments on a value line — `KEY=value # note` makes the
@@ -612,6 +616,21 @@ Instances differ in exactly three things, and everything else follows:
 | **settings** | `.env` for the default, `.env.<instance>` beside it. One checkout, several settings files — rather than several checkouts each with a copy of `setup.py` free to drift |
 | **ports** | the next free sixteen, recorded as `EMBABEL_PORT_BASE` when the instance is created |
 
+Every compose command the installer and `embabel` run for an instance — the
+first `up`, the services that download in the background afterwards, `stop`,
+`logs`, `pull`, `upgrade`, `uninstall` — names that instance's project, settings
+file and port block, so working on one never touches another. To run compose
+yourself, go through `embabel compose`, which uses the same files, ports, memory
+limits and profiles as `embabel up`:
+
+```bash
+embabel --instance client compose ps
+embabel --instance client compose --me up -d assistant
+```
+
+A bare `docker compose up` knows none of that: it acts on the default appliance,
+and starts containers with no memory limits at all.
+
 Once a second exists, verbs that could act on either will **ask** rather than
 guess — picking one would be picking somebody's real graph as often as not:
 
@@ -663,13 +682,17 @@ move between versions.
 
 ## Troubleshooting
 
+The commands below act on the default appliance. For another instance, run each
+`docker compose …` as `embabel --instance <name> compose …`, or use the
+`embabel --instance <name>` verb that does the same job.
+
 | Symptom | Cause |
 |---|---|
-| `setup.py` cannot find the token | It already waits out a booting app, so the running container's log truly lacks one. `docker compose restart assistant` (or `worlds`) — the token is printed afresh on every boot until setup completes |
+| `setup.py` cannot find the token | It already waits out a booting app, so the running container's log truly lacks one. `embabel compose restart assistant` (or `worlds`) — the token is printed afresh on every boot until setup completes |
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
 | Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:11046` (pre-filled; 7687 is not published to the host) |
-| Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:11046`, or open <http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>. Confirm with `docker exec embabel-appliance-neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |
+| Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:11046`, or open <http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>. Confirm with `docker compose exec neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |
 | Login page loads but chat never answers | No provider key took effect. The appliance restarts once at the end of setup for exactly this reason — check it came back with `docker compose ps` |
 | `docker compose up` fails on an image pull | Not authenticated to ghcr.io — see [Registry access](#registry-access) |
 | First code-execution turn hangs for minutes | The sandbox image is still downloading. `docker pull embabel/assistant-sandbox:latest` |

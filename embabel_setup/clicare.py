@@ -21,6 +21,7 @@ from .cli import (HERE, _emit, _fish_quote, _sample_target, _subparsers, _zsh_qu
 # contain what the operator saw, not a second opinion formed a moment later.
 from .clirun import cmd_doctor, cmd_status
 from .core import prompt
+from .settings import embabel_command
 
 def cmd_backup(args) -> int:
     """Everything the appliance knows, copied to the host's own disk.
@@ -37,7 +38,7 @@ def cmd_backup(args) -> int:
             print(json.dumps([{"path": p, **m} for p, m in found]))
             return 0
         if not found:
-            print(f"  No backups in {parent}.  `embabel backup` makes one.")
+            print(f"  No backups in {parent}.  `{embabel_command('backup')}` makes one.")
             return 0
         print(f"  Backups in {parent}\n")
         for path, manifest in found:
@@ -45,7 +46,7 @@ def cmd_backup(args) -> int:
             size = sum(os.path.getsize(os.path.join(path, f)) for f in os.listdir(path)
                        if f.endswith(".tgz")) / 1e6
             print(f"    {when}   {size:,.0f} MB   {manifest.get('mode', '?')} mode   {os.path.basename(path)}")
-        print(f"\n  embabel restore {found[0][0]}")
+        print(f"\n  {embabel_command('restore')} {found[0][0]}")
         return 0
 
     try:
@@ -228,7 +229,7 @@ def cmd_upgrade(args) -> int:
     print()
     for note in result["notes"]:
         print(f"  {note}")
-    print("\n  `embabel version` says exactly what you are on now.\n")
+    print(f"\n  `{embabel_command('version')}` says exactly what you are on now.\n")
     return 0
 
 
@@ -286,7 +287,7 @@ def cmd_trust(args) -> int:
     if args.trust_command in (None, "list"):
         listed = s.trusted()
         if not listed:
-            print("  No extra certificate authorities.  embabel trust add <file>")
+            print(f"  No extra certificate authorities.  {embabel_command('trust')} add <file>")
             return 0
         for name, authorities in listed:
             print(f"  {s.bold(name[:-len(s.SUFFIX)])}")
@@ -309,12 +310,12 @@ def cmd_trust(args) -> int:
 
     if args.trust_command == "remove":
         if not s.remove_trusted(args.name):
-            print(f"  Nothing called '{args.name}' is trusted.  embabel trust list")
+            print(f"  Nothing called '{args.name}' is trusted.  {embabel_command('trust')} list")
             return 1
         print(f"  {s.TICK} Removed {args.name}")
         return 0 if s.apply_trust(current_mode(), []) else 1
 
-    print("  embabel trust add <file> | list | remove <name>")
+    print(f"  {embabel_command('trust')} add <file> | list | remove <name>")
     return 1
 
 

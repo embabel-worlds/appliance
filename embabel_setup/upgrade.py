@@ -15,7 +15,7 @@ import urllib.request
 
 from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
-from .settings import source_ref, source_repo
+from .settings import embabel_command, source_ref, source_repo
 
 from .dockerlib import _compose, _docker, find_mode_container, images_for, retire_monitoring
 from .versions import image_identity, mode_image
@@ -170,7 +170,7 @@ def upgrade(mode: str) -> dict:
     container = find_mode_container(mode)
     if container and not _same_image(container, mode_image(mode)):
         notes.append(f"WARNING: {container} is NOT running the pulled image.\n"
-                     "    `embabel down` then `embabel up` will land it.")
+                     f"    `{embabel_command('down')}` then `{embabel_command('up')}` will land it.")
     return {"mode": mode, "notes": notes, "digest": after.get("digest")}
 def _same_image(container: str, image: str | None) -> bool:
     """Is this container running THAT image, by local image id rather than by tag?

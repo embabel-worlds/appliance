@@ -16,7 +16,7 @@ import time
 from .colour import MIDDOT, TICK, dim
 from .core import APPLIANCE_DIR
 from .dockerlib import _docker, appliance_containers, stray_sandbox_containers
-from .settings import env_file, env_path, instance
+from .settings import embabel_command, env_file, env_path, instance
 from .backup import backup_timestamp
 from .versions import appliance_versions
 
@@ -131,7 +131,7 @@ def bug_report(dest_dir: str, extra: dict, everything: bool = False) -> str:
              "typed. Read logs/ before sending this to anyone.\n"
              if everything else
              "LOGS ARE FILTERED to warnings, errors and stack traces. If a maintainer\n"
-             "needs more, `embabel bugreport --all-logs` includes everything — read it\n"
+             f"needs more, `{embabel_command('bugreport')} --all-logs` includes everything — read it\n"
              "before sending, because INFO lines can carry personal data.\n"))
 
     archive = shutil.make_archive(dest, "zip", root_dir=dest)

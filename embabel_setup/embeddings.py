@@ -30,7 +30,7 @@ import urllib.request
 from .colour import MIDDOT, TICK, bold, dim, warn
 from .core import SetupError, prompt
 from .dockerlib import LOCAL_EMBEDDING_MODEL, _docker
-from .settings import api_address, env_file_value, set_env_var
+from .settings import embabel_command, api_address, env_file_value, set_env_var
 
 MODEL_VAR = "ASSISTANT_EMBEDDING_MODEL"
 
@@ -113,14 +113,14 @@ def describe_embeddings(status: dict, chosen: str | None) -> None:
     else:
         print(f"  {MIDDOT} " + bold("No embedding model."))
         print("  " + dim("Document features are off until one is set:"))
-        print("     embabel embeddings use local    " + dim("~1.1GB, runs here, nothing leaves"))
-        print("     embabel embeddings use hosted   " + dim("uses the provider key you gave"))
+        print(f"     {embabel_command('embeddings')} use local    " + dim("~1.1GB, runs here, nothing leaves"))
+        print(f"     {embabel_command('embeddings')} use hosted   " + dim("uses the provider key you gave"))
     if chosen and not status.get("configured"):
         # The two disagree, which means a restart is pending — worth saying, because
         # otherwise the command looks as though it did nothing.
         print()
         print("  " + warn(f"{MODEL_VAR}={chosen} is set but not in effect."))
-        print("  " + dim("Restart to apply: embabel down && embabel up"))
+        print("  " + dim(f"Restart to apply: {embabel_command('down')} && {embabel_command('up')}"))
 
 
 def pull_local_model() -> None:
@@ -132,7 +132,7 @@ def pull_local_model() -> None:
             "Could not pull the model. Docker Model Runner is a Docker Desktop feature:\n"
             "  enable it in Settings → AI, or `docker desktop enable model-runner`.\n"
             "  On plain Docker Engine, install the docker-model-plugin package —\n"
-            "  or use `embabel embeddings use hosted`, which downloads nothing."
+            f"  or use `{embabel_command('embeddings')} use hosted`, which downloads nothing."
         )
 
 
@@ -218,7 +218,7 @@ def clear_embeddings() -> None:
     # reading .env should see that the choice was made and undone.
     set_env_var(MODEL_VAR, "")
     print(f"  {TICK} Embedding model cleared — document features will be off.")
-    print("  " + warn("Restart to apply: embabel down && embabel up"))
+    print("  " + warn(f"Restart to apply: {embabel_command('down')} && {embabel_command('up')}"))
 
 
 def offer_embeddings() -> str | None:
@@ -232,7 +232,7 @@ def offer_embeddings() -> str | None:
     """
     answer = prompt("\n  Set up document search now? [y/N]: ").strip().lower()
     if answer not in ("y", "yes"):
-        print(f"  {MIDDOT} " + dim("Skipped. Turn it on any time: embabel embeddings use local"))
+        print(f"  {MIDDOT} " + dim(f"Skipped. Turn it on any time: {embabel_command('embeddings')} use local"))
         return None
     print("\n     1) local    " + dim("~1.1GB, runs on this machine, nothing leaves it"))
     print("     2) hosted   " + dim("uses the provider key you gave, nothing to download"))

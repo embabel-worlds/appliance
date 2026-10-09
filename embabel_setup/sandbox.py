@@ -23,7 +23,7 @@ import subprocess
 from .colour import MIDDOT, TICK, bold, dim, warn
 from .core import APPLIANCE_DIR, SetupError
 from .dockerlib import _docker
-from .settings import env_file_value, set_env_var
+from .settings import embabel_command, env_file_value, set_env_var
 
 # Where a custom Dockerfile lives by default, and what its result is called. The tag is
 # local and unqualified on purpose: it is never pushed anywhere, and a name that looks
@@ -123,4 +123,4 @@ def reset_sandbox() -> None:
     # rather than wonder whether it was ever there.
     set_env_var(IMAGE_VAR, "")
     print(f"  {TICK} Back to the shipped sandbox image.")
-    print("  " + warn("Restart to apply: embabel down && embabel up"))
+    print("  " + warn(f"Restart to apply: {embabel_command('down')} && {embabel_command('up')}"))

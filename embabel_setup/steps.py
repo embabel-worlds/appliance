@@ -32,7 +32,7 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
 from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, api_address,
-                       console_url, phone_home_on, resume_command, set_env_var)
+                       console_url, embabel_command, phone_home_on, resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
 from .words import copy_text, say
@@ -123,7 +123,7 @@ def _timed_out(base: str, seconds: int, waiting_on: str | None) -> Timeout:
         return Timeout(
             f"The appliance did not answer within {seconds}s on {api_address(base)}.\n"
             "It is running — something is just taking longer than expected. Try again, "
-            "or look at what it is doing: docker compose logs -f"
+            f"or look at what it is doing: {embabel_command('logs', '-f')}"
         )
     return Timeout(
         f"The appliance did not answer within {seconds}s, because it is still waiting "
@@ -184,7 +184,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None,
         raise Unreachable(
             f"Could not reach the appliance ({e.reason}).\n"
             f"Its API did not answer on {api_address(base)}.\n"
-            "Is it running? Try: docker compose ps"
+            f"Is it running? Try: {embabel_command('status')}"
         )
     except socket.timeout:
         raise _timed_out(base, timeout, waiting_on)
@@ -198,7 +198,7 @@ def call(base: str, path: str, token: str, payload: dict | None = None,
         raise Unreachable(
             f"Could not reach the appliance ({e.__class__.__name__}: {e}).\n"
             f"Its API did not answer on {api_address(base)}.\n"
-            "Is it running? Try: docker compose ps"
+            f"Is it running? Try: {embabel_command('status')}"
         )
 
 
@@ -340,7 +340,7 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
             raise SetupError(
                 f"The appliance failed to start.\n  {died}\n\n"
                 f"  Full log:  docker logs {container}\n"
-                f"  Then:      embabel doctor"
+                f"  Then:      {embabel_command('doctor')}"
             )
         if container is None or time.monotonic() >= deadline:
             break
@@ -366,7 +366,7 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
         if container is None:
             raise SetupError(
                 f"No appliance is running: no mode container was found and {base} does not answer.\n"
-                "Start one first:  docker compose up -d"
+                f"Start one first:  {embabel_command('up')}"
             )
         if status != "running":
             raise SetupError(
@@ -375,7 +375,7 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
                 f"  The setup token is printed by the appliance at boot, so there is none to find "
                 f"until it starts.\n"
                 f"  Why it did not start:  docker logs {container}\n"
-                f"  Then:                  embabel doctor"
+                f"  Then:                  {embabel_command('doctor')}"
             )
     print("  Could not find the setup token automatically.")
     if container:

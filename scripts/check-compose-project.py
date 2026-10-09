@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Every compose call for an instance names that instance's project, settings and port block.
+"""Every compose call for an instance names that instance's project, settings and port block,
+and so does every command the appliance prints for somebody to run.
 
 Installing a second instance once recreated the DEFAULT instance's docling and
 sandbox image: the background `up` for the deferred services left out `-p`, so
@@ -8,17 +9,22 @@ talks to Docker — every subprocess is replaced and only the command lines are 
 """
 import os
 import pathlib
+import ast
+import io
 import re
 import subprocess
 import sys
 import tempfile
+import tokenize
+import urllib.error
 from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-from embabel_setup import dockerlib, lifecycle, settings  # noqa: E402
+from embabel_setup import dockerlib, lifecycle, settings, steps  # noqa: E402
+from embabel_setup.core import SetupError, Unreachable  # noqa: E402
 
 
 def flag(cmd, name):
@@ -79,6 +85,129 @@ def check_instance(name, env_name, port_base):
     assert not any(arg.startswith("name=") for arg in ps[0]), "docling lookup goes by container name"
 
 
+def collect_hints():
+    """Every printed hint that suggests a command, as text."""
+    hints = [settings.resume_command(), str(steps._timed_out("http://localhost:1", 5, None))]
+    printed = []
+    with patch.object(lifecycle.subprocess, "Popen"), \
+            patch("builtins.print", side_effect=lambda *a, **_k: printed.append(" ".join(map(str, a)))):
+        lifecycle.start_deferred("me")
+    hints.append("\n".join(printed))
+    for failure in (urllib.error.URLError(ConnectionRefusedError("refused")), ConnectionResetError("reset")):
+        with patch.object(steps.urllib.request, "urlopen", side_effect=failure):
+            try:
+                steps.call("http://localhost:1", "/status", "token")
+            except Unreachable as e:
+                hints.append(str(e))
+    with patch.object(steps, "probe", return_value="unreachable"), \
+            patch.object(steps, "boot_failure", return_value=None), patch.object(steps.STATUS, "stop"):
+        try:
+            steps.discover_token("http://localhost:1", None, None)
+        except SetupError as e:
+            hints.append(str(e))
+    return hints
+
+
+def check_hints(name):
+    """A hint names this instance and never suggests raw docker compose: the
+    `embabel` command does that with the settings `up` uses. Before the command
+    is on PATH, the hint is the checkout's own launcher."""
+    default = name == settings.DEFAULT_INSTANCE
+    settings.use_instance(name)
+    for installed in ("/usr/local/bin/embabel", None):
+        with patch("shutil.which", return_value=installed):
+            hints = collect_hints()
+        assert len(hints) == 6, f"expected 6 hints, collected {len(hints)}: {hints}"
+        text = "\n".join(hints)
+        assert "docker compose" not in text, f"a hint suggests raw docker compose:\n{text}"
+        cli = re.findall(r"(\S*)\bembabel ((?:--instance \S+ )?)(?:up|status|logs|doctor)\b", text)
+        assert len(cli) >= 5, f"expected the embabel verbs, saw {cli} in:\n{text}"
+        for launcher, flag in cli:
+            expected = "" if installed else os.path.join(settings.APPLIANCE_DIR, "")
+            assert launcher == expected, f"hint runs {launcher}embabel, expected {expected}embabel"
+            assert flag == ("" if default else f"--instance {name} "), f"embabel hint for {name}: {flag!r}"
+        if not installed and not default:
+            assert f"EMBABEL_INSTANCE={name} " in hints[0], f"resume hint omits the instance: {hints[0]}"
+
+
+def check_no_literal_compose_hints():
+    """No string in the code spells out a compose command for somebody to run;
+    hints come from embabel_command, which names the instance."""
+    hint = re.compile(r"docker compose (?:-f\b|-p\b|ps\b|logs\b|up -d\b|stop\b|down\b|exec\b|restart\b)")
+    offenders = []
+    for path in [*pathlib.Path("embabel_setup").glob("*.py"), pathlib.Path("setup.py"), pathlib.Path("worlds.py")]:
+        if not path.exists():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            for literal in re.findall(r'"[^"]*"|\'[^\']*\'', stripped):
+                if hint.search(literal):
+                    offenders.append(f"{path}:{number}")
+    assert not offenders, f"compose commands spelled out in printed text: {offenders}"
+
+
+VERBS = ("up|down|status|ps|doctor|logs|open|realms|version|backup|restore|sample|contract|run-view|"
+         "diagram|scenario|embeddings|sandbox|agents|upgrade|uninstall|prune|trust|bugreport|instances")
+BARE_VERB = re.compile(rf"(?<![\w/.$-])embabel (?:{VERBS})\b")
+
+
+def docstring_lines(tree):
+    lines = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                    and isinstance(first.value.value, str):
+                lines.update(range(first.lineno, first.end_lineno + 1))
+    return lines
+
+
+def check_no_bare_embabel_hints():
+    """Printed `embabel <verb>` hints come from embabel_command, which adds
+    --instance for any instance but the default. The help examples in cliparser
+    describe the verbs themselves and are left as they are; so are comments,
+    docstrings and the comment lines written into .env."""
+    offenders = []
+    for path in [*pathlib.Path("embabel_setup").glob("*.py"), pathlib.Path("setup.py"),
+                 pathlib.Path("worlds.py"), pathlib.Path("me.py")]:
+        if not path.exists() or path.name == "cliparser.py":
+            continue
+        source = path.read_text(encoding="utf-8")
+        docs = docstring_lines(ast.parse(source))
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.start[0] in docs or token.type not in (tokenize.STRING, tokenize.FSTRING_MIDDLE):
+                continue
+            text = token.string.lstrip("fFrRbBuU").lstrip("\"'")
+            if text.startswith("# "):
+                continue
+            if BARE_VERB.search(token.string):
+                offenders.append(f"{path}:{token.start[0]}")
+    assert not offenders, f"embabel hints that do not name the instance: {offenders}"
+
+
+def check_rendered_hints_name_the_instance():
+    """The words in copy/ and the closing Next block are rendered, not string
+    literals, so the scan above cannot see them. Render them for a second
+    instance and look at what a person would read."""
+    from embabel_setup import surfaces, words
+    settings.use_instance("fresh")
+    try:
+        rendered = {path.name: words.copy_text(path.stem) for path in pathlib.Path("copy").glob("*.txt")}
+        buffer = io.StringIO()
+        with patch("sys.stdout", buffer):
+            surfaces.print_next()
+        rendered["Next block"] = buffer.getvalue()
+    finally:
+        settings.use_instance(settings.DEFAULT_INSTANCE)
+    plain = {name: re.sub(r"\x1b\[[0-9;]*m", "", text) for name, text in rendered.items()}
+    offenders = [name for name, text in plain.items() if BARE_VERB.search(text)]
+    assert not offenders, f"rendered hints that do not name the instance: {offenders}"
+    assert "embabel --instance fresh up" in plain["Next block"], plain["Next block"]
+    assert "embabel --instance fresh embeddings use local" in plain["embeddings-later.txt"]
+
+
 def check_no_other_compose_commands():
     """compose_command is the only place a compose command line is put together."""
     built = re.compile(r'"docker",\s*"compose"|_docker\(\s*"compose"(?!,\s*"version")')
@@ -113,10 +242,15 @@ with tempfile.TemporaryDirectory() as root:
                 patch.object(dockerlib, "memory_env", return_value={}):
             check_instance("fresh", ".env.fresh", 11058)
             check_instance(settings.DEFAULT_INSTANCE, ".env", 11042)
+            check_hints("fresh")
+            check_hints(settings.DEFAULT_INSTANCE)
     finally:
         settings.APPLIANCE_DIR = original_dir
         settings.use_instance(original_instance)
 
 check_no_other_compose_commands()
+check_no_literal_compose_hints()
+check_no_bare_embabel_hints()
+check_rendered_hints_name_the_instance()
 
-print("ok: every compose call names its instance's project, settings and port block")
+print("ok: every compose call, container name and printed hint belongs to its instance")

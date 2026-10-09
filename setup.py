@@ -464,7 +464,7 @@ def main() -> int:
             seed_documentation(base, credential)
         elif credential and not embedding_model:
             print(f"  {MIDDOT} " + dim("No embedding model, so the guides are not indexed yet."))
-            print("  " + dim("  embabel embeddings use local   then   embabel sample add … "))
+            print("  " + dim(f"  {embabel_command('embeddings')} use local   then   {embabel_command('sample')} add … "))
         else:
                 print(f"  {MIDDOT} " + dim("Documentation not re-indexed this run — "
                                            "add or refresh it from Documents."))

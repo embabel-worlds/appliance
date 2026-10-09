@@ -19,6 +19,7 @@ import sys
 
 from .cli import HERE, _emit, _sample_target, current_mode, resolve_instance, resolved_mode, run_setup, s
 from .core import prompt
+from .settings import embabel_command
 
 # ── verbs ───────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ def cmd_down(args) -> int:
         print("  Wiped.")
         return 0
     s._compose(mode, "stop")
-    print(f"  Stopped the {mode} mode. Your data is untouched — `embabel up` brings it back.")
+    print(f"  Stopped the {mode} mode. Your data is untouched — `{embabel_command('up')}` brings it back.")
     return 0
 
 
@@ -57,7 +58,7 @@ def cmd_status(args) -> int:
     """
     mode = current_mode()
     if not mode:
-        print("  Nothing is running.  `embabel up` starts it.")
+        print(f"  Nothing is running.  `{embabel_command('up')}` starts it.")
         return 0
 
     container = s.find_mode_container(mode)
@@ -213,7 +214,7 @@ def cmd_doctor(args) -> int:
         print("     " + s.dim(
             "Docker Desktop: enable it in Settings → AI. Linux: the docker-model-plugin\n"
             "     package. Rancher Desktop, Colima, Intel Mac: it does not exist there —\n"
-            "     use the key you already have, with `embabel embeddings use hosted`."))
+            f"     use the key you already have, with `{embabel_command('embeddings')} use hosted`."))
 
     # THE MODEL IS CHECKED BY NAME, because the tag matters: `latest` on that
     # repository is the 4B variant with different dimensions, and embeddings are
@@ -236,7 +237,7 @@ def cmd_doctor(args) -> int:
     if os.path.exists(env_path):
         print(f"  {s.TICK}  {s.env_file()} present")
     else:
-        print(f"  {s.MIDDOT}  " + s.dim(f"no {s.env_file()} yet — this appliance has not been set up here (`embabel up`)"))
+        print(f"  {s.MIDDOT}  " + s.dim(f"no {s.env_file()} yet — this appliance has not been set up here (`{embabel_command('up')}`)"))
 
     realms = os.environ.get("EMBABEL_REALMS_DIR")
     if not realms and os.path.exists(env_path):
@@ -250,7 +251,7 @@ def cmd_doctor(args) -> int:
         if path:
             print(f"     {len(found)} realm(s) visible")
     else:
-        print(f"  {s.MIDDOT}  " + s.dim("no realm checkouts linked   (embabel realms link <dir>)"))
+        print(f"  {s.MIDDOT}  " + s.dim(f"no realm checkouts linked   ({embabel_command('realms')} link <dir>)"))
 
     # INFORMATIONAL, and last of the machine facts: doctor's crosses mean "this is
     # broken", and a tight-but-working machine is not broken. The numbers are printed
@@ -260,7 +261,7 @@ def cmd_doctor(args) -> int:
 
     strays = s.stray_sandbox_containers()
     if strays:
-        print(f"  {s.MIDDOT}  " + s.dim(f"{len(strays)} stray code-sandbox container(s) — `embabel prune` removes them"))
+        print(f"  {s.MIDDOT}  " + s.dim(f"{len(strays)} stray code-sandbox container(s) — `{embabel_command('prune')}` removes them"))
 
     print()
     if not problems:
@@ -277,6 +278,20 @@ def cmd_logs(args) -> int:
     return s._compose(mode, "logs", *(["-f"] if args.follow else []), "--tail", str(args.tail), service).returncode
 
 
+def cmd_compose(args) -> int:
+    """docker compose for this instance, exactly as `up` runs it: its project, settings
+    file, compose files and overlays, and the environment with the port block, memory
+    limits and profiles. Anything else that needs compose goes through here, so a
+    container is never recreated without the limits that keep it from filling Docker's memory."""
+    argv = [a for a in args.compose_args]
+    if argv[:1] == ["--"]:
+        argv = argv[1:]
+    if not argv:
+        print("  Say what to run, e.g.  " + embabel_command("compose", "ps"))
+        return 2
+    return s._compose(resolved_mode(args.mode), *argv).returncode
+
+
 def cmd_open(args) -> int:
     """A surface, in a browser. With nothing named, the surface is THIS appliance's
     front door — the console for worlds, the assistant for me. Defaulting to the
@@ -284,7 +299,7 @@ def cmd_open(args) -> int:
     urls = s.surface_urls()
     what = args.what or ("me" if resolved_mode(None) == "me" else "console")
     if what == "dashboards" and not s.monitoring_enabled():
-        print("  Dashboards are off. Set EMBABEL_MONITORING=on in .env, then run `embabel up`.")
+        print(f"  Dashboards are off. Set EMBABEL_MONITORING=on in .env, then run `{embabel_command('up')}`.")
         return 1
     url = urls[what]
     print(f"  {url}")
@@ -311,7 +326,7 @@ def cmd_ps(args) -> int:
         return 0
 
     if not containers:
-        print("\n  Nothing of this appliance is on the host.  `embabel up` starts it.\n")
+        print(f"\n  Nothing of this appliance is on the host.  `{embabel_command('up')}` starts it.\n")
         return 0
 
     print()
@@ -335,7 +350,7 @@ def cmd_ps(args) -> int:
             print(f"    {name}")
         if len(strays) > 8:
             print(f"    … and {len(strays) - 8} more")
-        print("  Siblings of the appliance, not compose services — `embabel prune` clears them.")
+        print(f"  Siblings of the appliance, not compose services — `{embabel_command('prune')}` clears them.")
     print()
     return 0
 

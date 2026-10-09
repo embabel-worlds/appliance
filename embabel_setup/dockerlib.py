@@ -23,7 +23,7 @@ from .core import (
 )
 from .memory import memory_env
 from .settings import (
-    compose_project, configured_mode, env_file_value, env_path, instance, monitoring_enabled,
+    compose_project, configured_mode, embabel_command, env_file_value, env_path, instance, monitoring_enabled,
     phone_home_on, port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
 )
 
@@ -198,7 +198,7 @@ def retire_monitoring(mode: str) -> None:
     try:
         _compose(mode, "rm", "--stop", "--force", *MONITORING_SERVICES, capture=True)
     except SetupError as e:
-        print(dim(f"  Could not remove the monitoring containers ({e}); `embabel down` stops them."))
+        print(dim(f"  Could not remove the monitoring containers ({e}); `{embabel_command('down')}` stops them."))
 
 
 def announce_github_token() -> None:

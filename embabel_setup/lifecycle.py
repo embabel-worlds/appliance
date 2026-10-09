@@ -25,7 +25,7 @@ import time
 from .agents import (MCP_SERVER_NAME, install_path_entry, remove_path_entry, shell_profile,
                      shell_profiles, unwire_coding_agents)
 from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
-from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_COMPOSE, MODE_CORE,
+from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
 from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred_services,
                         retire_monitoring,
@@ -33,7 +33,7 @@ from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred
                         find_mode_container, refresh_floating_images, running_modes,
                         stray_sandbox_containers, other_running_appliances,
                         take_everything_down)
-from .settings import (compose_project, console_url, env_file, instance, installed_instances,
+from .settings import (embabel_command, compose_project, console_url, env_file, instance, installed_instances,
                        remember_mode, resume_command, version_pin_conflict)
 from .status import STATUS
 from .steps import probe
@@ -233,7 +233,7 @@ def start_deferred(mode: str) -> subprocess.Popen | None:
     coming = ", ".join(DEFERRED_WHY[name] for name in services if name in DEFERRED_WHY)
     print(f"  Downloading in the background: {coming}.")
     print("  You can start using the appliance now — check on them any time with")
-    print(f"    docker compose -f {MODE_COMPOSE[mode]} ps\n")
+    print(f"    {embabel_command('status')}\n")
     cmd = compose_command(mode, "up", "-d", *services)
     try:
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -680,7 +680,7 @@ def ensure_mode(mode: str) -> bool:
         if answer not in ("", "y", "yes"):
             raise SetupError(
                 f"Left the {other_mode} mode running. Stop it when you are ready:\n"
-                f"    docker compose -f {MODE_COMPOSE[other_mode]} stop {other[0]}"
+                f"    {embabel_command('compose', '--' + other_mode, 'stop', other[0])}"
             )
         _compose(other_mode, "stop", other[0])
         print()
@@ -697,7 +697,7 @@ def ensure_mode(mode: str) -> bool:
             raise SetupError(
                 f"docker compose up failed while reconciling the {mode} mode.\n"
                 "  The error above is docker's. What usually causes it:\n"
-            "    embabel doctor   —  or `sh doctor.sh` from this folder, which needs "
+            f"    {embabel_command('doctor')}   —  or `sh doctor.sh` from this folder, which needs "
             "nothing installed and works even when that command does not exist yet."
             )
         retire_monitoring(mode)
@@ -719,7 +719,7 @@ def ensure_mode(mode: str) -> bool:
         raise SetupError(
             f"docker compose up failed for the {mode} mode.\n"
             "  The error above is docker's. What usually causes it:\n"
-            "    embabel doctor   —  or `sh doctor.sh` from this folder, which needs "
+            f"    {embabel_command('doctor')}   —  or `sh doctor.sh` from this folder, which needs "
             "nothing installed and works even when that command does not exist yet."
         )
     retire_monitoring(mode)
