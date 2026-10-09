@@ -29,11 +29,11 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_COMPOSE, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
 from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred_services,
                         retire_monitoring,
-                        announce_github_token, appliance_containers, compose_env,
+                        announce_github_token, appliance_containers, compose_command, compose_env,
                         find_mode_container, refresh_floating_images, running_modes,
                         stray_sandbox_containers, other_running_appliances,
                         take_everything_down)
-from .settings import (console_url, env_file, instance, installed_instances,
+from .settings import (compose_project, console_url, env_file, instance, installed_instances,
                        remember_mode, resume_command, version_pin_conflict)
 from .status import STATUS
 from .steps import probe
@@ -234,10 +234,7 @@ def start_deferred(mode: str) -> subprocess.Popen | None:
     print(f"  Downloading in the background: {coming}.")
     print("  You can start using the appliance now — check on them any time with")
     print(f"    docker compose -f {MODE_COMPOSE[mode]} ps\n")
-    cmd = ["docker", "compose", "-f", MODE_COMPOSE[mode]]
-    if mode == "me" and os.path.exists(OVERRIDE_FILE):
-        cmd += ["-f", OVERRIDE_FILE]
-    cmd += ["up", "-d", *services]
+    cmd = compose_command(mode, "up", "-d", *services)
     try:
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 env=compose_env())
@@ -254,7 +251,10 @@ def warn_if_conversion_pending() -> None:
     an ERROR in a log nobody has open, and the user's conclusion is that the
     product is bad at PDFs rather than that it is still downloading.
     """
-    run = _docker("ps", "--filter", "name=embabel-appliance-docling", "--format", "{{.Names}}")
+    # By project label, like every other lookup: the default instance's docling
+    # is not this instance's.
+    run = _docker("ps", "--filter", f"label=com.docker.compose.project={compose_project()}",
+                  "--filter", "label=com.docker.compose.service=docling", "--format", "{{.Names}}")
     if run and run.returncode == 0 and run.stdout.strip():
         return
     print("  Structured document conversion is still downloading (about 2GB).")

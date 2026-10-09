@@ -333,12 +333,19 @@ def local_embeddings_wanted() -> bool:
     return bool(chosen) and chosen.startswith(("docker.io/ai/", "ai/"))
 
 
-def _compose(mode: str, *argv: str, capture: bool = False):
-    """docker compose against the mode's file, from the appliance directory.
-    capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
+def compose_command(modes: str | tuple[str, ...], *argv: str) -> list[str]:
+    """The full `docker compose` command line for this instance and these modes.
+
+    Every compose call the appliance makes is built here, so each one names the
+    same project, settings file and compose files as the `up` that created the
+    containers. Run it with compose_env() as the environment, which carries the
+    port block and profiles that go with them.
+    """
     # -p and --env-file are what make a second instance a second instance: the
     # project prefixes every container, volume and network, and the settings file
-    # carries that instance's port block. For the default instance both resolve to
+    # carries that instance's port block. Without -p compose falls back to the
+    # `name: embabel-appliance` in the mode files and acts on the DEFAULT instance,
+    # whichever one was asked for. For the default instance both resolve to
     # exactly what compose would have done on its own.
     # --env-file ONLY IF IT EXISTS. Compose treats a named-but-missing env file as
     # an error, and a fresh clone has no .env yet — passing it unconditionally
@@ -349,25 +356,32 @@ def _compose(mode: str, *argv: str, capture: bool = False):
     cmd = ["docker", "compose", "-p", compose_project()]
     if os.path.exists(env_path()):
         cmd += ["--env-file", env_path()]
-    cmd += ["-f", MODE_COMPOSE[mode]]
-    if mode == "me" and os.path.exists(OVERRIDE_FILE):
-        cmd += ["-f", OVERRIDE_FILE]
-    # THE LOCAL EMBEDDER IS AN OVERLAY, not a default. It needs Docker Model Runner,
-    # which is a Docker Desktop feature — requiring it made every install download
-    # ~1.1GB before anybody had uploaded a document, and failed outright on plain
-    # Docker Engine. Composed in only once somebody has asked for it, which is the
-    # one line in .env that `embabel embeddings use local` writes.
-    overlay = embeddings_local_file(mode)
-    if local_embeddings_wanted() and os.path.exists(overlay):
-        cmd += ["-f", overlay]
-    # THE GRAPH ENGINE IS AN OVERLAY TOO, same posture as the embedder: the default
-    # composition is Neo4j and stays byte-identical unless .env says otherwise. One
-    # answer — GRAPH_TYPE — selects the engine for compose AND inside the app, so a
-    # flag and the app's connection type can never disagree.
-    graph_overlay = graph_overlay_file(mode)
-    if graph_overlay and os.path.exists(graph_overlay):
-        cmd += ["-f", graph_overlay]
-    cmd += argv
+    for mode in ((modes,) if isinstance(modes, str) else modes):
+        cmd += ["-f", MODE_COMPOSE[mode]]
+        if mode == "me" and os.path.exists(OVERRIDE_FILE):
+            cmd += ["-f", OVERRIDE_FILE]
+        # THE LOCAL EMBEDDER IS AN OVERLAY, not a default. It needs Docker Model Runner,
+        # which is a Docker Desktop feature — requiring it made every install download
+        # ~1.1GB before anybody had uploaded a document, and failed outright on plain
+        # Docker Engine. Composed in only once somebody has asked for it, which is the
+        # one line in .env that `embabel embeddings use local` writes.
+        overlay = embeddings_local_file(mode)
+        if local_embeddings_wanted() and os.path.exists(overlay):
+            cmd += ["-f", overlay]
+        # THE GRAPH ENGINE IS AN OVERLAY TOO, same posture as the embedder: the default
+        # composition is Neo4j and stays byte-identical unless .env says otherwise. One
+        # answer — GRAPH_TYPE — selects the engine for compose AND inside the app, so a
+        # flag and the app's connection type can never disagree.
+        graph_overlay = graph_overlay_file(mode)
+        if graph_overlay and os.path.exists(graph_overlay):
+            cmd += ["-f", graph_overlay]
+    return cmd + list(argv)
+
+
+def _compose(mode: str, *argv: str, capture: bool = False):
+    """docker compose against the mode's file, from the appliance directory.
+    capture=False inherits stdout/stderr — pulls and boots narrate themselves."""
+    cmd = compose_command(mode, *argv)
     try:
         return subprocess.run(cmd, capture_output=capture, text=True, env=compose_env(),
                               encoding="utf-8", errors="replace")
@@ -385,15 +399,9 @@ def take_everything_down() -> None:
     before "Done", it reads as the uninstall having failed. So: run it quietly,
     then report what is actually gone by looking.
     """
-    # -p, or this tears down the DEFAULT instance whichever one you asked for —
-    # the mode files carry `name: embabel-appliance`, so without it every
-    # instance's uninstall would delete the same appliance.
-    cmd = ["docker", "compose", "-p", compose_project()]
-    if os.path.exists(env_path()):  # missing is normal mid-uninstall; see _compose
-        cmd += ["--env-file", env_path()]
-    cmd += ["-f", MODE_COMPOSE["me"], "-f", MODE_COMPOSE["worlds"],
-            "down", "--volumes", "--remove-orphans"]
-    run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    cmd = compose_command(("me", "worlds"), "down", "--volumes", "--remove-orphans")
+    run = subprocess.run(cmd, capture_output=True, text=True, env=compose_env(),
+                         encoding="utf-8", errors="replace")
 
     # BY PROJECT LABEL, not by name. Matching "embabel-" caught embabel-assistant-neo4j
     # and embabel-assistant-docling — a developer's own stack from the assistant repo,
