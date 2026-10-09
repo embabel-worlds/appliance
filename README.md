@@ -321,7 +321,8 @@ receive the user role unless an external organization role provider resolves rol
 ## Local embeddings — Docker Model Runner
 
 Chat needs a provider key; **embeddings do not**. The compose file declares a local
-embedding model (`ai/qwen3-embedding:0.6B-F16`, ~1.2GB, pulled like any image — the tag
+embedding model (`ai/qwen3-embedding:0.6B-F16`, ~1.2GB, pulled by Model Runner with
+`docker model pull`, never `docker pull` — the tag
 is pinned because `latest` is a different, 4B model) that Docker Model
 Runner serves as a host-side process — on Apple silicon that means Metal GPU
 acceleration, and on every platform it means memory and document search cost no API

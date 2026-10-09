@@ -300,6 +300,51 @@ echo 'NEO4J_HEAP=1G' >> .env && embabel up
 
 ---
 
+## "Get the better model" says Docker Model Runner is not turned on
+
+The better local embedding model is downloaded and served by Docker Model Runner. It is
+a Docker feature that stays off until somebody turns it on, and with it off the
+appliance has nothing to download the model with. An older appliance says this less
+clearly: the download starts, then ends with "The download did not finish".
+
+Turn it on:
+
+- **Docker Desktop 4.40 or newer** — Settings → AI → *Enable Docker Model Runner*, or:
+
+  ```bash
+  docker desktop enable model-runner
+  ```
+
+- **Docker Engine on Linux** — install the `docker-model-plugin` package from Docker's
+  repository.
+
+![Docker Desktop's AI settings page, with Enable Docker Model Runner ticked](images/docker-model-runner-setting.png)
+
+Docker moves this setting between releases. If it is not where the picture shows it, the
+command above still works.
+
+Check that it answers, then go back to **Models → Embeddings**, press **Check again**,
+and press **Get the better model**:
+
+```bash
+docker model status
+```
+
+**`docker pull` is the wrong command for a model, and its error says nothing about
+this.** A model is not an image, so the Engine refuses it whether or not Model Runner is
+on:
+
+```
+WARNING: AI models are not supported by the Engine yet, did you mean to use "docker model pull/run" instead?
+failed to unpack image on snapshotter overlayfs: mismatched image rootfs and manifest layers
+```
+
+To fetch the model by hand, ask Model Runner:
+
+```bash
+docker model pull ai/qwen3-embedding:0.6B-F16
+```
+
 ## Things that look like evidence and are not
 
 This list cost real hours. Every one of them is a true observation that does not support
