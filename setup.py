@@ -242,17 +242,21 @@ def main() -> int:
         # until well below this line. The terms are accepted by installing, so
         # asking afterwards would be telling someone what they had already done.
         #
-        # ONLY ON A MACHINE THAT HAS NOT INSTALLED BEFORE. `embabel up` re-enters
-        # this function on a configured appliance, and that verb gets run by
-        # scripts, containers and cron with no terminal attached — a question
-        # there turns a routine restart into an exit 1. A machine with a
-        # configured mode has been through this already.
+        # ASKED ONCE PER MACHINE, and the function decides that for itself by
+        # looking for the dated line accepting writes to .env. `embabel up`
+        # re-enters this on a configured appliance and gets run by scripts and
+        # containers with no terminal, so a question there would turn a routine
+        # restart into an exit 1.
+        #
+        # The first attempt gated on configured_mode(), which reads EMBABEL_MODE
+        # from the environment — the very variable the documented install command
+        # sets. Every Worlds user installing the documented way looked already
+        # configured, and nobody was shown the terms at all.
         #
         # Below write_cli_shim() so the forwarder is restored whatever the answer,
         # and below ensure_port_block(), which has already written .env.
         # --uninstall returns above both: leaving requires agreeing to nothing.
-        if not configured_mode():
-            accept_trial_terms()
+        accept_trial_terms()
 
         # What a bare `./setup.py --fresh` means: the door this machine was last
         # set up as, not a guess. Wiping a worlds appliance and bringing back the

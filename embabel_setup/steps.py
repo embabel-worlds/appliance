@@ -15,6 +15,7 @@ typo is permanent the instant Enter is pressed.
 
 from __future__ import annotations
 import base64
+import datetime
 import getpass
 import http.client
 import json
@@ -32,6 +33,7 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
 from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, TRIAL_TERMS_DOC_URL,
+                       TRIAL_TERMS_ACCEPTED_VAR, trial_terms_accepted,
                        api_address, console_url, embabel_command, phone_home_on,
                        resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
@@ -399,13 +401,37 @@ def accept_trial_terms() -> None:
 
     Declining is a clean stop rather than an error. Nothing has been installed at
     this point, so there is nothing to undo and nothing to resume.
+
+    Asked once per machine: accepting writes a dated line to .env, and that line
+    is the only thing that stops it being asked again.
+
+    DELIBERATELY NO SUMMARY. An earlier version paraphrased the terms in three
+    points, and the paraphrase was wrong: it stated that the appliance sends an
+    installation ID during the trial, which it does not unless reporting is
+    turned on, and it omitted the obligation to delete your copies if you do not
+    register. A summary shown at the moment of acceptance is a representation
+    about the agreement, it lives in a different repository from the terms it
+    describes, and nothing makes it change when they are revised. The link is
+    the agreement; this screen points at it and asks.
     """
+    if trial_terms_accepted():
+        return
+
     print("\n" + heading("Free trial terms"))
-    say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL, phone_home_url=PHONE_HOME_DOC_URL)
+    say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL)
 
     answer = prompt("\n  Accept and continue? [Y/n]: ").strip().lower()
-    if answer not in ("", "y", "yes"):
-        raise SetupError(
+    if answer in ("", "y", "yes"):
+        # Recorded so a later run does not ask again, and so there is something
+        # to point at saying what was accepted and when. The terms are revised
+        # over time, so the date is the useful half of this.
+        set_env_var(TRIAL_TERMS_ACCEPTED_VAR,
+                    datetime.datetime.now(datetime.timezone.utc)
+                            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    why=("The free trial terms were accepted during setup.",
+                         "Removing this line makes setup ask again."))
+        return
+    raise SetupError(
             "Setup stopped: the free trial terms were not accepted. Nothing has "
             "been started and no data has been created.\n"
             "  The installer has already unpacked the appliance into "

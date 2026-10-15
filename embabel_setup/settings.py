@@ -80,6 +80,35 @@ PHONE_HOME_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/PHON
 # the same reason: the document has to be readable from a terminal session with
 # nothing but a URL, by someone who has not signed in anywhere yet.
 TRIAL_TERMS_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/TRIAL_TERMS.md"
+
+# Written to .env when the free trial terms are accepted, and the only thing that
+# suppresses the prompt on a later run.
+#
+# NOT `configured_mode()`, which was the first attempt and was wrong in the worst
+# way: it reads the EMBABEL_MODE environment variable before it looks for any
+# evidence of an install, and the documented install command
+# (`curl … | EMBABEL_MODE=worlds sh`) sets exactly that variable. Every Worlds
+# user installing the documented way was treated as already configured, so the
+# terms were never shown to anybody.
+TRIAL_TERMS_ACCEPTED_VAR = "EMBABEL_TRIAL_TERMS_ACCEPTED"
+
+
+def trial_terms_accepted() -> str | None:
+    """When the terms were accepted on this machine, or None.
+
+    Deliberately reads only .env, never the environment: an environment variable
+    is set by whoever invokes the installer, and acceptance is not something a
+    caller should be able to assert on the user's behalf.
+    """
+    path = env_path()
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        for line in f:
+            key, _, value = line.partition("=")
+            if key.strip() == TRIAL_TERMS_ACCEPTED_VAR and value.strip():
+                return value.strip()
+    return None
 def phone_home_on() -> bool:
     """Whether this appliance reports usage. False unless .env says true."""
     value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()
