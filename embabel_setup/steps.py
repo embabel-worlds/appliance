@@ -402,8 +402,9 @@ def accept_trial_terms() -> None:
     Declining is a clean stop rather than an error. Nothing has been installed at
     this point, so there is nothing to undo and nothing to resume.
 
-    Asked once per machine: accepting writes a dated line to .env, and that line
-    is the only thing that stops it being asked again.
+    Asked once per instance, not once per machine: the record goes in this
+    instance's .env, so a second instance on the same machine is asked again.
+    That is the safe direction, and instances are separate installations.
 
     DELIBERATELY NO SUMMARY. An earlier version paraphrased the terms in three
     points, and the paraphrase was wrong: it stated that the appliance sends an
@@ -425,19 +426,34 @@ def accept_trial_terms() -> None:
         # Recorded so a later run does not ask again, and so there is something
         # to point at saying what was accepted and when. The terms are revised
         # over time, so the date is the useful half of this.
-        set_env_var(TRIAL_TERMS_ACCEPTED_VAR,
+        try:
+            set_env_var(TRIAL_TERMS_ACCEPTED_VAR,
                     datetime.datetime.now(datetime.timezone.utc)
                             .strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    why=("The free trial terms were accepted during setup.",
-                         "Removing this line makes setup ask again."))
+                    # The '# ' is load-bearing: set_env_var writes these lines
+                    # verbatim, and docker refuses to read an env file with a
+                    # bare prose line in it ("key cannot contain a space"), so
+                    # every compose call after this one fails.
+                        why=("# The free trial terms were accepted during setup, on",
+                             "# the date above. Delete this line and setup asks again."))
+        except OSError as e:
+            # They accepted; only the record failed. Carrying on is right — the
+            # consequence of an unwritten record is being asked once more, which
+            # is better than a traceback on a disk that is merely full.
+            warn("Could not record the acceptance in .env (%s). Setup continues; "
+                 "you may be asked again next time." % e)
         return
     raise SetupError(
-            "Setup stopped: the free trial terms were not accepted. Nothing has "
-            "been started and no data has been created.\n"
-            "  The installer has already unpacked the appliance into "
-            + APPLIANCE_DIR + "; delete that directory to remove it.\n"
-            "  The terms are at: " + TRIAL_TERMS_DOC_URL
-        )
+        "Setup stopped: the free trial terms were not accepted. Nothing was "
+        "started — no container, no image, no appliance data.\n"
+        "  Getting this far did write three things: the appliance unpacked into "
+        + APPLIANCE_DIR + ", an 'embabel' launcher on your PATH, and a PATH line "
+        "in your shell profile.\n"
+        "  Remove all three with:  " + os.path.join(APPLIANCE_DIR, "setup.py")
+        + " --uninstall\n"
+        "  Deleting the directory alone leaves the launcher pointing at nothing.\n"
+        "  The terms are at: " + TRIAL_TERMS_DOC_URL
+    )
 
 
 def disclose_usage_reporting(base: str) -> None:

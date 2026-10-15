@@ -276,8 +276,11 @@ def main() -> int:
         # every install walks through.
         if args.sql is not None:
             set_env_var(SQL_VAR, "true" if args.sql else "false",
-                        why=("Whether the SQL endpoint (world-sql) runs — the Postgres surface for",
-                             "BI, dbt and notebooks. Set by --sql / --no-sql; edit to change."))
+                        # Comment markers, because set_env_var writes these lines as
+                        # they are and docker will not read an env file containing a
+                        # bare prose line.
+                        why=("# Whether the SQL endpoint (world-sql) runs — the Postgres surface",
+                             "# for BI, dbt and notebooks. Set by --sql / --no-sql."))
 
         if args.fresh:
             fresh_wipe()

@@ -185,9 +185,21 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
             lines[index] = f"{key}={written}"
             break
     else:
-        lines += ["", *why, f"{key}={written}"]
-    with open(env_path(), "w") as f:
-        f.write("\n".join(lines) + "\n")
+        # COMMENT MARKERS ARE ADDED HERE, not trusted to the caller. A `why` line
+        # that reaches .env as bare prose makes docker refuse the whole file —
+        # "key cannot contain a space" — and every compose call then fails, which
+        # is indistinguishable from the appliance being broken. Two callers have
+        # forgotten the marker, so the API, not the caller, is the place to fix it.
+        marked = [line if line.startswith("#") else f"# {line}" for line in why]
+        lines += ["", *marked, f"{key}={written}"]
+    body = "\n".join(lines) + "\n"
+    # Written whole, then moved into place: a truncating write that dies partway
+    # (a full disk) leaves a .env missing EMBABEL_KEY_SECRET, and every stored
+    # credential encrypted with it becomes unreadable.
+    temp = env_path() + ".tmp"
+    with open(temp, "w") as f:
+        f.write(body)
+    os.replace(temp, env_path())
 def configured_mode() -> str | None:
     """Which door this appliance was last set up as, from .env.
 
