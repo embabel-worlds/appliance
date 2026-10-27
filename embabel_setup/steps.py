@@ -416,7 +416,15 @@ def accept_trial_terms() -> None:
     print("\n" + heading("Free trial terms"))
     say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL)
 
-    answer = prompt("\n  Accept and continue? [Y/n]: ").strip().lower()
+    # ACCEPTANCE IS AN ACT, so --headless does not take it as a default the way it
+    # takes "stop the other mode?". A pipeline accepts by setting
+    # EMBABEL_ACCEPT_TRIAL_TERMS, which is deliberate, auditable in the workflow
+    # file that sets it, and absent unless somebody put it there — so an unset
+    # variable refuses here rather than agreeing to terms on nobody's behalf.
+    accepted = (os.environ.get("EMBABEL_ACCEPT_TRIAL_TERMS") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+    answer = prompt("\n  Accept and continue? [Y/n]: ",
+                    headless="y" if accepted else None).strip().lower()
     if answer not in ("", "y", "yes"):
         raise SetupError(
             "Setup stopped: the free trial terms were not accepted. Nothing has "
@@ -450,7 +458,11 @@ def disclose_usage_reporting(base: str) -> None:
     say("usage-reporting", endpoint=PHONE_HOME_ENDPOINT,
         doc_url=PHONE_HOME_DOC_URL, base=base)
 
-    answer = prompt("\n  Continue setup? [Y/n]: ").strip().lower()
+    # A DISCLOSURE, not a decision: the text above is the thing that had to be
+    # shown, and the question only exists so an interactive reader can stop. A
+    # headless run has already chosen its reporting setting through
+    # EMBABEL_PHONE_HOME, which is what gates this block at all.
+    answer = prompt("\n  Continue setup? [Y/n]: ", headless="").strip().lower()
     if answer not in ("", "y", "yes"):
         raise SetupError(
             "Setup paused before completion. Nothing is lost — the appliance is "

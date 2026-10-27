@@ -71,7 +71,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from embabel_setup.core import (  # noqa: F401 — the facade's contract
     APPLIANCE_DIR, BOOT_WAIT_SECONDS, EMBEDDING_MODEL, ME_APP_DIR, MODE_COMPOSE, MODE_CORE,
     MODE_SERVICE, MODE_SERVICES, OVERRIDE_FILE, AlreadySetUp, SetupError, TokenRejected,
-    Unreachable, prompt,
+    Unreachable, is_headless, prompt, set_headless,
 )
 from embabel_setup.colour import *      # noqa: F403 — palette and marks
 from embabel_setup.words import *        # noqa: F403 — copy loader
@@ -101,6 +101,9 @@ from embabel_setup.pins import *         # noqa: F403 — what an install runs o
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
 from embabel_setup import wizard
+# Same reasoning: `headless.complete_headless` says where it comes from, and this
+# module is only ever reached through one flag.
+from embabel_setup import headless as headless_setup
 
 # EXPLICITLY, because `import *` refuses names that begin with an underscore.
 # That rule broke this file on main: StatusLine's constructor read _UNICODE_OK,
@@ -163,6 +166,13 @@ def main() -> int:
     parser.add_argument("--reset-password", action="store_true",
                         help="forgot the password: recreate the operator account "
                              "(asks for confirmation) and keep all data")
+    parser.add_argument(
+        "--headless", action="store_true",
+        help="finish setup with no browser and no questions, from EMBABEL_SETUP_USER "
+             "and EMBABEL_SETUP_PASSWORD_FILE (or EMBABEL_SETUP_PASSWORD): for CI and "
+             "provisioning. Connects no model provider unless "
+             "EMBABEL_SETUP_PROVIDER_KEY is set",
+    )
     parser.add_argument("--url", default=None,
                         help="appliance base URL (default: detected from the running mode, else this instance's Me port)")
     parser.add_argument("--token", help="setup token (default: read from the container logs)")
@@ -206,6 +216,12 @@ def main() -> int:
     # Which appliance this run is about, before anything reads a settings file or
     # names a container. The CLI sets it for child processes; a direct ./me.py or
     # ./worlds.py inherits whatever the shell exports, and the default otherwise.
+    # BEFORE ANYTHING CAN PROMPT, which includes --fresh's confirmation and the
+    # stop-the-other-mode question further down. A prompt reached after this is set
+    # refuses rather than blocking, unless its call site declared what a headless
+    # run answers there.
+    set_headless(args.headless)
+
     use_instance(os.environ.get("EMBABEL_INSTANCE") or DEFAULT_INSTANCE)
     # Before compose is invoked for anything: a new instance without a block
     # would fall back to the default base and collide with the first appliance.
@@ -374,6 +390,13 @@ def main() -> int:
         # exported skip the key prompt, and that shortcut goes with the prompt. The
         # console checks a pasted key against the provider as you paste it, which is
         # the better trade for everyone who is not us.
+        # A HEADLESS RUN CANNOT BE HANDED A BROWSER, so it finishes here instead —
+        # the same API the console would call, in the order the server requires.
+        # Both modes take this path: having no person to ask is a property of the
+        # run, not of the mode.
+        if args.headless:
+            return headless_setup.complete_headless(base, token, container, status)
+
         if service_now == "worlds":
             return hand_over_to_console(base, token, container)
 
@@ -504,6 +527,11 @@ def main() -> int:
         # re-running ./me.py is how people come back — so still end at the app.
         if follower:
             follower.terminate()
+        # A HEADLESS RUN SAYS SO AND STOPS. "Already set up" is the outcome a
+        # provisioning step wanted, and the Me app below is a window on somebody's
+        # desktop — the last thing a pipeline should be opening.
+        if is_headless():
+            return headless_setup.already_complete(base)
         print(f"\n  {e}\n")
         if container and mode_service(container) == "assistant":
             # Already set up, so no wizard ran and no username was minted here —
