@@ -408,6 +408,24 @@ def cmd_embeddings(args) -> int:
     return 0
 
 
+def cmd_workspace(args) -> int:
+    """The folder of your code the server may read, mounted read-only for project keys.
+
+    Like the embedding model, a choice written to .env and applied on the next restart: a
+    mount is part of how the container is created, so a running one cannot gain it.
+    """
+    if args.workspace_command == "off":
+        s.clear_workspace()
+        return 0
+    if args.workspace_command == "use":
+        path = s.choose_workspace(args.folder)
+        print(f"  {s.TICK} Workspace set to {s.bold(path)}, mounted read-only at /workspace.")
+        print("  " + s.warn(f"Restart to apply: {embabel_command('down')} && {embabel_command('up')}"))
+        return 0
+    s.describe_workspace()
+    return 0
+
+
 def cmd_diagram(args) -> int:
     """The world as an entity-relationship diagram: entities with their typed columns and
     keys, views as their own shape, a relationship wherever a column carries another

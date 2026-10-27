@@ -13,7 +13,7 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import (cmd_agents, cmd_contract, cmd_diagram, cmd_embeddings, cmd_realms, cmd_run_view,
+from .clidata import (cmd_agents, cmd_contract, cmd_diagram, cmd_embeddings, cmd_workspace, cmd_realms, cmd_run_view,
                       cmd_sample, cmd_sandbox, cmd_scenario)
 from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
@@ -203,6 +203,17 @@ def build_parser() -> argparse.ArgumentParser:
     a = em.add_parser("off", help="no embedding model; document features go off")
     a.set_defaults(func=cmd_embeddings)
     p.set_defaults(func=cmd_embeddings, embeddings_command=None)
+
+    p = sub.add_parser("workspace", help="the folder of your code the server may read, read-only")
+    ws = p.add_subparsers(dest="workspace_command")
+    a = ws.add_parser("show", help="which folder is mounted, if any")
+    a.set_defaults(func=cmd_workspace)
+    a = ws.add_parser("use", help="mount a folder of your projects, read-only")
+    a.add_argument("folder", help="the folder your projects sit under, e.g. ~/code")
+    a.set_defaults(func=cmd_workspace)
+    a = ws.add_parser("off", help="mount nothing")
+    a.set_defaults(func=cmd_workspace)
+    p.set_defaults(func=cmd_workspace, workspace_command=None)
 
     p = sub.add_parser("sandbox", help="the code-mode sandbox, and how to make it yours")
     sb = p.add_subparsers(dest="sandbox_command")
