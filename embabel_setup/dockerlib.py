@@ -340,6 +340,24 @@ def graph_overlay_file(mode: str) -> str | None:
     return None
 
 
+# The overlay that mounts the owner's code for project keys, and the .env answer that turns it on.
+WORKSPACE_VAR = "EMBABEL_WORKSPACE"
+
+
+def workspace_file(mode: str) -> str:
+    """The overlay for this mode. One per mode — see the note in the files themselves."""
+    return f"workspace-{mode}.yml"
+
+
+def configured_workspace() -> str | None:
+    """The folder .env names as the project workspace; None when none is, or it has gone.
+
+    A folder that no longer exists is not mounted: docker would create an empty one in its
+    place, owned by root, and the projects in it would quietly read as empty."""
+    chosen = os.environ.get(WORKSPACE_VAR) or env_file_value(WORKSPACE_VAR)
+    return chosen if chosen and os.path.isdir(chosen) else None
+
+
 def local_embeddings_wanted() -> bool:
     """Whether this appliance runs the local embedder.
 
@@ -393,6 +411,11 @@ def compose_command(modes: str | tuple[str, ...], *argv: str) -> list[str]:
         graph_overlay = graph_overlay_file(mode)
         if graph_overlay and os.path.exists(graph_overlay):
             cmd += ["-f", graph_overlay]
+        # YOUR CODE IS AN OVERLAY TOO: mounted read-only only once `embabel workspace use`
+        # has named a folder, and only for project keys.
+        workspace = workspace_file(mode)
+        if configured_workspace() and os.path.exists(workspace):
+            cmd += ["-f", workspace]
     return cmd + list(argv)
 
 

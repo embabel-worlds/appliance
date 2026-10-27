@@ -447,6 +447,34 @@ This is not only for demos, which is why the verb is not `demo`: the same move p
 world into a fixed state to evaluate a realm before connecting an account, to reproduce a
 support case, or to start a test from somewhere known.
 
+### `embabel workspace`
+
+The folder of your code the server may read — read-only, and only to answer about a project.
+
+```bash
+embabel workspace show            # which folder is mounted, if any
+embabel workspace use ~/code      # mount the folder your projects sit under, read-only
+embabel workspace off             # mount nothing
+```
+
+A **project key** names a project whose Maven build and source the server reads when a question
+reaches them: a repository URL (`https://github.com/acme/shop@main`), or a folder. A repository it
+can fetch. A folder on this machine it cannot see — the server runs in a container — until you name
+one here. Then `shop` means `<that folder>/shop`.
+
+**Read-only, and for project keys alone.** The folder is mounted at `/workspace` with
+`read_only: true`, and the server is told it is the project workspace — a setting nothing but a
+project key reads. It is not a trusted root: the files producer, a world's own settings and every
+other local read are exactly as they were. Nothing can write to it.
+
+**Nothing is mounted until you say so.** `use` writes `EMBABEL_WORKSPACE` to `.env` and the next
+`up` composes in `workspace-<mode>.yml`; without it no compose file mentions your disk. A folder
+that has since gone is not mounted, because Docker would create an empty one in its place. A mount
+is part of how the container is made, so `use` and `off` apply on the next restart.
+
+Point it at the folder your projects sit under, not your home folder: the server can read
+everything beneath it.
+
 ### `embabel embeddings`
 
 Whether documents can be indexed, and with what.

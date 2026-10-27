@@ -1,0 +1,23 @@
+# Your code, mounted READ-ONLY for project keys — composed in ONLY when somebody asks for it:
+#
+#   embabel workspace use ~/code
+#
+# WHY IT IS AN OVERLAY. The default appliance sees nothing on your disk and stays
+# byte-identical when this file is absent from the composition, the same posture as the
+# embeddings and graph overlays. Composed in, the folder you named is mounted read-only at
+# /workspace, and the server is told that is the PROJECT WORKSPACE: a project key such as
+# `shop` (or `/workspace/shop`) finds /workspace/shop, so its Maven build and its own
+# source can be read where you work on them. Nothing else reads it — not the files
+# producer, not a world's trusted roots — and nothing can write to it.
+#
+# ONE FILE PER MODE: an overlay naming a service the composition does not have DEFINES it,
+# and compose then rejects a service with no image.
+services:
+  worlds:
+    volumes:
+      - type: bind
+        source: ${EMBABEL_WORKSPACE:?set by embabel workspace use}
+        target: /workspace
+        read_only: true
+    environment:
+      - ASSISTANT_VIRTUALCYPHER_PROJECT_WORKSPACE=/workspace
