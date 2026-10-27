@@ -224,6 +224,19 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required —
 # Docker. One line, one action.
 docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start Docker Desktop, then run this again."
 
+# THE TWO TOOLS THIS SCRIPT ITSELF NEEDS, checked here rather than discovered
+# during the download. A machine with no curl — a slim container image, a
+# stripped VM, a Windows Git Bash — reached the retry loop, where a command that
+# does not exist produces no status, and was told "Could not reach GitHub. Check
+# your connection or proxy": an hour of debugging a network that was fine. tar
+# fails later and just as opaquely, and the Windows side already names it.
+for _embabel_tool in curl tar; do
+  command -v "$_embabel_tool" >/dev/null 2>&1 || die "Embabel's installer needs '$_embabel_tool', and there is no such command here.
+  Debian/Ubuntu:  apt install $_embabel_tool
+  Fedora:         dnf install $_embabel_tool
+  Alpine:         apk add $_embabel_tool"
+done
+
 # MODEL RUNNER IS AN OPTION, NOT A PREREQUISITE, and this block said the
 # opposite for as long as it existed: "Embabel needs it to start" was true of an
 # older appliance that built its embedding bean at boot and refused to come up
