@@ -302,25 +302,25 @@ Values are read by the container at start. Quote nothing unless the value contai
 spaces, and never add trailing comments on a value line — `KEY=value # note` makes the
 comment part of the value.
 
-## Required — at least one model provider
+## Model provider keys
 
-The assistant cannot answer without one of these.
+The assistant cannot answer without a model provider, but **its key does not go in `.env`**.
+`./setup.py` (or the console's onboarding) collects a key, validates it against the provider,
+and stores it inside the data volume; the console's **Models** tab adds, replaces and removes
+keys afterwards. The server reads its keys from there and from nowhere else, so a key set
+only in `.env` connects nothing: the appliance starts with no model and chat asks for one.
 
-| Variable | Notes |
+If either variable is already exported in the shell you run `./setup.py` from, it uses that
+instead of asking; `./setup.py --ignore-env` always asks. That is your *shell's* environment,
+not `.env`.
+
+| Variable | What still reads it from `.env` |
 |---|---|
-| `OPENAI_API_KEY` | The default provider for the shipped model configuration. |
-| `ANTHROPIC_API_KEY` | Used by the app builder for stronger code generation, and available to any action configured for it. |
+| `OPENAI_API_KEY` | Open WebUI beside the Me door. |
+| `ANTHROPIC_API_KEY` | The per-user code sandbox, which is handed it as-is. |
 
-**You normally do not set these here** — `./setup.py` collects a key, validates it against
-the provider, and stores it inside the data volume. If either variable is already exported
-in the shell you run it from, it uses that instead of asking; `./setup.py --ignore-env`
-always asks. Note that is your *shell's* environment, not `.env` — a key set only in `.env`
-reaches the appliance but is invisible to the script, so setup still asks for one. Use `.env` if you would rather supply a
-key up front (an air-gapped build, a scripted deployment, or to add a second provider after
-setup); a key set here is picked up at boot exactly the same way.
-
-Set both if you have both — model choice is per-action, so different parts of the product
-route to different providers.
+`./setup.py` copies the key it collects into `.env` for those two, and the copy is not kept
+in step: a key rotated later in Models leaves the `.env` line as it was.
 
 ## Authorization fallback
 
