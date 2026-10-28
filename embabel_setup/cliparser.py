@@ -10,7 +10,7 @@ import argparse
 import os
 
 from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mode, run_setup, s
-from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
+from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_graph, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
 from .clidata import (cmd_agents, cmd_contract, cmd_data, cmd_diagram, cmd_embeddings, cmd_realms,
@@ -19,7 +19,7 @@ from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_
                      cmd_status, cmd_up)
 
 
-EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        move a Neo4j appliance onto the Embabel engine', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
 
 # `realms validate` is a verb's verb, so the per-verb pass at the end of build_parser never sees it.
 REALM_VALIDATE_EXAMPLES = (
@@ -239,6 +239,15 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--world", help="which world (default: default, or your only one)")
     a.set_defaults(func=cmd_data)
     p.set_defaults(func=cmd_data, data_command=None)
+
+    p = sub.add_parser("graph", help="the knowledge graph's engine: move a Neo4j graph into the Embabel engine")
+    gr = p.add_subparsers(dest="graph_command")
+    a = gr.add_parser("migrate", help="copy the graph into another engine, verify it, and switch over")
+    a.add_argument("--to", required=True, choices=["embabel"], help="the engine to move to")
+    a.add_argument("--yes", action="store_true", help="skip the confirmation")
+    mode_flags(a)
+    a.set_defaults(func=cmd_graph)
+    p.set_defaults(func=cmd_graph, graph_command=None, mode=None)
 
     p = sub.add_parser("sandbox", help="the code-mode sandbox, and how to make it yours")
     sb = p.add_subparsers(dest="sandbox_command")
