@@ -708,6 +708,11 @@ own boot writes into its graph (the store identity each world is stamped with, s
 markers, reference data), and the user records a sign-in checks are themselves in the
 graph being moved.
 
+One thing stays behind on purpose: the query log (`VcQueryLog` nodes, kept 14 days). The
+Embabel engine holds its query log only while it runs and never writes it to its store, so
+copied entries would verify and then be gone at the next restart. They are counted instead,
+the summary says how many, and they remain in Neo4j's volume.
+
 Progress prints as it goes, and the report is kept at `/data/graph/neo4j-import.json` on
 the data volume. On a verified report, and counts that match the ones the verb took from
 Neo4j before it began, the app restarts without the import and Neo4j stops. Anything

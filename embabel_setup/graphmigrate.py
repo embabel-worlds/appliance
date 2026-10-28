@@ -91,7 +91,9 @@ def migrate_to_embabel(mode: str, confirm) -> dict:
 
     print("  Restarting without the import, on the Embabel engine alone.")
     _compose(mode, "up", "-d", service, capture=True)
-    _docker("stop", neo4j, timeout=180)
+    # Neo4j gets the time a clean shutdown takes: killed at docker's default ten seconds, it recovers
+    # from its transaction log on the next start, and the graph kept for going back should not need to.
+    _docker("stop", "--time", "120", neo4j, timeout=240)
     report["envBackup"] = env_backup
     return report
 
@@ -210,9 +212,15 @@ def _check(report: dict, source: dict) -> None:
         detail = "; ".join(f"{d['group']}: {d['source']} in Neo4j, {d['target']} copied"
                            + (" (values differ)" if d.get("contentDiffers") else "") for d in groups[:8])
         raise SetupError(f"The import did not verify: {report.get('message') or detail or 'see ' + REPORT}")
-    if report.get("nodes") != source["nodes"] or report.get("relationships") != source["relationships"]:
+    # What the engine does not keep across a restart (its query log) is counted, not copied: the
+    # report says how much, and the totals must still come to what Neo4j held.
+    skipped_nodes = sum((report.get("notCopied") or {}).values())
+    skipped_rels = report.get("relationshipsNotCopied") or 0
+    if (report.get("nodes", 0) + skipped_nodes != source["nodes"]
+            or report.get("relationships", 0) + skipped_rels != source["relationships"]):
         raise SetupError(f"Neo4j held {source['nodes']:,} nodes and {source['relationships']:,} relationships; "
-                         f"the import copied {report.get('nodes'):,} and {report.get('relationships'):,}.")
+                         f"the import copied {report.get('nodes'):,} and {report.get('relationships'):,}, "
+                         f"and left out {skipped_nodes:,} and {skipped_rels:,}.")
 
 
 def _roll_back(mode: str, service: str, env_backup: str, stamp: str) -> None:
@@ -229,6 +237,17 @@ def summary(report: dict) -> str:
     return (f"  {TICK} Migrated and verified: {report['nodes']:,} nodes in {report['labelGroups']} label groups, "
             f"{report['relationships']:,} relationships of {report['relationshipTypes']} types, "
             f"{report['vectors']:,} vectors, every value compared ({took}).\n"
+            + _not_copied(report) +
             f"    The appliance now runs the Embabel engine. Neo4j is stopped and its graph untouched.\n"
             f"    To go back: set GRAPH_TYPE=NEO4J in {os.path.basename(env_path())} (the old file is "
             f"{os.path.basename(report['envBackup'])}), then `{embabel_command('up')}`.")
+
+
+def _not_copied(report: dict) -> str:
+    """What was left in Neo4j because the engine never keeps it past a restart, said out loud."""
+    skipped = report.get("notCopied") or {}
+    if not skipped:
+        return ""
+    groups = ", ".join(f"{count:,} {group.strip(':')}" for group, count in sorted(skipped.items()))
+    return (f"    Not copied: {groups} — the engine keeps these only while it runs (its query log is not\n"
+            f"    durable), so they stay in Neo4j rather than vanish at the next restart.\n")
