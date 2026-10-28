@@ -19,7 +19,15 @@ from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_
                      cmd_status, cmd_up)
 
 
-EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
+
+# `realms validate` is a verb's verb, so the per-verb pass at the end of build_parser never sees it.
+REALM_VALIDATE_EXAMPLES = (
+    "Examples:\n"
+    "  embabel realm validate .\n"
+    "  embabel realm validate . --with ../realm-code-model --with ../realm-java-code\n"
+    "  embabel realm validate . --json --strict      what a CI check runs"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -87,11 +95,21 @@ def build_parser() -> argparse.ArgumentParser:
                    help="default: this appliance's front door — the console (worlds) or the assistant (me)")
     p.set_defaults(func=cmd_open)
 
-    p = sub.add_parser("realms", help="realm checkouts on this machine")
+    # `realm` as well as `realms`: `embabel realm validate ./my-realm` acts on ONE realm and reads
+    # that way; the plural reads right for link and list. One verb, so neither spelling is wrong.
+    p = sub.add_parser("realms", aliases=["realm"], help="realm checkouts on this machine")
     rsub = p.add_subparsers(dest="realms_command", required=True)
     rl = rsub.add_parser("link", help="point the appliance at the directory your checkouts live IN")
     rl.add_argument("directory")
     rsub.add_parser("list", help="which realms the appliance can see")
+    rv = rsub.add_parser("validate", help="would this checkout load? No appliance needs to be running",
+                         epilog=REALM_VALIDATE_EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter)
+    rv.add_argument("directory", help="the realm checkout")
+    rv.add_argument("--with", dest="with_dirs", metavar="DIR", action="append", default=[],
+                    help="a realm installed beside it, e.g. a dependency whose types it extends (repeatable)")
+    rv.add_argument("--json", action="store_true", help="the report as JSON")
+    rv.add_argument("--strict", action="store_true", help="fail on warnings as well as errors")
+    rv.add_argument("--image", help="validate with this server image instead of this appliance's")
     p.set_defaults(func=cmd_realms)
 
     p = sub.add_parser("version", help="which appliance this is: tag, digest, commit, checkout")

@@ -39,6 +39,7 @@ embabel sandbox build  # a code-mode sandbox with your own toolchain in it
 embabel embeddings use local  # turn document search on
 embabel trust add ca.crt  # trust your company's certificate authority
 embabel data add app.war --to jars  # a file a realm reads, into the world's data/
+embabel realm validate .  # would this realm checkout load? Nothing needs to be running
 ```
 
 ---
@@ -148,6 +149,34 @@ needs nothing; a realm with a build step must be built on the host first.
 ### `embabel realms list`
 
 Which realms the appliance can currently see.
+
+### `embabel realm validate <directory> [--with <dir>]... [--json] [--strict]`
+
+Would this realm checkout load? The same checks `realm_validate` runs over MCP — `realm.yml`,
+types and their parents, joins, producers and the governance their source can honour, views,
+rules, apps, the wasm build — answered with **no appliance running**. It runs the validator
+that ships in this appliance's own server image (`ghcr.io/embabel/assistant` at its
+`EMBABEL_VERSION`) in a throwaway container, so the answer is the one the server you will
+install into would give. `realms validate` is the same command.
+
+```
+embabel realm validate ~/dev/realm-java-source-code \
+    --with ~/dev/realm-code-model --with ~/dev/realm-java-code
+```
+
+- `--with` names a realm installed beside it — a dependency whose types it extends, or whose
+  types and producers its joins go through. Its types and producers count as installed; it is
+  not itself validated. The default world's types are always known, as they are in every
+  world. Repeatable.
+- `--json` prints the report as JSON; `--strict` fails on warnings as well as errors.
+- `--image` validates with another server image, such as a local build.
+
+The checkout and every `--with` directory are mounted read-only; validation builds into a
+copy inside the container. Exit status: `0` passes, `1` does not, `2` could not validate
+(a directory that does not exist, Docker not running, or an image older than the command).
+
+For a realm repository's CI, the same image runs directly — see realm-spec's README,
+"Validating a realm in CI".
 
 ### `embabel version`
 
