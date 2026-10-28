@@ -38,6 +38,7 @@ embabel scenario run … # put the world in a named state, for a demo or a repro
 embabel sandbox build  # a code-mode sandbox with your own toolchain in it
 embabel embeddings use local  # turn document search on
 embabel trust add ca.crt  # trust your company's certificate authority
+embabel data add app.war --to jars  # a file a realm reads, into the world's data/
 ```
 
 ---
@@ -487,6 +488,45 @@ features would stay off with nothing saying why. A role is resolved per call aga
 whichever key the appliance holds, so it means "embed with the key I gave you" and keeps
 meaning that if you later swap providers. `use openai` still works and sets the same role;
 so does typing a known hosted model name.
+
+### `embabel data`
+
+Files a realm reads by path — a jar or a war for the `jar` kind, a folder of compiled
+classes, a `-sources.jar`, a CSV — put into the world's `data/` folder.
+
+```bash
+embabel data add target/shop-1.0.war --to jars          # data/jars/shop-1.0.war
+embabel data add target/shop-1.0-sources.jar --to jars  # its source, beside it
+embabel data add target/classes --to jars --as shop-classes
+embabel data add ~/code/shop --to src                   # a whole project: sources and target/classes
+embabel data ls jars
+```
+
+| Flag | |
+|---|---|
+| `--to FOLDER` | a folder under `data/`; made if it is not there |
+| `--as NAME` | the name it gets there (one file or folder at a time) |
+| `--world NAME` | which world; `default`, or your only one, unless named |
+
+What it prints after **Added** is the path a realm reads it by — `jars/shop-1.0.war` is
+the key a `jar` producer takes, and `Jar {path: 'jars/shop-1.0.war'}` the node a query
+pins. The world is the appliance owner's, found from the appliance itself; you never
+need to know that its folder is named after your email. `EMBABEL_USER` names another
+account, as it does for `sample`.
+
+**Adding a name that is already there replaces it**, folder and all. That is the point
+for a recompiled `target/classes`: copied over the old one, the class files of classes you
+deleted would stay, and the world would answer for code that no longer exists.
+
+A folder arrives without `.git`, `.hg`, `.svn`, `.idea`, `.gradle`, `node_modules` and
+`__pycache__`, which for a checkout is most of it. Adding a whole project (`--to src`) is
+how a folder of classes gets its source with nothing to configure: the `jar` kind reads
+`src/shop/target/classes`, and finds the source in `src/shop/src/main/java` beside it. A
+war or jar finds its `-sources.jar` beside it the same way, and the command says so when
+there is one next to the file you added.
+
+It is a client of docker, as `backup` is, and asks for no password: whoever can run
+docker on this machine can already reach the appliance's disk.
 
 ### `embabel trust`
 

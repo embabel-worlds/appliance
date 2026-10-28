@@ -13,13 +13,13 @@ from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mo
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
-from .clidata import (cmd_agents, cmd_contract, cmd_diagram, cmd_embeddings, cmd_realms, cmd_run_view,
-                      cmd_sample, cmd_sandbox, cmd_scenario)
+from .clidata import (cmd_agents, cmd_contract, cmd_data, cmd_diagram, cmd_embeddings, cmd_realms,
+                      cmd_run_view, cmd_sample, cmd_sandbox, cmd_scenario)
 from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_prune, cmd_ps,
                      cmd_status, cmd_up)
 
 
-EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"'}
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -203,6 +203,24 @@ def build_parser() -> argparse.ArgumentParser:
     a = em.add_parser("off", help="no embedding model; document features go off")
     a.set_defaults(func=cmd_embeddings)
     p.set_defaults(func=cmd_embeddings, embeddings_command=None)
+
+    p = sub.add_parser("data", help="put files a realm reads (a jar, a war, classes) into the world's data/")
+    dt = p.add_subparsers(dest="data_command")
+    a = dt.add_parser("add", help="copy a file or folder into data/, replacing one of the same name")
+    # RESOLVED WHILE PARSING, as `trust add` is: the launcher changes into the appliance
+    # directory before the verb runs, so a relative path read afterwards is looked for there.
+    a.add_argument("sources", nargs="+", metavar="file|folder",
+                   type=lambda p: os.path.abspath(os.path.expanduser(p)),
+                   help="e.g. target/shop-1.0.war, target/classes, lib/acme-1.0.jar")
+    a.add_argument("--to", metavar="FOLDER", help="a folder under data/, e.g. jars (default: data/ itself)")
+    a.add_argument("--as", dest="name", metavar="NAME", help="the name it gets there, e.g. shop-classes")
+    a.add_argument("--world", help="which world (default: default, or your only one)")
+    a.set_defaults(func=cmd_data)
+    a = dt.add_parser("ls", help="what data/ holds, or a folder of it")
+    a.add_argument("path", nargs="?", help="a folder under data/, e.g. jars")
+    a.add_argument("--world", help="which world (default: default, or your only one)")
+    a.set_defaults(func=cmd_data)
+    p.set_defaults(func=cmd_data, data_command=None)
 
     p = sub.add_parser("sandbox", help="the code-mode sandbox, and how to make it yours")
     sb = p.add_subparsers(dest="sandbox_command")
