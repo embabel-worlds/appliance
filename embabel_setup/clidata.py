@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 
+from . import realmvalidate
 from .cli import _sample_target, current_mode, run_setup, s
 from .core import SetupError
 from .settings import embabel_command
@@ -25,6 +26,12 @@ from .worlddata import add_data, list_data, sources_beside
 def cmd_realms(args) -> int:
     if args.realms_command == "link":
         return run_setup("worlds", "--realms", args.directory)
+    if args.realms_command == "validate":
+        # The image, not the running server: a check that needed the appliance up could not
+        # run in CI, which is the place it is for.
+        image = args.image or realmvalidate.appliance_image(current_mode() or s.configured_mode() or "worlds")
+        return realmvalidate.run_validation(args.directory, args.with_dirs, image,
+                                            as_json=args.json, strict=args.strict)
     # list: what the appliance can actually see, which is the question worth asking.
     realms = os.environ.get("EMBABEL_REALMS_DIR")
     env_path = s.env_path()
