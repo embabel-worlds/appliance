@@ -845,9 +845,13 @@ This appliance's settings, keys and credentials are kept. A bundle carries no pa
 imported users have none here: `--login ann` sets one for `ann` (asked for, or read from
 `EMBABEL_IMPORT_PASSWORD`) through the server's own credential store, or use `embabel reset-password`.
 
-**Embedding drift.** Vectors made by one model and searched with another answer nonsense. The
-manifest records the model and the widths; when they differ from this appliance's, the import says
-so, with the repair — re-embed everything as an administrator:
+**Embedding drift.** Vectors made by one model and searched with another answer nonsense, even
+when the two models share a width. The server records the model that made the vectors — name,
+provider and width — in the graph beside them, so it travels with the bundle; the manifest carries
+it with the widths. The import compares it with this appliance's model by name, not by width, and
+says when they differ; the server compares it again as it starts and reports a difference under
+`drift.model` in `GET /api/v1/admin/embedding/status`. The repair is to re-embed everything as an
+administrator:
 
 ```bash
 curl -u admin -X POST -H 'Content-Type: application/json' -d '{"force": true}' \

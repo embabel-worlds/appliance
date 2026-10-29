@@ -219,7 +219,7 @@ def _manifest(graph: dict, files: list[dict], left_out: dict, how: str, world, p
         "appliance": {"mode": mode, "engine": graph_engine(), "store": stores.current_store() if graph_engine() == "EMBABEL" else "neo4j",
                       "image": mode_image(mode)},
         "export": how,
-        "embedding": {"model": env_file_value("ASSISTANT_EMBEDDING_MODEL"), "widths": graph.get("vectorWidths", {})},
+        "embedding": _embedding(graph),
         "scope": {"world": world, "private": private},
         "graph": {k: graph[k] for k in ("format", "nodes", "relationships", "vectors", "labelGroups", "relationshipTypes", "source",
                                         "notCopied", "relationshipsNotCopied") if k in graph}
@@ -231,6 +231,21 @@ def _manifest(graph: dict, files: list[dict], left_out: dict, how: str, world, p
                          + ("" if world else "; which realms' code was admitted, and custom themes"),
         "leftOut": left_out,
         "rawBytes": graph_bytes + sum(f["bytes"] for f in files),
+    }
+
+
+def _embedding(graph: dict) -> dict:
+    """The model the graph records its vectors as made by — name, provider, width — as the server wrote it beside them.
+    A graph from before that record names only the configured model, which may be a role (`hosted`) rather than a model,
+    so `recorded` says which of the two this is."""
+    recorded = graph.get("embeddingModel") or {}
+    return {
+        "model": recorded.get("model") or env_file_value("ASSISTANT_EMBEDDING_MODEL"),
+        "provider": recorded.get("provider"),
+        "dimensions": recorded.get("dimensions"),
+        "recorded": bool(recorded.get("model")),
+        "complete": recorded.get("complete", True) if recorded else None,
+        "widths": graph.get("vectorWidths", {}),
     }
 
 

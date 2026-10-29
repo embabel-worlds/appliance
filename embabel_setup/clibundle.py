@@ -39,7 +39,8 @@ def _describe(manifest: dict) -> None:
         print(f"    setup:     {world}: {kinds or 'nothing beyond the template'}")
     emb = manifest.get("embedding") or {}
     if emb.get("model"):
-        print(f"    embedding: {emb['model']} ({', '.join(str(w) for w in sorted({w for ws in (emb.get('widths') or {}).values() for w in ws})) or 'no vectors'})")
+        made_by = emb['model'] + (f" ({emb['provider']})" if emb.get('provider') else "") + ("" if emb.get('recorded') else ", as configured")
+        print(f"    embedding: {made_by} ({', '.join(str(w) for w in sorted({w for ws in (emb.get('widths') or {}).values() for w in ws})) or 'no vectors'})")
     left = dict(manifest.get("leftOut") or {})
     for group, count in sorted((graph.get("leftOut") or {}).items()):
         left.setdefault("graph", "")

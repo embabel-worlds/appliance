@@ -75,7 +75,7 @@ def import_bundle(path: str, mode: str, login: str | None = None, confirm=None) 
         report = _take(mode, image, staging, stamp, manifest, lambda: _set_login(image, login, password) if login else None)
     finally:
         _helper(image, f"rm -rf {staging}")
-    report["embedding"] = _embedding_note(manifest)
+    report["embedding"] = _embedding_note(manifest, _our_embedding_model(image))
     return report
 
 
@@ -214,13 +214,54 @@ def _set_login(image: str, user: str, password: str) -> str:
     return f"{user} can sign in here with the password just given"
 
 
-def _embedding_note(manifest: dict) -> str | None:
-    """Vectors made by one model searched with another answer nonsense, so a difference is said, with the repair."""
-    theirs = (manifest.get("embedding") or {}).get("model")
-    ours = env_file_value("ASSISTANT_EMBEDDING_MODEL")
-    if not theirs or theirs == ours:
+def _embedding_note(manifest: dict, ours: dict | None) -> str | None:
+    """Vectors made by one model searched with another answer nonsense, whatever their widths, so the bundle's model is
+    compared with this appliance's by name, provider and width — not by width alone, which two models can share.
+
+    [ours] is the model this appliance chose (admin/embedding-model.json), or None when it chose none and its
+    configured default, possibly a role, decides. The server compares again as it starts, against the record the
+    imported graph carries: GET /api/v1/admin/embedding/status reports it under drift.model."""
+    emb = manifest.get("embedding") or {}
+    theirs = emb.get("model")
+    if not theirs:
         return None
-    return (f"The bundle's vectors were made by {theirs}; this appliance embeds with {ours or 'no model'}. Searches over "
-            "them will be wrong until they are re-embedded: sign in as an administrator and POST "
-            "/api/v1/admin/embedding/reindex with {\"force\": true}, or run "
-            f"`{embabel_command('embeddings use ' + theirs)}` to search them with the model that made them.")
+    theirs_desc = _describe_model(theirs, emb.get("provider"), emb.get("dimensions"))
+    if emb.get("complete") is False:
+        return (f"The bundle's vectors were being re-embedded with {theirs_desc} when it was exported, and that did not finish. "
+                f"{_REPAIR}")
+    ours_model = (ours or {}).get("model") or env_file_value("ASSISTANT_EMBEDDING_MODEL")
+    if not ours_model:
+        return f"The bundle's vectors were made by {theirs_desc}; this appliance has no embedding model. {_REPAIR}"
+    ours_dims = (ours or {}).get("dimensions")
+    same_name = theirs == ours_model
+    same_width = not (emb.get("dimensions") and ours_dims) or emb.get("dimensions") == ours_dims
+    if same_name and same_width:
+        return None
+    if ours is None and emb.get("recorded"):
+        # a configured role resolves to a model only in the server: it compares the record as it starts
+        return (f"The bundle's vectors were made by {theirs_desc}; this appliance embeds with the configured `{ours_model}`. "
+                "If that is another model, the server reports it under drift.model in GET /api/v1/admin/embedding/status "
+                f"once it starts. {_REPAIR}")
+    return (f"The bundle's vectors were made by {theirs_desc}; this appliance embeds with "
+            f"{_describe_model(ours_model, None, ours_dims)}. Searches over them will be wrong until they are re-embedded"
+            f"{', although the widths match' if not same_name and emb.get('dimensions') and emb.get('dimensions') == ours_dims else ''}. "
+            f"{_REPAIR} Or run `{embabel_command('embeddings use ' + theirs)}` to search them with the model that made them.")
+
+
+def _describe_model(model: str, provider: str | None, dimensions) -> str:
+    return model + (f" ({provider})" if provider else "") + (f", {dimensions} dimensions" if dimensions else "")
+
+
+_REPAIR = ("Re-embed as an administrator: POST /api/v1/admin/embedding/reindex with {\"force\": true}.")
+
+
+def _our_embedding_model(image: str) -> dict | None:
+    """The model this appliance chose, as the server pinned it beside its setup, or None when it chose none."""
+    run = _helper(image, f"cat {WORLD_BASE}/admin/embedding-model.json 2>/dev/null")
+    if run.returncode != 0 or not run.stdout.strip():
+        return None
+    try:
+        pinned = json.loads(run.stdout)
+    except json.JSONDecodeError:
+        return None
+    return pinned if isinstance(pinned, dict) and pinned.get("model") else None
