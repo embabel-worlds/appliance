@@ -39,6 +39,12 @@ services:
       - GRAPH_EMBABEL_SQLITE_PATH=${GRAPH_EMBABEL_SQLITE_PATH:-/data/graph/graph.sqlite}
       # always | everysec | off. everysec bounds a crash's loss at about a second of writes.
       - VC_EMBABEL_FSYNC=${VC_EMBABEL_FSYNC:-${VC_MEMORY_FSYNC:-everysec}}
+      # A Neo4j graph to copy into the engine as it opens, when it opens empty. Set by
+      # `embabel graph migrate --to embabel` for the one boot that copies, and empty
+      # otherwise, which is off: the server reads nothing from Neo4j unless asked.
+      - GRAPH_EMBABEL_IMPORT_NEO4J_URL=${GRAPH_EMBABEL_IMPORT_NEO4J_URL:-}
+      - GRAPH_EMBABEL_IMPORT_NEO4J_USERNAME=${GRAPH_EMBABEL_IMPORT_NEO4J_USERNAME:-neo4j}
+      - GRAPH_EMBABEL_IMPORT_NEO4J_PASSWORD=${GRAPH_EMBABEL_IMPORT_NEO4J_PASSWORD:-}
     # No graph service to wait for: the graph starts when the server does.
     depends_on: !override []
 

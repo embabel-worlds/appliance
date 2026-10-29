@@ -690,6 +690,46 @@ compose has to create them, which means pulling the images.
 |---|---|
 | `--yes` | skip the confirmation |
 
+### `embabel graph migrate --to embabel`
+
+Move a Neo4j appliance's knowledge graph into the Embabel engine, check it, and switch the
+appliance over. Every node, relationship, label, property, vector and index comes across;
+the Neo4j graph is not changed, and going back is one line of `.env`.
+
+**The server does the copy, as its engine opens.** The verb counts the Neo4j graph, stops
+the app (Neo4j stays up — it is the source), writes `GRAPH_TYPE=EMBABEL` and the engine's
+store into `.env` exactly as setup writes them for a new appliance, and starts the app
+once with the import switched on. Before anything else in the server runs, it reads Neo4j
+over Bolt and writes every value into the empty engine as it was — a vector as the same
+doubles, a date-time with its zone — then copies the constraints and indexes, reads the
+engine back and compares it with what it read: a count and a checksum of every value for
+each combination of labels and each relationship type. It has to be then: the server's
+own boot writes into its graph (the store identity each world is stamped with, schema
+markers, reference data), and the user records a sign-in checks are themselves in the
+graph being moved.
+
+One thing stays behind on purpose: the query log (`VcQueryLog` nodes, kept 14 days). The
+Embabel engine holds its query log only while it runs and never writes it to its store, so
+copied entries would verify and then be gone at the next restart. They are counted instead,
+the summary says how many, and they remain in Neo4j's volume.
+
+Progress prints as it goes, and the report is kept at `/data/graph/neo4j-import.json` on
+the data volume. On a verified report, and counts that match the ones the verb took from
+Neo4j before it began, the app restarts without the import and Neo4j stops. Anything
+else — a difference, a server too old to import (`embabel upgrade` first), an app that
+stops — puts `.env` back, sets the half-made store aside, and starts the appliance on
+Neo4j again.
+
+The old `.env` is kept beside the new one as `.env.before-graph-migrate-<time>`. To go
+back to Neo4j afterwards, set `GRAPH_TYPE=NEO4J` and run `embabel up`: Neo4j's volume is
+still there, holding the graph as it was when you migrated — anything written since went
+to the engine.
+
+| Flag | |
+|---|---|
+| `--yes` | skip the confirmation |
+| `--worlds` / `--me` | which door, when it cannot be told from what is running |
+
 ### `embabel ps`
 
 What this appliance has on the host, in the three groups that fail differently:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import io
 import json
 import os
@@ -416,3 +417,30 @@ def cmd_completion(args) -> int:
         for flag in flags_for(verb):
             print(f"complete -c embabel -n '__fish_seen_subcommand_from {verb}' -l {flag[2:]}")
     return 0
+
+
+def cmd_graph(args) -> int:
+    """The knowledge graph's engine. `migrate --to embabel` moves a Neo4j appliance's graph into
+    the Embabel engine and switches the appliance over; see graphmigrate.py for how and why."""
+    from .graphmigrate import migrate_to_embabel, summary
+    if args.graph_command != "migrate":
+        print("  embabel graph migrate --to embabel   move this appliance's graph from Neo4j into the Embabel engine")
+        return 0
+    mode = resolved_mode(args.mode)
+    confirm = functools.partial(_confirm_migration, args.yes)
+
+    try:
+        report = migrate_to_embabel(mode, confirm)
+    except s.SetupError as e:
+        print(f"  {s.warn('!')} {e}")
+        return 1
+    print(summary(report))
+    return 0
+
+
+def _confirm_migration(yes: bool, source: dict) -> bool:
+    print(f"  Moving this appliance's graph — {source['nodes']:,} nodes and {source['relationships']:,} "
+          "relationships — from Neo4j into the Embabel engine.")
+    print("  The app stops while it copies; every value is compared after. Neo4j's graph is not changed,")
+    print("  and if anything fails the appliance comes back on Neo4j as it was.")
+    return yes or input("  Type 'yes' to migrate: ").strip().lower() == "yes"

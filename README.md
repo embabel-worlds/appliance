@@ -608,6 +608,18 @@ open on an empty world behind a login that still works. Switching by hand is cho
 different, empty graph; switch back and the old one is still there. `MEMORY`, the
 engine's old name, still means `EMBABEL`.
 
+To bring a Neo4j appliance's graph WITH it, migrate instead of switching:
+
+```bash
+embabel upgrade                         # a server that can import, and this verb
+embabel graph migrate --to embabel      # copy, verify every value, switch over
+```
+
+The server copies the graph into its engine as it opens, before anything else touches
+it, then compares the two value for value; only a verified copy switches the appliance
+over, and anything else leaves it on Neo4j as it was. Neo4j's volume is never changed,
+so `GRAPH_TYPE=NEO4J` and `embabel up` go back. [CLI.md](CLI.md) has the details.
+
 The engine is one of a handful of defaults with data or a provider behind them, and each
 is written into `.env` the same way, so that no later release can move an appliance off
 what it runs on: the Embabel engine's store and its file paths, the Neo4j version and
