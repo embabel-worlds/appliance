@@ -337,6 +337,10 @@ def main() -> int:
             report_boot_warnings(container)
             print()
         status = call_when_ready(base, token)
+        # The terms were answered at the top of this run, or of the earlier one .env
+        # remembers (--resume, --fresh); the console's Welcome asks the appliance, so the
+        # appliance is told, and nobody agrees to the same terms twice.
+        record_trial_terms_on_appliance(base, token, status)
 
         # Before account details, provider keys or the permanent /complete: the person
         # doing the installation sees the report contract in the flow they are already
