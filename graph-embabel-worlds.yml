@@ -53,6 +53,10 @@ services:
       - GRAPH_EMBABEL_ORACLE_URL=${GRAPH_EMBABEL_ORACLE_URL:-}
       - GRAPH_EMBABEL_ORACLE_USERNAME=${GRAPH_EMBABEL_ORACLE_USERNAME:-embabel}
       - GRAPH_EMBABEL_ORACLE_LAYOUT=${GRAPH_EMBABEL_ORACLE_LAYOUT:-auto}
+      # The tables' prefix on a server store. `embabel import` gives an imported graph a prefix
+      # of its own, so the tables it replaced stay where they were, as the way back.
+      - GRAPH_EMBABEL_POSTGRES_PREFIX=${GRAPH_EMBABEL_POSTGRES_PREFIX:-embabel_graph}
+      - GRAPH_EMBABEL_ORACLE_PREFIX=${GRAPH_EMBABEL_ORACLE_PREFIX:-embabel_graph}
       # Another of the engine's stores to copy this one from as it opens, when this one is
       # empty. Set by `embabel graph migrate` for the boot that copies; empty is off.
       - GRAPH_EMBABEL_IMPORT_STORE_KIND=${GRAPH_EMBABEL_IMPORT_STORE_KIND:-}

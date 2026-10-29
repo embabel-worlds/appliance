@@ -661,6 +661,23 @@ because a graph copied live restores as a corrupt graph: Community Neo4j has no
 online backup, and a SQLite file caught mid-write is torn the same way. See [CLI.md](CLI.md) for what a backup folder holds and what
 a restore replaces.
 
+### Moving it, or sending it
+
+`embabel backup` copies the volumes this appliance uses, for this appliance. To move what it
+knows to **another** appliance — a new machine, another graph store, a colleague's — or to send a
+piece of it to support, export it to one file:
+
+```bash
+embabel export my-appliance.tar.gz              # graph, worlds and setup; no secrets
+embabel import my-appliance.tar.gz --login ann  # on the other appliance, any store; verified, with rollback
+embabel export support.tar.gz --world ann --no-private   # one world, nothing private
+embabel export setup.tar.gz --setup             # realms, apps, lenses, preferences — no data
+```
+
+A bundle never holds a password, a key or a token; it says what it left out. See
+[CLI.md](CLI.md#embabel-export-file-and-embabel-import-file) for what is in one, live versus cold,
+and [sending a support bundle](CLI.md#sending-a-support-bundle).
+
 Three more volumes hold state you can throw away — `embabel_appliance_open_webui_data`,
 `embabel_appliance_prometheus_data` (metric history) and `embabel_appliance_grafana_data`
 (Grafana's own database; the dashboards live in the image, not here). Losing them costs

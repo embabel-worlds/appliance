@@ -10,6 +10,7 @@ import argparse
 import os
 
 from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mode, run_setup, s
+from .clibundle import cmd_export, cmd_import
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_graph, cmd_instances,
                       cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
@@ -19,7 +20,7 @@ from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_
                      cmd_status, cmd_up)
 
 
-EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        Neo4j, or a server store, onto the engine\'s SQLite file\n  embabel graph migrate --to postgres       onto a Postgres server bundled with the appliance\n  embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        Neo4j, or a server store, onto the engine\'s SQLite file\n  embabel graph migrate --to postgres       onto a Postgres server bundled with the appliance\n  embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph', 'export': 'embabel export my-appliance.tar.gz             graph, worlds and setup, to move or keep\n  embabel export support.tar.gz --world ann --no-private   one world, nothing private: a support bundle\n  embabel export setup.tar.gz --setup                     realms, apps, lenses, preferences; no data', 'import': 'embabel import my-appliance.tar.gz --login ann   replaces the graph and worlds, verified; ann can sign in\n  embabel import setup.tar.gz                       adds the setup to this appliance\'s world', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
 
 # `realms validate` is a verb's verb, so the per-verb pass at the end of build_parser never sees it.
 REALM_VALIDATE_EXAMPLES = (
@@ -252,6 +253,28 @@ def build_parser() -> argparse.ArgumentParser:
     mode_flags(a)
     a.set_defaults(func=cmd_graph)
     p.set_defaults(func=cmd_graph, graph_command=None, mode=None)
+
+    p = sub.add_parser("export", help="this appliance's graph, worlds and setup in one file another appliance can import")
+    p.add_argument("file", help="the bundle to write, e.g. my-appliance.tar.gz")
+    p.add_argument("--world", help="one user's world only: USER, or USER/WORLD (default: every user and world)")
+    p.add_argument("--no-private", action="store_true",
+                   help="leave out chats, memories, email and calendar content and anything marked private — "
+                        "for a support bundle; the manifest says what was left out")
+    p.add_argument("--setup", action="store_true",
+                   help="only the setup — realms, apps, lenses, views, watches, actions, skills, agents, schedules, "
+                        "preferences — no graph data")
+    p.add_argument("--yes", action="store_true", help="skip the confirmation (and replace FILE if it exists)")
+    mode_flags(p)
+    p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("import", help="take a bundle made by `embabel export` into this appliance")
+    p.add_argument("file", help="a bundle made by `embabel export`")
+    p.add_argument("--login", metavar="USER", help="set a password for this imported user (asked for, or read "
+                                                   "from EMBABEL_IMPORT_PASSWORD): a bundle carries none")
+    p.add_argument("--world", help="a setup bundle only: the world to add it to, USER/WORLD (default: the one it came from)")
+    p.add_argument("--yes", action="store_true", help="skip the confirmation")
+    mode_flags(p)
+    p.set_defaults(func=cmd_import)
 
     p = sub.add_parser("sandbox", help="the code-mode sandbox, and how to make it yours")
     sb = p.add_subparsers(dest="sandbox_command")
