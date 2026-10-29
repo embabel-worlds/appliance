@@ -115,6 +115,37 @@ def check_setup_withholds() -> None:
           "a realm's clone URL keeps the token it was cloned with")
 
 
+def check_console_preferences() -> None:
+    """The console's preferences are a world file a setup carries, and the import checks the server reads them back."""
+    check(setupbundle._kind("config/console.json") == "console preferences", "config/console.json is not classed as console preferences")
+    files = [{"path": "config/console.json", "bytes": 10, "kind": "console preferences"}]
+    manifest = setupbundle._setup_manifest("users/rod/default", files, [], [], [], [], [])
+    items = setupbundle.items_of(manifest)
+    check(items.get("console preferences") == ["config/console.json"], "a setup manifest does not list the console preferences")
+    browser_only = manifest["leftOut"]["browser-only"]
+    check(not any(w in browser_only for w in ("theme", "wallpaper", "layout", "pinned")),
+          "the manifest still says theme, wallpaper, layout or pins stay in the browser")
+
+    class FakeApi:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def call(self, method, path, payload=None, ok_missing=False):
+            assert (method, path) == ("GET", "/profile/console"), (method, path)
+            return self.answer
+
+    for answer, where, want in ((({"entries": {"worlds-theme": {"value": "midnight", "at": 1}}}), "installed", "console preferences"),
+                                ({"entries": {}}, "failed", "console preferences"),
+                                (None, "notes", "upgrade")):
+        report = {"installed": [], "failed": [], "notes": []}
+        setupbundle._verify_console(FakeApi(answer), report)
+        check(any(want in line for line in report[where]), f"verifying console preferences against {answer!r} did not report under {where}")
+    report = {"installed": [], "failed": [], "notes": []}
+    setupbundle._notes(manifest, report)
+    check(not any("did not travel" in n or "holds no console" in n for n in report["notes"]),
+          "an import that carried console preferences says they did not travel")
+
+
 def check_manifest_gate() -> None:
     """A file that is not a bundle, or one from a newer format, is refused before anything changes."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -140,7 +171,7 @@ def check_manifest_gate() -> None:
             pass
 
 
-for step in (check_shapes_in_python, check_shapes_in_grep, check_selection, check_refusal, check_setup_withholds, check_manifest_gate):
+for step in (check_shapes_in_python, check_shapes_in_grep, check_selection, check_refusal, check_setup_withholds, check_console_preferences, check_manifest_gate):
     step()
 
 if failures:
@@ -149,4 +180,5 @@ if failures:
     sys.exit(1)
 print("  ✓ every credential shape is caught by the export's scan, and none is printed")
 print("  ✓ an export never selects a credential path, and a setup withholds what holds a key")
+print("  ✓ a setup carries the console's preferences, and its import checks the server reads them")
 print("  ✓ a bundle is read and its format checked before anything changes")

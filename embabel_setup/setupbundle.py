@@ -22,8 +22,10 @@ are never selected, and a selected file whose content holds one is LEFT OUT and 
 with a key in a header is the usual one), never sent. Nor anything the world learned: the persona the server
 writes from email and calendar, caches, the realm cache, chat, memories, documents.
 
-WHAT ONLY THE BROWSER KNOWS. The console keeps the chosen theme, the wallpaper, the window layout, pinned apps and the
-dock in the browser's localStorage (BROWSER_ONLY): no server has them to export. The manifest says so.
+HOW THE CONSOLE IS ARRANGED. The chosen theme and its rotation, the wallpaper, the window style and layout, pinned apps
+and the dock's realm stacks are the person's console preferences, which the server keeps in the world as
+config/console.json (GET and PUT /profile/console), so they travel as one of the world's own files. What the console
+still keeps only in the browser (BROWSER_ONLY) no server has to export, and the manifest says so.
 
 IMPORT ADDS; IT DOES NOT REPLACE. A setup goes into one world on a running appliance, beside what is there: a file it
 replaces is kept under .setup-import-<stamp>, realms already installed are left alone, and the report says, item by
@@ -63,12 +65,11 @@ KINDS = (
     ("config/actions/", "actions"), ("config/skills/", "skills"), ("config/agents/", "agents"),
     ("config/cron/", "schedules"), ("config/commands/", "commands"),
     ("config/behaviour/", "personalities and prompts"), ("config/.embabel/prompts/", "personalities and prompts"),
-    ("config/world.yml", "preferences"), ("config/mcp/", "connections"), ("config/apis/", "connections"),
+    ("config/world.yml", "preferences"), ("config/console.json", "console preferences"), ("config/mcp/", "connections"), ("config/apis/", "connections"),
     ("config/channels/", "connections"), ("config/sql/", "connections"), ("config/webhooks/", "connections"),
 )
-BROWSER_ONLY = ("the chosen theme and theme rotation", "wallpaper", "window style", "the desktop's window layout",
-                "pinned apps and the dock's realm stacks", "Apps and Realm store view options", "sounds on or off",
-                "tours completed")
+BROWSER_ONLY = ("Apps and Realm store view options", "sounds on or off", "tours completed")
+CONSOLE = "config/console.json"
 
 
 # ── the API, as the person whose setup it is ──────────────────────────────────────────────────────────
@@ -448,11 +449,29 @@ def _verify(api: Api, image: str, where: str, manifest: dict, realms, lenses, wa
             report["installed"].append(f"theme {theme[:-4]}")
         except ApiRefused as e:
             report["failed"].append(f"theme {theme[:-4]}: not served after the restart ({e.status})")
+    if CONSOLE in items.get("console preferences", []):
+        _verify_console(api, report)
     apps = [p for p in items.get("apps", []) if p.startswith("data/apps/") and p.endswith(".html")]
     if apps:
         listed = _helper(image, f"cd {WORLD_BASE}/{where} && ls -1 " + " ".join(shlex.quote(a) for a in apps) + " 2>/dev/null")
         found = set(listed.stdout.decode().split())
         report["failed"] += [f"app {a}: not on disk after the import" for a in apps if a not in found]
+
+
+def _verify_console(api: Api, report: dict) -> None:
+    """The console preferences as the server now reads them: the file arrived, and the server can read it."""
+    try:
+        stored = api.call("GET", "/profile/console", ok_missing=True)
+    except ApiRefused as e:
+        report["failed"].append(f"console preferences: not readable after the import ({e.status})")
+        return
+    if stored is None:
+        report["notes"].append("This appliance's server does not read console preferences yet; "
+                               f"`{embabel_command('upgrade')}` and they apply from the file the import wrote.")
+    elif stored.get("entries"):
+        report["installed"].append(f"console preferences ({len(stored['entries'])} settings: theme, layout, dock and the like)")
+    else:
+        report["failed"].append("console preferences: the server reads none after the import")
 
 
 def _notes(manifest: dict, report: dict) -> None:
@@ -461,7 +480,10 @@ def _notes(manifest: dict, report: dict) -> None:
     if theirs and theirs != ours:
         report["notes"].append(f"The other appliance embeds with {theirs}, this one with {ours or 'no model'}; "
                                f"`{embabel_command('embeddings use ' + theirs)}` switches (and re-embeds).")
-    report["notes"].append("Theme choice, wallpaper, window layout and pinned apps live in the browser and did not travel.")
+    if CONSOLE not in items_of(manifest).get("console preferences", []):
+        report["notes"].append("The bundle holds no console preferences — it was made before the console kept them on the "
+                               "appliance, or nobody had changed one — so theme, wallpaper, layout and pins are this browser's own.")
+    report["notes"].append("A browser already open shows the imported theme, layout and pins when it is reloaded.")
     withheld = (manifest.get("leftOut") or {}).get("withheld (would have carried a credential)")
     if withheld:
         report["notes"].append(f"Not carried because they hold a credential: {withheld}")
