@@ -26,6 +26,7 @@ import subprocess
 import tarfile
 
 from . import graphstores as stores
+from . import storetables
 from .bundle import FORMAT, SHARED_SETUP, STAGING, WORLD_BASE, BundleError, decompressor, _bundle_tool, _helper, _helper_argv
 from .core import MODE_SERVICE, SetupError
 from .dockerlib import _compose, _docker, service_container
@@ -98,8 +99,12 @@ def _take(mode: str, image: str, staging: str, stamp: str, manifest: dict, login
     print("  Stopping the app.")
     _compose(mode, "stop", service, capture=True)
     move = Move(mode, _target_store(), "bundle")
+    prefix = _import_prefix(stamp)
+    before = None
     try:
         _prepare_store(move.target, stamp, was_neo4j)
+        if move.target != "sqlite":
+            before = storetables.tables_under(image, move.target, prefix)
         _swap_worlds(image, staging, stamp)
         os.environ.update(dict(zip(STORE_VARS, ("sqlite", f"{staging}/graph/graph.sqlite"))))
         try:
@@ -113,8 +118,7 @@ def _take(mode: str, image: str, staging: str, stamp: str, manifest: dict, login
         _check(report, manifest)
     except SetupError as failure:
         _roll_back(mode, service, image, backups, stamp, move.target)
-        left = "" if move.target == "sqlite" else (f"\n  The tables the attempt wrote are under the prefix embabel_graph_{stamp.replace('-', '_')} "
-                                                    f"in the {move.target} server; nothing reads them, and they can be dropped.")
+        left = "" if move.target == "sqlite" else storetables.after_rollback(image, move.target, prefix, before)
         raise BundleError(f"{failure}\n  Nothing was kept: this appliance is back as it was.{left}") from failure
     # the credential is written while the app is down, so the server reads it at its next start
     _compose(mode, "stop", service, capture=True)
@@ -151,8 +155,13 @@ def _prepare_store(target: str, stamp: str, was_neo4j: bool) -> None:
         if stores.bundled_service(target):
             stores.ensure_running(target)
         prefix_var = f"GRAPH_EMBABEL_{target.upper()}_PREFIX"
-        set_env_var(prefix_var, f"embabel_graph_{stamp.replace('-', '_')}",
+        set_env_var(prefix_var, _import_prefix(stamp),
                     (f"# Written by `embabel import`; the tables before it are under {env_file_value(prefix_var) or 'embabel_graph'}.",))
+
+
+def _import_prefix(stamp: str) -> str:
+    """The table prefix of its own an import writes a server store's graph under."""
+    return f"{storetables.DEFAULT_PREFIX}_{stamp.replace('-', '_')}"
 
 
 def _swap_worlds(image: str, staging: str, stamp: str) -> None:

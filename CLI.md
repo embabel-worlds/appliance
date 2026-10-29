@@ -731,7 +731,8 @@ and from Neo4j the counts also match the ones the verb took before it began, the
 without the import and the source server stops cleanly, its volume kept. Anything else (a
 difference, a target that already holds a graph, a server too old to import, an app that stops)
 puts both files back, removes or sets aside what the attempt made, and starts the appliance on
-the store it had.
+the store it had. In a server it did not create, the tables it wrote are dropped when their prefix
+held nothing before the attempt; a prefix that held a graph is never touched.
 
 **The bundled servers.** Without `--url`, the target is a server the appliance runs itself:
 `graph-postgres` (Postgres 17) or `graph-oracle` (Oracle Database 23ai Free, a several-GB image
@@ -836,7 +837,9 @@ what it holds, and asks. Then:
 4. The app starts once with the server's store import switched on — the same copy `embabel graph
    migrate` uses — writes the bundle's graph into the store and compares every value with it.
 5. When the report is verified and its counts are the manifest's, the app restarts normally.
-   Anything else puts every file back and starts the appliance as it was.
+   Anything else puts every file back and starts the appliance as it was. On Postgres or Oracle the
+   tables the attempt wrote under its new prefix are dropped (only when that prefix held nothing
+   before it); if the drop cannot be made, the message names the prefix to drop by hand.
 
 This appliance's settings, keys and credentials are kept. A bundle carries no passwords, so the
 imported users have none here: `--login ann` sets one for `ann` (asked for, or read from

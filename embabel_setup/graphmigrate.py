@@ -32,10 +32,12 @@ import time
 from dataclasses import dataclass, field
 
 from . import graphstores as stores
+from . import storetables
 from .backup import BACKUP_HELPER_IMAGE
 from .colour import TICK, dim, warn
 from .core import MODE_SERVICE, SetupError
 from .dockerlib import _compose, _docker, container_status, service_container
+from .versions import mode_image
 from .settings import (
     GRAPH_TYPE_VAR, embabel_command, env_file_value, env_path, graph_engine, set_env_var, volume_exists,
     volume_name,
@@ -116,13 +118,15 @@ def migrate(move: Move) -> dict:
     print("  Stopping the app" + (" — Neo4j stays up as the source." if move.source == "neo4j" else "."))
     _compose(move.mode, "stop", move.service, capture=True)
     created = move.target in stores.SERVER_SETTINGS and not stores.volume_held(move.target)
+    tables = None
     try:
         _prepare_target(move, stamp)
+        tables = _target_tables(move, created)
         report = _import(move)
         _check(report, move)
     except SetupError as failure:
-        _roll_back(move, backups, stamp, created)
-        raise MigrationFailed(f"{failure}\n  The appliance is back on {move.source}; its graph was never changed.") from failure
+        left = _roll_back(move, backups, stamp, created, tables)
+        raise MigrationFailed(f"{failure}\n  The appliance is back on {move.source}; its graph was never changed.{left}") from failure
     print(f"  Restarting without the import, on the {move.target} store alone.")
     _compose(move.mode, "up", "-d", move.service, capture=True)
     _stop_source(move)
@@ -189,19 +193,43 @@ def _stop_source(move: Move) -> None:
         stores.stop_bundled(move.source)
 
 
-def _roll_back(move: Move, backups: tuple[str, str | None], stamp: str, created: bool) -> None:
+@dataclass
+class _TargetTables:
+    """What the target's prefix held before the copy (None: the server could not be asked), and how to ask again."""
+    image: str | None
+    prefix: str
+    before: list[str] | None
+
+
+def _target_tables(move: Move, created: bool) -> _TargetTables | None:
+    """A server store this run did not create, asked what its prefix holds before anything is written there: only a
+    prefix that held nothing is dropped if the copy fails (storetables.py). A server this run created goes whole."""
+    if move.target not in stores.SERVER_SETTINGS or created:
+        return None
+    image = mode_image(move.mode)
+    prefix = storetables.prefix_of(move.target)
+    return _TargetTables(image, prefix, storetables.tables_under(image, move.target, prefix))
+
+
+def _roll_back(move: Move, backups: tuple[str, str | None], stamp: str, created: bool, tables: _TargetTables | None) -> str:
+    """Back on the source store; returns what to say about the tables the attempt wrote into a server it kept."""
     print(f"  {warn('!')} Rolling back to {move.source}.")
     _compose(move.mode, "stop", move.service, capture=True)
+    left = ""
     if move.target == "sqlite":
         _set_aside(list(SQLITE_FILES), f"failed-migrate-{stamp}")
     elif created:
         stores.remove_bundled(move.target)
     else:
+        # read while .env still names the target, and before a bundled one stops
+        if tables is not None:
+            left = storetables.after_rollback(tables.image, move.target, tables.prefix, tables.before)
         stores.stop_bundled(move.target)
     shutil.copyfile(backups[0], env_path())
     if backups[1]:
         shutil.copyfile(backups[1], stores.secrets_path())
     _compose(move.mode, "up", "-d", capture=True)
+    return left
 
 
 def _neo4j_password(container: str) -> str:
