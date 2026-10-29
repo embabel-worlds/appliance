@@ -340,6 +340,30 @@ def graph_overlay_file(mode: str) -> str | None:
     return None
 
 
+# The engine's stores that are a server, the host the bundled one answers on inside the
+# compose network, and the URL .env carries for it. A URL naming any other host is a server
+# somebody else runs, and the appliance bundles nothing for it.
+BUNDLED_STORES = {
+    "postgres": ("graph-postgres", "GRAPH_EMBABEL_POSTGRES_URL", "jdbc:postgresql://graph-postgres:5432/embabel"),
+    "oracle": ("graph-oracle", "GRAPH_EMBABEL_ORACLE_URL", "jdbc:oracle:thin:@//graph-oracle:1521/FREEPDB1"),
+}
+
+
+def graph_store_bundled(store: str | None) -> bool:
+    """Whether .env's store is a server this appliance runs itself: its URL names the bundled host."""
+    entry = BUNDLED_STORES.get((store or "").strip().lower())
+    return bool(entry) and f"//{entry[0]}:" in (env_file_value(entry[1]) or "")
+
+
+def graph_store_overlay_file(mode: str) -> str | None:
+    """The bundled store's overlay for this mode, or None: only on the Embabel engine, and only for
+    a store on a server the appliance runs itself."""
+    store = (env_file_value("VC_EMBABEL_STORE") or "").strip().lower()
+    if graph_engine() != "EMBABEL" or not graph_store_bundled(store):
+        return None
+    return f"graph-store-{store}-{mode}.yml"
+
+
 def local_embeddings_wanted() -> bool:
     """Whether this appliance runs the local embedder.
 
@@ -393,6 +417,11 @@ def compose_command(modes: str | tuple[str, ...], *argv: str) -> list[str]:
         graph_overlay = graph_overlay_file(mode)
         if graph_overlay and os.path.exists(graph_overlay):
             cmd += ["-f", graph_overlay]
+        # AND THE ENGINE'S STORE, when it is a server the appliance runs itself. A store on a
+        # server somebody else runs is only a URL in .env, and composes nothing.
+        store_overlay = graph_store_overlay_file(mode)
+        if store_overlay and os.path.exists(store_overlay):
+            cmd += ["-f", store_overlay]
     return cmd + list(argv)
 
 

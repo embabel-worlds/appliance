@@ -620,6 +620,19 @@ it, then compares the two value for value; only a verified copy switches the app
 over, and anything else leaves it on Neo4j as it was. Neo4j's volume is never changed,
 so `GRAPH_TYPE=NEO4J` and `embabel up` go back. [CLI.md](CLI.md) has the details.
 
+The Embabel engine's graph can also live on a **database server** instead of its SQLite
+file: Postgres, or Oracle (23ai, where the graph is a SQL property graph too). The same verb
+moves it there, from Neo4j or from wherever the engine keeps it now, and back again:
+
+```bash
+embabel graph migrate --to postgres     # a Postgres bundled with the appliance
+embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph
+embabel graph migrate --to embabel      # back to the SQLite file
+```
+
+Without `--url` the appliance runs the server itself, with a volume of its own and a password
+generated into `secrets.env`. With `--url` it uses yours.
+
 The engine is one of a handful of defaults with data or a provider behind them, and each
 is written into `.env` the same way, so that no later release can move an appliance off
 what it runs on: the Embabel engine's store and its file paths, the Neo4j version and
