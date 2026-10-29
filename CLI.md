@@ -690,43 +690,74 @@ compose has to create them, which means pulling the images.
 |---|---|
 | `--yes` | skip the confirmation |
 
-### `embabel graph migrate --to embabel`
+### `embabel graph migrate --to embabel|postgres|oracle`
 
-Move a Neo4j appliance's knowledge graph into the Embabel engine, check it, and switch the
-appliance over. Every node, relationship, label, property, vector and index comes across;
-the Neo4j graph is not changed, and going back is one line of `.env`.
+Move this appliance's knowledge graph to another store, check it, and switch the appliance
+over. Every node, relationship, label, property, vector and index comes across; the store it
+comes from is not changed, and going back is the old `.env` and `embabel up`.
 
-**The server does the copy, as its engine opens.** The verb counts the Neo4j graph, stops
-the app (Neo4j stays up — it is the source), writes `GRAPH_TYPE=EMBABEL` and the engine's
-store into `.env` exactly as setup writes them for a new appliance, and starts the app
-once with the import switched on. Before anything else in the server runs, it reads Neo4j
-over Bolt and writes every value into the empty engine as it was — a vector as the same
-doubles, a date-time with its zone — then copies the constraints and indexes, reads the
-engine back and compares it with what it read: a count and a checksum of every value for
-each combination of labels and each relationship type. It has to be then: the server's
-own boot writes into its graph (the store identity each world is stamped with, schema
-markers, reference data), and the user records a sign-in checks are themselves in the
-graph being moved.
+| `--to` | The engine keeps its graph in |
+|---|---|
+| `embabel` | its SQLite file on the data volume, `/data/graph/graph.sqlite` (what a new appliance runs) |
+| `postgres` | a Postgres server: one bundled with the appliance, or yours with `--url` |
+| `oracle` | an Oracle server: Oracle Database 23ai Free bundled with the appliance, or yours with `--url` |
 
-One thing stays behind on purpose: the query log (`VcQueryLog` nodes, kept 14 days). The
-Embabel engine holds its query log only while it runs and never writes it to its store, so
-copied entries would verify and then be gone at the next restart. They are counted instead,
-the summary says how many, and they remain in Neo4j's volume.
+It moves a graph from **Neo4j** (an appliance installed before the Embabel engine was the
+default) into any of them, and between them: SQLite to Postgres, Postgres to Oracle, Oracle
+back to SQLite, and so on.
 
-Progress prints as it goes, and the report is kept at `/data/graph/neo4j-import.json` on
-the data volume. On a verified report, and counts that match the ones the verb took from
-Neo4j before it began, the app restarts without the import and Neo4j stops. Anything
-else — a difference, a server too old to import (`embabel upgrade` first), an app that
-stops — puts `.env` back, sets the half-made store aside, and starts the appliance on
-Neo4j again.
+**The server does the copy, as its engine opens.** The verb stops the app (a source server —
+Neo4j, or the old Postgres or Oracle — stays up), keeps `.env` and `secrets.env` beside the new
+ones as `*.before-graph-migrate-<time>`, readies the target, writes it into `.env`, and starts
+the app once with the import switched on. Before anything else in the server runs:
 
-The old `.env` is kept beside the new one as `.env.before-graph-migrate-<time>`. To go
-back to Neo4j afterwards, set `GRAPH_TYPE=NEO4J` and run `embabel up`: Neo4j's volume is
-still there, holding the graph as it was when you migrated — anything written since went
-to the engine.
+- **From Neo4j**, it reads every node and relationship over Bolt and writes them into the
+  engine as they were (a vector as the same doubles, a date-time with its zone), copies the
+  constraints and indexes, and compares the engine with what it read.
+- **From another of the engine's stores**, it restores that store exactly as a boot of it would
+  (its rows, then anything it journalled since), writes the whole graph into the empty target in
+  one checkpoint, which keeps every id, and compares the target's rows with the graph, and with the
+  source's own rows when those are the whole graph.
+
+Each comparison is a count and a checksum of every value for each combination of labels and each
+relationship type. It has to happen then: the server's own boot writes into its graph (the store
+identity each world is stamped with, schema markers, reference data), and the user records a
+sign-in checks are themselves in the graph being moved.
+
+Progress prints as it goes. The report is kept on the data volume at
+`/data/graph/neo4j-import.json` or `/data/graph/store-import.json`. When the report is verified,
+and from Neo4j the counts also match the ones the verb took before it began, the app restarts
+without the import and the source server stops cleanly, its volume kept. Anything else (a
+difference, a target that already holds a graph, a server too old to import, an app that stops)
+puts both files back, removes or sets aside what the attempt made, and starts the appliance on
+the store it had.
+
+**The bundled servers.** Without `--url`, the target is a server the appliance runs itself:
+`graph-postgres` (Postgres 17) or `graph-oracle` (Oracle Database 23ai Free, a several-GB image
+that wants about 2 GB of memory), each with a volume of its own that `embabel backup` copies with
+the rest. Its password is generated into `secrets.env` (`GRAPH_EMBABEL_POSTGRES_PASSWORD`,
+`GRAPH_EMBABEL_ORACLE_PASSWORD`), never `.env`. With `--url`, the target is your server: the URL
+and `--username` go into `.env`, and the password, asked for or read from
+`EMBABEL_GRAPH_STORE_PASSWORD`, goes into `secrets.env`. The target must be empty.
+
+**Oracle's layout.** On 23ai the engine keeps the graph in its property-graph layout: JSON labels
+and properties under a SQL property graph, which SQL/PGQ can query too.
+`GRAPH_EMBABEL_ORACLE_LAYOUT=rows` in `.env` keeps the engine's own rows instead, for a server
+before 23ai; `auto`, the default, asks the server.
+
+**What stays behind.** The query log (`VcQueryLog` nodes, kept 14 days): the engine holds it only
+while it runs and never writes it to a store, so it is counted, the summary says how many, and it
+stays where it was.
+
+**Going back.** Put the kept `.env.before-graph-migrate-<time>` (and `secrets.env`) back and run
+`embabel up`. From Neo4j, `GRAPH_TYPE=NEO4J` alone does it. The store you left holds the graph as
+it was when you migrated; anything written since went to the new one.
 
 | Flag | |
 |---|---|
+| `--to` | `embabel`, `postgres` or `oracle` |
+| `--url` | a server of your own (a JDBC URL), instead of the bundled one |
+| `--username` | the user on that server (default `embabel`) |
 | `--yes` | skip the confirmation |
 | `--worlds` / `--me` | which door, when it cannot be told from what is running |
 

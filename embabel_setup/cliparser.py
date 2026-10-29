@@ -19,7 +19,7 @@ from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_
                      cmd_status, cmd_up)
 
 
-EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        move a Neo4j appliance onto the Embabel engine', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        Neo4j, or a server store, onto the engine\'s SQLite file\n  embabel graph migrate --to postgres       onto a Postgres server bundled with the appliance\n  embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
 
 # `realms validate` is a verb's verb, so the per-verb pass at the end of build_parser never sees it.
 REALM_VALIDATE_EXAMPLES = (
@@ -243,7 +243,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("graph", help="the knowledge graph's engine: move a Neo4j graph into the Embabel engine")
     gr = p.add_subparsers(dest="graph_command")
     a = gr.add_parser("migrate", help="copy the graph into another engine, verify it, and switch over")
-    a.add_argument("--to", required=True, choices=["embabel"], help="the engine to move to")
+    a.add_argument("--to", required=True, choices=["embabel", "postgres", "oracle"],
+                   help="embabel: the engine on its SQLite file; postgres or oracle: the engine on that server")
+    a.add_argument("--url", help="a server of your own (a JDBC URL); without it, one bundled with the appliance")
+    a.add_argument("--username", help="the server user (default: embabel); its password is asked for, or "
+                                      "read from EMBABEL_GRAPH_STORE_PASSWORD, and kept in secrets.env")
     a.add_argument("--yes", action="store_true", help="skip the confirmation")
     mode_flags(a)
     a.set_defaults(func=cmd_graph)

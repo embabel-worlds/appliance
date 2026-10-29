@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import functools
 import io
 import json
 import os
@@ -420,27 +419,29 @@ def cmd_completion(args) -> int:
 
 
 def cmd_graph(args) -> int:
-    """The knowledge graph's engine. `migrate --to embabel` moves a Neo4j appliance's graph into
-    the Embabel engine and switches the appliance over; see graphmigrate.py for how and why."""
-    from .graphmigrate import migrate_to_embabel, summary
+    """The knowledge graph's store. `migrate --to embabel|postgres|oracle` moves the graph — from Neo4j,
+    or between the Embabel engine's own stores — and switches the appliance over; see graphmigrate.py."""
+    from .graphmigrate import migrate, plan, summary
     if args.graph_command != "migrate":
-        print("  embabel graph migrate --to embabel   move this appliance's graph from Neo4j into the Embabel engine")
+        print("  embabel graph migrate --to embabel|postgres|oracle   move this appliance's graph to another store")
         return 0
-    mode = resolved_mode(args.mode)
-    confirm = functools.partial(_confirm_migration, args.yes)
-
     try:
-        report = migrate_to_embabel(mode, confirm)
+        move = plan(resolved_mode(args.mode), args.to, args.url, args.username)
+        if not _confirm_migration(args.yes, move):
+            print("  Nothing was changed.")
+            return 1
+        report = migrate(move)
     except s.SetupError as e:
         print(f"  {s.warn('!')} {e}")
         return 1
-    print(summary(report))
+    print(summary(report, move))
     return 0
 
 
-def _confirm_migration(yes: bool, source: dict) -> bool:
-    print(f"  Moving this appliance's graph — {source['nodes']:,} nodes and {source['relationships']:,} "
-          "relationships — from Neo4j into the Embabel engine.")
-    print("  The app stops while it copies; every value is compared after. Neo4j's graph is not changed,")
-    print("  and if anything fails the appliance comes back on Neo4j as it was.")
+def _confirm_migration(yes: bool, move) -> bool:
+    counts = (f" — {move.counts['nodes']:,} nodes and {move.counts['relationships']:,} relationships —"
+              if move.counts else "")
+    print(f"  Moving this appliance's graph{counts} {move.describe()}.")
+    print("  The app stops while it copies; every value is compared after. The graph it comes from is not")
+    print("  changed, and if anything fails the appliance comes back on it as it was.")
     return yes or input("  Type 'yes' to migrate: ").strip().lower() == "yes"

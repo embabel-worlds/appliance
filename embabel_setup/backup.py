@@ -18,10 +18,10 @@ import time
 from .colour import MIDDOT, TICK, dim
 from .core import APPLIANCE_DIR, SetupError
 from .dockerlib import (
-    OVERRIDE_FILE, _compose, _docker, backup_mode, running_mode_names, running_modes,
+    OVERRIDE_FILE, _compose, _docker, backup_mode, graph_store_bundled, running_mode_names, running_modes,
 )
 from .settings import (
-    compose_project, configured_mode, env_file, graph_engine, instance, volume_exists,
+    compose_project, configured_mode, env_file, env_file_value, graph_engine, instance, volume_exists,
     volume_name,
 )
 from .versions import appliance_versions
@@ -64,6 +64,12 @@ GRAPH_VOLUMES = {
     "NEO4J": ("embabel_appliance_neo4j_data", "neo4j-data.tgz", "the knowledge graph"),
     "FALKORDB": ("embabel_appliance_falkordb_data", "falkordb-data.tgz", "the knowledge graph"),
 }
+# The Embabel engine's store, when it is a server the appliance runs itself: there the graph is
+# in that server's volume, not in the data volume.
+STORE_VOLUMES = {
+    "postgres": ("embabel_graph_postgres_data", "graph-postgres-data.tgz", "the knowledge graph (Postgres)"),
+    "oracle": ("embabel_graph_oracle_data", "graph-oracle-data.tgz", "the knowledge graph (Oracle)"),
+}
 # What a backup from before the manifest named its tarballs holds: Neo4j's.
 LEGACY_BACKUP_FILES = ("assistant-data.tgz", "neo4j-data.tgz")
 
@@ -71,11 +77,14 @@ LEGACY_BACKUP_FILES = ("assistant-data.tgz", "neo4j-data.tgz")
 def backup_volumes() -> tuple[tuple[str, str, str], ...]:
     """The volumes this appliance's data is in, on the engine .env names."""
     graph = GRAPH_VOLUMES.get(graph_engine())
+    if graph is None and graph_engine() == "EMBABEL":
+        store = (env_file_value("VC_EMBABEL_STORE") or "").strip().lower()
+        graph = STORE_VOLUMES.get(store) if graph_store_bundled(store) else None
     return (DATA_VOLUME, graph) if graph else (DATA_VOLUME,)
 
 
 def _volume_for(filename: str) -> tuple[str, str, str] | None:
-    for entry in (DATA_VOLUME, *GRAPH_VOLUMES.values()):
+    for entry in (DATA_VOLUME, *GRAPH_VOLUMES.values(), *STORE_VOLUMES.values()):
         if entry[1] == filename:
             return entry
     return None
