@@ -154,7 +154,9 @@ def export_setup(path: str, mode: str, world: str | None = None, confirm=None) -
                           # config/ or data/, themes are bare *.css, and the manifest and setup/*.json match neither
                           f"--transform 's,^\\(config\\|data\\)/,setup/world/\\1/,' --transform 's,^\\([^/]*\\.css\\)$,setup/themes/\\1,' "
                           f"-C {WORLD_BASE}/{where} --verbatim-files-from -T {staging}/files.list "
-                          f"-C {WORLD_BASE}/{THEMES} --verbatim-files-from -T {staging}/themes.list",
+                          # An appliance with no custom theme has no themes folder, and tar refuses a -C it cannot enter
+                          # even with nothing to read there.
+                          + (f"-C {WORLD_BASE}/{THEMES} --verbatim-files-from -T {staging}/themes.list" if themes else ""),
                    path)
         manifest["compressedBytes"] = os.path.getsize(path)
         return manifest
