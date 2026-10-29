@@ -650,6 +650,28 @@ def env_file_assigns(key: str) -> bool:
         return any((_dotenv_assignment(line) or ("",))[0] == key for line in f)
 
 
+# A setting whose NAME says it is a credential. Matched by underscore-separated part, so
+# NEO4J_PASSWORD, OPENAI_API_KEY, EMBABEL_KEY_SECRET, GITHUB_TOKEN and NEO4J_AUTH all
+# count, and ASSISTANT_EMBEDDING_MODEL does not. Erring wide is the cheap mistake: a
+# value hidden that could have been shown costs a look in .env; the other way round is a
+# password in a scrollback, a screen-share or a pasted bug report.
+SECRET_NAME_PARTS = frozenset({
+    "PASSWORD", "PASSWD", "PASS", "PWD", "SECRET", "SECRETS", "TOKEN", "KEY", "APIKEY",
+    "CREDENTIAL", "CREDENTIALS", "AUTH", "PRIVATE", "BEARER",
+})
+
+
+def is_secret_setting(key: str) -> bool:
+    """Whether a setting's value is a credential and must never be printed."""
+    return any(part in SECRET_NAME_PARTS for part in re.split(r"[^A-Z0-9]+", key.upper()))
+
+
+def shown_setting(key: str, value: str) -> str:
+    """`KEY=value` for a person to read — with the value withheld when the key names a
+    credential. Every line the CLI prints about a setting goes through here."""
+    return f"{key}=<hidden>" if is_secret_setting(key) else f"{key}={value}"
+
+
 def env_file_value(key: str, name: str | None = None) -> str | None:
     """One value from an instance's settings, or None. Defaults to the current
     instance; `name` is for reading ANOTHER one, which is how the port allocator
