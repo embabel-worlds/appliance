@@ -143,6 +143,36 @@ def check_manifest_gate() -> None:
 for step in (check_shapes_in_python, check_shapes_in_grep, check_selection, check_refusal, check_setup_withholds, check_manifest_gate):
     step()
 
+
+def check_embedding_identity() -> None:
+    """Two models of one width are two models: the import compares the bundle's recorded model by name, not width."""
+    def manifest(model, dims, provider="ollama", recorded=True, complete=True):
+        return {"embedding": {"model": model, "provider": provider, "dimensions": dims, "recorded": recorded,
+                              "complete": complete, "widths": {"Chunk.embedding": [dims]}}}
+
+    note = bundleimport._embedding_note
+    with patch.object(bundleimport, "env_file_value", return_value="hosted"):
+        same = note(manifest("nomic-embed-text", 768), {"model": "nomic-embed-text", "dimensions": 768})
+        check(same is None, f"the same model was called different: {same}")
+        other = note(manifest("nomic-embed-text", 768), {"model": "all-mpnet-base", "dimensions": 768})
+        check(other is not None and "all-mpnet-base" in other and "widths match" in other and '"force": true' in other,
+              f"two models of one width were not told apart: {other}")
+        role = note(manifest("nomic-embed-text", 768), None)
+        check(role is not None and "drift.model" in role, f"a configured role is not sent to the server's comparison: {role}")
+        partial = note(manifest("nomic-embed-text", 768, complete=False), {"model": "nomic-embed-text", "dimensions": 768})
+        check(partial is not None and "did not finish" in partial, f"an unfinished re-embed in the bundle is not said: {partial}")
+    with patch.object(bundleimport, "env_file_value", return_value="nomic-embed-text"):
+        legacy = note(manifest("nomic-embed-text", None, provider=None, recorded=False), None)
+        check(legacy is None, f"a bundle from before the record, on the same configured model, was called different: {legacy}")
+    check(bundle._embedding({"embeddingModel": {"model": "m", "provider": "p", "dimensions": 8, "complete": True}})["recorded"],
+          "the export does not take the model the graph records")
+    with patch.object(bundle, "env_file_value", return_value="hosted"):
+        check(bundle._embedding({})["model"] == "hosted" and not bundle._embedding({})["recorded"],
+              "a graph with no record does not fall back to the configured model, marked as such")
+
+
+check_embedding_identity()
+
 if failures:
     for f in failures:
         print(f"  ✗ {f}")
@@ -150,3 +180,4 @@ if failures:
 print("  ✓ every credential shape is caught by the export's scan, and none is printed")
 print("  ✓ an export never selects a credential path, and a setup withholds what holds a key")
 print("  ✓ a bundle is read and its format checked before anything changes")
+print("  ✓ the bundle's embedding model is compared by name, so two models of one width are told apart")
