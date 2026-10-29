@@ -866,6 +866,7 @@ through the running app (sign in as yourself: `EMBABEL_USER` / `EMBABEL_PASSWORD
 | lenses, watches | from the graph, through the API; a watch's delivery secret and headers are not carried |
 | views, actions and handlers, skills, agents, schedules, commands, personalities and prompts, tours, focuses, goals, connections | the world's own files under `config/` — what git says changed since the world was cloned from its template |
 | model role assignments, active personality, notification routing, world settings | `config/world.yml` |
+| console preferences: the chosen theme and its rotation, wallpaper, window style and layout, pinned apps and the dock | `config/console.json`, which the server keeps for the console (`/api/v1/profile/console`) |
 | custom themes | `admin/themes/*.css` |
 | embedding model | recorded and compared, never switched |
 
@@ -876,9 +877,9 @@ appliance (`--world USER/WORLD`, default the signed-in user's): replaced files a
 `.setup-import-<time>`, realms already installed are left alone, the world is rebuilt, and the report
 lists what was installed and what failed.
 
-**What only the browser knows.** The console keeps the chosen theme and its rotation, the wallpaper,
-the window style and layout, pinned apps and the dock, view options, sound and tours completed in the
-browser's `localStorage`. No appliance has them, so no bundle carries them.
+**What only the browser knows.** The console's view options, sound and tours completed stay in the
+browser's `localStorage`. No appliance has them, so no bundle carries them. A browser that was open
+during an import shows the imported theme, layout and pins once it is reloaded.
 
 | Flag | |
 |---|---|
