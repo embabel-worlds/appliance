@@ -171,6 +171,23 @@ def codex_token_export(token: str, target: str | None = None) -> str:
             else f"export {CODEX_TOKEN_ENV}={shlex.quote(token)}")
 
 
+def _scrubbed(text: str, token: str) -> str:
+    """A client's own output with our token taken out. `claude mcp add` is handed the
+    token on its command line, so its errors — and Python's, for a timeout — can quote it."""
+    return text.replace(token, "<token>") if token else text
+
+
+def codex_token_export_hint(target: str | None = None) -> str:
+    """The export line with the token left as a placeholder, for a person to complete.
+
+    The token is a bearer credential for the whole appliance, so setup never prints it:
+    a terminal is scrollback, a screen-share and a pasted transcript. `agents --show-token`
+    is the one place that prints it, because there somebody asked for exactly that."""
+    return (f"set -gx {CODEX_TOKEN_ENV} <token>"
+            if target and target.endswith("config.fish")
+            else f"export {CODEX_TOKEN_ENV}=<token>")
+
+
 def install_codex_token(token: str, target: str) -> None:
     """Put the Codex token in one replaceable shell-profile block."""
     export = codex_token_export(token, target)
@@ -440,9 +457,10 @@ def wire_coding_agents(result: dict) -> None:
                     print(f"  Claude Code wired as '{MCP_SERVER_NAME}' — new sessions will see the appliance.")
                     wired = True
                 else:
-                    print(f"  claude mcp add failed: {(run.stderr or run.stdout).strip()[:200]}")
+                    print(f"  claude mcp add failed: {_scrubbed((run.stderr or run.stdout).strip(), token)[:200]}")
             except (subprocess.SubprocessError, OSError) as e:
-                print(f"  Could not run claude: {e}")
+                # A timeout's message quotes the command line, and the token is on it.
+                print(f"  Could not run claude: {_scrubbed(str(e), token)}")
     else:
         print("  Claude Code CLI not found on PATH.")
 
@@ -482,13 +500,16 @@ def wire_coding_agents(result: dict) -> None:
                             except OSError as e:
                                 print(f"  Could not update {profile}: {e}")
                                 print(f"  Add this to {profile} before using Codex:")
-                                print(f"    {codex_token_export(token, profile)}")
+                                print(f"    {codex_token_export_hint(profile)}")
+                                print("  " + dim(f"<token> is what `{embabel_command('agents')} --show-token` prints."))
                         else:
                             print(f"  Add this to {profile} before using Codex:")
-                            print(f"    {codex_token_export(token, profile)}")
+                            print(f"    {codex_token_export_hint(profile)}")
+                            print("  " + dim(f"<token> is what `{embabel_command('agents')} --show-token` prints."))
                     else:
                         print(f"  Set ${CODEX_TOKEN_ENV} in your shell before using Codex:")
-                        print(f"    {codex_token_export(token)}")
+                        print(f"    {codex_token_export_hint()}")
+                        print("  " + dim(f"<token> is what `{embabel_command('agents')} --show-token` prints."))
                     try:
                         install_codex_agents_block()
                         print(f"  Added appliance guidance to {CODEX_AGENTS_FILE} (a marked block; the rest of the file is untouched).")
@@ -512,21 +533,21 @@ def wire_coding_agents(result: dict) -> None:
     if chat_url != url:
         print(f"\n  For a chat client — Claude Desktop, Open WebUI, anything speaking MCP:")
         print(f"    URL:    {chat_url}")
-        if wired:
-            print(f"    Token:  `{embabel_command('agents')} --show-token`")
-        else:
-            print(f"    Header: Authorization: Bearer {token}")
+        print("    Header: Authorization: Bearer <token>")
+        print(f"    Token:  `{embabel_command('agents')} --show-token`")
         print("  " + dim("Same token, the assistant's tools rather than the builder's."))
 
     if wired:
         return
 
-    # Manual fallback — also what Cursor and other MCP clients copy from. Printing
-    # the token is deliberate: this is the operator's own machine and the only time
-    # it is available.
+    # Manual fallback — also what Cursor and other MCP clients copy from. The token is
+    # NAMED, not printed: setup output is scrollback, screen-shares and pasted bug
+    # reports, and `agents --show-token` prints it on request for as long as the
+    # appliance keeps it — this is not the only chance to see it.
     print("\n  Wire a coding agent manually:")
     print(f"    URL:    {url}")
-    print(f"    Header: Authorization: Bearer {token}")
+    print("    Header: Authorization: Bearer <token>")
+    print(f"    Token:  `{embabel_command('agents')} --show-token`")
     print(f"  (Claude Code: claude mcp add --transport http --scope user {MCP_SERVER_NAME} "
           f"{url} --header \"Authorization: Bearer <token>\")")
     print(f"  (Codex:       codex mcp add {MCP_SERVER_NAME} --url {url} "
