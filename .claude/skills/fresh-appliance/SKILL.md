@@ -38,13 +38,15 @@ still has a source system to reconcile against afterwards).
   directory — a harness that always presses Enter never sees those).
 - **The worlds door asks nothing in the terminal.** It prints `Finish in your browser` and a
   link, `<console>/#setup=<token>`, and the console's onboarding creates the account,
-  checks the provider key as it is pasted, takes the terms and calls `/complete`.
+  checks the provider key as it is pasted, and calls `/complete`. The terms accepted at the
+  top of the terminal run are already recorded on the appliance, so the console does not
+  ask them again.
   `drive-install.py` asserts the terminal half; the account half is the console's, so
   finish it there — that is the path a new user takes. Driving it headless instead means
   calling the onboarding's own API with the token as `X-Embabel-Setup-Token` (read it with
   `docker exec embabel-<name>-worlds-1 cat /data/embabel/assistant/admin/.setup-token`):
   `POST /api/v1/setup/account`, `/provider`, `/terms` (the version `GET /api/v1/setup`
-  reports), `/complete`. That proves the API, not the page; say which one you did. The me
+  reports, and only while it reports `termsAccepted` false), `/complete`. That proves the API, not the page; say which one you did. The me
   door still asks in the terminal, and `--username`/`--password` answer it.
 - **Credentials: `demo` / `terminat8r`, display name `Rod Johnson`.** Standardised so an
   install you made is one you can still drive an hour later. Guessing at a password on an
