@@ -22,9 +22,9 @@ def default_base() -> str:
 def console_url() -> str:
     """WHERE A PERSON GOES in worlds mode. The server serves the console itself, at `/ui/` — but
     this names the console's long-standing port rather than the API's, because that port still
-    answers (the compose file maps it onto the same server) and it is the address people have.
-    A browser keys what it stores on the origin, port included, so the one they already use is the
-    one that keeps their sign-in and their choices."""
+    answers (the compose file maps it onto the same server) and it is the address people have. The
+    credential their browser signs in with is keyed to that origin, port included; their settings
+    are kept by the appliance and follow the user rather than the browser."""
     return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}/ui/"
 def api_address(base: str) -> str:
     """The appliance's API as a DIAGNOSTIC, deliberately not as a link.

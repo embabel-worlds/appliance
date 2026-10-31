@@ -128,7 +128,7 @@ it. Create a handler through `action_brief` → `create_action`, dry-run it with
 and load the page — and the installed realm's apps — in a real browser, through the
 CONSOLE's origin with a session (`GET /api/v1/auth/csrf`, then `POST /api/v1/auth/login`
 sending the token in the header that call names). An app opened on the API port without a
-session redirects to `/ui/login`, which only the console serves, so what renders is a 404:
+session redirects to `/ui/login`, which the server now serves from the console's own bundle:
 the harness's failure, not the app's. These are the world-authoring surfaces; a fresh
 install where they fail is read-only in disguise.
 

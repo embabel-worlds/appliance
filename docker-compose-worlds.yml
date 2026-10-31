@@ -70,10 +70,12 @@ services:
       # handed host.docker.internal:${server.port}, so the two move together.
       - "127.0.0.1:${WORLDS_PORT:-11043}:${WORLDS_PORT:-11043}"
       # THE CONSOLE'S OLD ADDRESS, KEPT, pointed at the app that now serves the console itself.
-      # Not nostalgia: a browser keys what it stores on the ORIGIN, and an origin includes the port.
-      # The console holds its sign-in there (`worlds-auth`) along with everything a person has
-      # chosen or dismissed, so moving them to the door's port would sign them out and forget their
-      # choices. Same address, same storage; `/` on either port redirects to the console.
+      # It is the address people have, and it is where their browser holds the credential the
+      # console signs in with (`worlds-auth`), which is keyed to the ORIGIN — port included. Moving
+      # everybody to the server's port would have asked every one of them to sign in again for no
+      # reason they could see. Their SETTINGS would survive either way: theme, wallpaper, window
+      # look, pins and the dock are kept by the appliance in the signed-in user's world
+      # (/api/v1/profile/console), not by the browser. `/` on either port redirects to the console.
       - "127.0.0.1:${WORLDS_CONSOLE_PORT:-11044}:${WORLDS_PORT:-11043}"
       # Bolt, the Neo4j wire protocol, for Neo4j Browser, the drivers and the graph tools
       # built on them. The server speaks it on 7687 (a world through Virtual Cypher, or
