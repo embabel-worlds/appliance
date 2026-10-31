@@ -77,6 +77,22 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 - `warnings` non-empty in the result envelope means a backing source failed or truncated: few
   rows means "source unavailable", not "no data".
 
+## Symptom: a query names a shared label (`:Memory`, `:Todo`) and your realm's rows are missing from it
+
+- The type declares `parents: [Memory]`. The right properties alone make nothing a Memory.
+- It restates `visibility`, `userAnchor`, `description` and an identity property — none is
+  inherited, and a virtual child without identity never materialises and nothing errors.
+- Its producer stamps `source` and `status` where the parent's contract has them.
+- The parent is declared, by default-world or an installed vocabulary realm such as
+  realm-code-model. An unresolvable parent is dropped with a load warning, and
+  `realm_status` `problems` shows it.
+- A bare `MATCH (m:Memory)` is refused by design; the query must reach a child through its
+  join. `realm_validate` now warns when a type looks like a contract but has no parents.
+
+The contract is default-world's
+[`config/types/README.md`](https://github.com/embabel-worlds/default-world/blob/main/config/types/README.md#shared-labels),
+"Shared labels"; realm-authoring's Step 1 walks the parent ladder.
+
 ## Symptom: a schedule never fires
 
 - `defineSchedule` needs SIX cron fields (`0 0 8 * * *`); the build refuses fewer, and a
