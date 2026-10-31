@@ -491,7 +491,6 @@ _IMAGES_FOR_MODE: dict[str, list[str]] = {}
 # conversion" tells them what they lose by not waiting.
 IMAGE_PURPOSE = {
     "assistant": "the appliance itself",
-    "worlds-console": "the console",
     "neo4j": "the graph",
     "docling": "structured PDF and Office conversion",
     "sandbox": "the code sandbox",
@@ -510,7 +509,6 @@ IMAGE_SIZE = {
     "neo4j": "~600 MB",
     "grafana": "~400 MB",
     "prometheus": "~300 MB",
-    "worlds-console": "~80 MB",
 }
 
 # The images the mode WAITS on. Everything else arrives via start_deferred while
@@ -519,7 +517,9 @@ IMAGE_SIZE = {
 # fresh install, 2026-08-25). "sandbox" is checked FIRST when classifying: the
 # sandbox image name contains "assistant" too, and matching that fragment would
 # promote a background pull into the boot count.
-BOOT_IMAGE_FRAGMENTS = ("neo4j", "worlds-console", "assistant")
+# The console used to be the third: it was its own image, and a boot waited for it. The server
+# carries the console now, so there is nothing left to wait for beyond these two.
+BOOT_IMAGE_FRAGMENTS = ("neo4j", "assistant")
 
 def _boots(image: str) -> bool:
     if "sandbox" in image:
