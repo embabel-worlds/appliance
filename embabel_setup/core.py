@@ -92,8 +92,50 @@ def _sanitize(raw: str) -> str:
     return "".join(ch for ch in cleaned if ch >= " " or ch == "\t")
 
 
-def prompt(text: str) -> str:
+# --headless: an install driven by CI or a provisioning tool, where there is no
+# person to ask. Set once by setup.py before anything can prompt.
+_HEADLESS = False
+
+
+def set_headless(on: bool) -> None:
+    global _HEADLESS
+    _HEADLESS = on
+
+
+def is_headless() -> bool:
+    return _HEADLESS
+
+
+def prompt(text: str, headless: str | None = None) -> str:
     """prompt(), with the one failure it has in this program handled.
+
+    `headless` is what a --headless run answers HERE, declared by the call site
+    because only the call site knows whether a flag has already answered the
+    question: `--fresh` IS the confirmation that `fresh_wipe` asks for again.
+    Declared per call site rather than matched against the question's words —
+    copy gets edited, and scripts/drive-install.py is the standing lesson in what
+    happens to a harness that reads prose (it still answers a prompt that was
+    reworded, and its catch-all now agrees where it used to decline).
+
+    A prompt with nothing declared REFUSES under --headless rather than guessing
+    a default. A guess here is a password nobody typed or a wipe nobody asked
+    for; a refusal is a sentence naming the question that has no answer.
+    """
+    if _HEADLESS:
+        if headless is None:
+            raise SetupError(
+                "--headless cannot answer this question:\n"
+                f"    {text.strip()}\n"
+                "  Run setup without --headless, or supply the flag or variable that "
+                "answers it."
+            )
+        print(f"{text}{headless or '(default)'}   [--headless]")
+        return headless
+    return _ask(text)
+
+
+def _ask(text: str) -> str:
+    """The interactive read.
 
     Setup is interactive by design, and the way it is invoked most often —
     `curl … | sh` — hands it a stdin that is already at EOF, because the shell

@@ -678,7 +678,10 @@ def ensure_mode(mode: str) -> bool:
         other_mode = "me" if other[0] == "assistant" else "worlds"
         print(f"  The {other_mode} mode is running ({other[1]}), and only one mode may run at a time")
         print("  — they share one graph, so two would duplicate every scheduled job.\n")
-        answer = prompt(f"  Stop the {other_mode} mode and continue? [Y/n]: ").strip().lower()
+        # The default, which is what a person almost always takes: asking for THIS
+        # mode is the decision, and the other one cannot keep running beside it.
+        answer = prompt(f"  Stop the {other_mode} mode and continue? [Y/n]: ",
+                        headless="y").strip().lower()
         if answer not in ("", "y", "yes"):
             raise SetupError(
                 f"Left the {other_mode} mode running. Stop it when you are ready:\n"
