@@ -686,6 +686,16 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   { method: 'POST', path: /^\/api\/v1\/admin\/kg\/fills$/ },
   { method: 'DELETE', path: /^\/api\/v1\/admin\/kg\/fills\/(?!\.\.?(?:\/|$))[^/?#]+$/ },
   { method: 'POST', path: /^\/api\/v1\/cron\/compile-schedule$/ },
+  /*
+   * Query Studio's plan panel. Planning and running are separate routes on the appliance, so the one
+   * the panel calls as the author types cannot run anything; the run is its own button. The views
+   * listing tells the panel whether goal views can be saved, and a save goes where the Studio's other
+   * views do.
+   */
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/plan$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/plan\/run$/ },
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/views$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/views$/ },
 ]
 
 async function kitSend(settings: Settings, spec: RequestSpec): Promise<Outcome<unknown>> {

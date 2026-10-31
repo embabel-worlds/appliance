@@ -7,6 +7,7 @@
   <title>Embabel Me — Query Studio</title>
   <link rel="stylesheet" href="dist/editor.css" />
   <link rel="stylesheet" href="dist/kit.css" />
+  <link rel="stylesheet" href="dist/features.css" />
   <style id="theme"></style>
   <style>
     .dragbar {
@@ -401,6 +402,14 @@
               <span id="save-status" class="status"></span>
             </div>
           </div>
+        </div>
+      </section>
+      <!-- What the planner makes of the query as it is written: the facts it reads, the views and
+           rules that make them, and what each costs. Planning never runs anything. -->
+      <section class="panel">
+        <h2>Plan</h2>
+        <div class="panel-body">
+          <div id="plan"></div>
         </div>
       </section>
       <section class="panel">
