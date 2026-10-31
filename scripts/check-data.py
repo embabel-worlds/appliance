@@ -67,18 +67,42 @@ class FakeDocker:
 
 
 class FakeCopy:
-    """`docker cp - container:dir`: keeps the tar it is sent, and where it was sent."""
+    """`docker cp - container:dir`: keeps the tar it is sent, and where it was sent.
+
+    RECORDED ONCE, however many times the stream is closed. `_send` closes it exactly
+    once, but `IOBase.__del__` calls `self.close()` too, and that lookup finds the
+    attribute set here — so a collected FakeCopy recorded its tar a second time, from
+    the garbage collector, at whatever point in the run it happened to be collected.
+    One send then showed up as two to four, every assertion reading `sent` by position
+    read somebody else's send, and whether the suite passed depended on allocation:
+    first run after `__pycache__` was written, fine; every run after it, a failure
+    in the folder case that was not the folder case's fault.
+    """
     sent = []
 
     def __init__(self, argv, **_):
         self.argv = argv
         self.stdin = io.BytesIO()
-        self.stdin.close = lambda: FakeCopy.sent.append((self.argv[-1], self.stdin.getvalue()))
+        self.stdin.close = self._record
         self.stderr = io.BytesIO()
         self.returncode = 0
+        self._recorded = False
+
+    def _record(self):
+        if self._recorded:
+            return
+        self._recorded = True
+        FakeCopy.sent.append((self.argv[-1], self.stdin.getvalue()))
 
     def wait(self):
         return self.returncode
+
+    @staticmethod
+    def only_send():
+        """The one send a case made, so a stray one is a failure rather than a wrong answer."""
+        if len(FakeCopy.sent) != 1:
+            raise AssertionError(f"expected exactly one docker cp, got {len(FakeCopy.sent)}")
+        return FakeCopy.sent[0]
 
 
 def members(tar_bytes):
@@ -130,8 +154,9 @@ with tempfile.TemporaryDirectory() as made:
     added = run(docker, worlddata.add_data, "c", war, "jars")
     check(added.key == "jars/shop-1.0.war" and not added.replaced and not added.is_dir, f"a war's key: {added}")
     check(("exec", "c", "mkdir", "-p", f"{HOME}/default/data/jars") in docker.calls, "data/jars is made first")
-    check(FakeCopy.sent[0][0] == f"c:{HOME}/default/data/jars", f"sent to {FakeCopy.sent[0][0]}")
-    check(list(members(FakeCopy.sent[0][1])) == ["shop-1.0.war"], "a file arrives under its own name")
+    where, tar = FakeCopy.only_send()
+    check(where == f"c:{HOME}/default/data/jars", f"sent to {where}")
+    check(list(members(tar)) == ["shop-1.0.war"], "a file arrives under its own name")
     check(worlddata.sources_beside(war) == os.path.join(tmp, "shop-1.0-sources.jar"), "a war's sources jar beside it is noticed")
     check(worlddata.sources_beside(os.path.join(tmp, "shop-1.0-sources.jar")) is None, "a sources jar has no sources jar")
 
@@ -149,7 +174,7 @@ with tempfile.TemporaryDirectory() as made:
     added = run(docker, worlddata.add_data, "c", classes, "jars", "shop-classes")
     check(added.key == "jars/shop-classes" and added.replaced and added.is_dir, f"a folder's key: {added}")
     check(("exec", "c", "rm", "-rf", target) in docker.calls, "the folder of that name is replaced, not merged")
-    sent = members(FakeCopy.sent[0][1])
+    sent = members(FakeCopy.only_send()[1])
     check("shop-classes/com/acme/Cache.class" in sent, f"the classes arrive under the name asked for: {sorted(sent)}")
     check(not any(".git" in n or "node_modules" in n for n in sent), f"tool folders stay behind: {sorted(sent)}")
     check(all(m.uid == 0 and m.uname == "root" for m in sent.values()), "everything arrives root-owned")
