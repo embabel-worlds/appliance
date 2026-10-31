@@ -42,6 +42,8 @@ CRM nobody had joined to them. On a Worlds appliance the same move uses whatever
 realms declare; step 2 discovers them before any of this applies. The mechanism either way is a
 **virtual join** in a type file — `anchorLabel`, `relationship`, `keyField`,
 `recordKeyField`, `producer` — and it is the single highest-value thing you are hunting for.
+The second is a type that is a child of a shared label — a system's tasks as `Todo`, its notes
+as `Memory` — because every question already written against the parent then answers from it.
 
 This is not a theory. Across the realms that already exist, `Person` and `Organization` are the
 most-used anchor labels after each realm's own internals: github, hubspot, google, research and
@@ -255,7 +257,14 @@ only the live ones):
    from the wrong join (realm-fr-streets, 2026-10-06).
 3. **Identity or record?** For each entity two systems share, ask: *if each system holds one,
    are those two things or one?* Two tickets are two things — a shared parent label
-   (`parents: [SupportCase]`) lets one question cover both. A CRM customer and a billing customer
+   (`parents: [SupportCase]`) lets one question cover both. Reach for a label that exists
+   before coining one — `realm_brief` names this world's (`Memory`, `Todo`, `LogEvent`,
+   realm-code-model's code and artifact families) — and say in the proposal which label a
+   candidate realm would stand behind. That is where its value compounds: it answers every
+   question, view and agent already written against the label, and it gets the ladder for
+   free — Mirror, Compare, Promote, Retire; default-world's
+   [`config/types/README.md`](https://github.com/embabel-worlds/default-world/blob/main/config/types/README.md#shared-labels)
+   has the contract. A CRM customer and a billing customer
    for the same company are ONE thing — that needs a spine, and a parent label there silently
    produces one node per system with nothing joining them. The realm spec's Virtual Cypher §5.4
    has the rules; say which of the two each proposed bridge is.

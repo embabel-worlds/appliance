@@ -17,7 +17,12 @@ Ask, or infer and confirm. The decision has two forks:
 
 1. **Does it need a new type, producer, virtual join, API, or seed data?** Then it is a realm
    — those capabilities only exist as realm files. Load `realm-authoring` (ships with the
-   realm-spec realm) and work there.
+   realm-spec realm) and work there. Before authoring a type, check whether it is a kind of
+   something the world already answers — a task, a remembered fact, a log event, a source
+   file — and parent onto that label (`parents: [Todo]`): `realm_brief` lists the world's
+   shared labels, realm-authoring's Step 1 says how, and default-world's
+   [`config/types/README.md`](https://github.com/embabel-worlds/default-world/blob/main/config/types/README.md#shared-labels)
+   is the contract.
 2. **Does it read and act on what the world already holds?** Then either target works, and
    the default is the world: for one user's own question, automation, or page, a repository
    is ceremony. Reach for a realm when someone else will install it, when it should survive
@@ -48,6 +53,9 @@ Rules that hold in both lanes:
 - **Ids travel beside display columns** (`customerId` beside `customer`). Dedupe and
   record-linking key on ids; names duplicate, and figures merged by name inflate.
 - **Aggregation and dedupe live in the view, tested once** — not in every consumer.
+- **A view over a realm's labels ships in that realm's `views/`.** A view that compares the
+  systems behind a shared label is `<label>_bakeoff`: a statement-level UNION, one branch per
+  system, identical columns in every branch.
 
 ### Intelligence views
 
