@@ -107,8 +107,9 @@ same data**:
 | **Me** | `./me.py` | **11042** | the personal assistant — web UI, chat, memory |
 | **Worlds** | `./worlds.py` | **11044** — the console | the world runtime — realms, documents, keys, views, chat, MCP, automations |
 
-For Worlds, **11044 is where you go**: the console. The server itself is on 11043 —
-that is the API and MCP endpoint, not where you go to look at anything.
+For Worlds, **11044 is where you go**: the console. The server serves the console itself, and
+that port is its address — 11043 is the same server, so it answers too; both put the console at
+`/ui/` and redirect `/` there. There is no separate console container.
 
 `docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
 `docker compose up` starts the Me mode. Everything mode-agnostic — the graph, the
@@ -241,7 +242,7 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 |---|---|---|---|
 | +0 | **11042** | assistant | **Me's front door** — web UI, REST API, tool gateway, MCP |
 | +1 | 11043 | worlds | the Worlds server: API and MCP, not a place to look |
-| +2 | **11044** | worlds-console | **Worlds' front door** |
+| +2 | **11044** | worlds | **Worlds' front door** — the console, served by the server on this port too |
 | +3 | 11045 | neo4j | the knowledge graph, browser — on a Neo4j appliance; unused on the Embabel engine |
 | +4 | 11046 | neo4j | the same, Bolt — on a Neo4j appliance; unused on the Embabel engine |
 | +5 | 11047 | grafana | dashboards over the metrics — off by default, `EMBABEL_MONITORING=on` |

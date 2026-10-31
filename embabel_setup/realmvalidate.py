@@ -34,8 +34,8 @@ DEFAULT_IMAGE_REPO = "ghcr.io/embabel/assistant"
 DOCKER_COULD_NOT_RUN = 125
 NO_SUCH_COMMAND = 127
 
-# The server service's image line. Both compose files spell it this way; matching the repository
-# keeps the worlds-console image, which takes the same variable, from being read instead.
+# The server service's image line. Both compose files spell it this way, and matching the repository
+# rather than the variable keeps any other image that takes EMBABEL_VERSION from being read instead.
 IMAGE_LINE = re.compile(r"image:\s*(" + re.escape(DEFAULT_IMAGE_REPO) + r"):\$\{EMBABEL_VERSION:-([^}]+)\}")
 
 

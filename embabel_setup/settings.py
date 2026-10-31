@@ -20,10 +20,12 @@ def default_base() -> str:
     port moves with the instance, so a constant could only ever be right once."""
     return f"http://localhost:{ports_for(port_base())['ASSISTANT_PORT']}"
 def console_url() -> str:
-    """WHERE A PERSON GOES in worlds mode — not the same as where the API is. The
-    worlds server also serves the old Vaadin UI, and sending a new operator there
-    instead of to the console makes their first impression a surface on its way out."""
-    return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}"
+    """WHERE A PERSON GOES in worlds mode. The server serves the console itself, at `/ui/` — but
+    this names the console's long-standing port rather than the API's, because that port still
+    answers (the compose file maps it onto the same server) and it is the address people have.
+    A browser keys what it stores on the origin, port included, so the one they already use is the
+    one that keeps their sign-in and their choices."""
+    return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}/ui/"
 def api_address(base: str) -> str:
     """The appliance's API as a DIAGNOSTIC, deliberately not as a link.
 

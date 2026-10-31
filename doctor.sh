@@ -227,14 +227,15 @@ case "$CODE" in
          "If the containers above are running, it may still be starting — wait a minute and run this again." ;;
 esac
 
-CODE=$(probe "http://localhost:$CONSOLE/api/v1/realms")
+# The console's own port, which the server answers on as well — nothing sits between them to be
+# broken on its own any more, so this asks for the console's shell rather than for a proxy's health.
+CODE=$(probe "http://localhost:$CONSOLE/ui/")
 case "$CODE" in
-  2*|3*|4*) ok "The console answers on port $CONSOLE, and can reach the server behind it." ;;
-  502|503|504)
-     bad "The console is running but cannot reach the server behind it." \
-         "This usually fixes it:  docker restart $(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --filter label=com.docker.compose.service=worlds-console --format '{{.Names}}' 2>/dev/null | head -1)" ;;
+  2*|3*) ok "The console answers on port $CONSOLE." ;;
+  4*) bad "Port $CONSOLE answers, but the console is not there." \
+         "The server serves the console itself; a 404 means this build carries no console bundle." ;;
   *) bad "Nothing answers on port $CONSOLE, where the console should be." \
-         "Open it in a browser to confirm:  http://localhost:$CONSOLE" ;;
+         "It is the same server as port $WORLDS — if that answered above, check the port mapping:  embabel compose ps" ;;
 esac
 
 # ── 5. what the appliance last complained about ──────────────────────────────

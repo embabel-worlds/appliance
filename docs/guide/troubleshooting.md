@@ -172,68 +172,32 @@ established before the finish.
 
 The console polls `/api/v1/realms` every two seconds and leaves that screen as soon as it
 gets any real status back — **including a 401**, which is the normal answer before you
-sign in. Staying there means the request is coming back as a connection failure, a 502,
-a 503, or not at all.
+sign in. Staying there means the request is coming back as a connection failure or not at
+all.
 
-**The trap:** `curl` from your own shell to the worlds port is *not* the same path. The
-browser calls the console's own origin, which proxies to the worlds container over the
-Docker network. That hop is what to test.
+There is no proxy in the way to be the problem. The server serves the console itself, so
+the console's origin and the API's are the same thing, and what your browser does is what
+`curl` does:
 
 ```bash
-# what the browser actually does
+# the console's own address, and the call it is waiting on
 curl -s -o /dev/null -w "%{http_code} in %{time_total}s\n" --max-time 60 http://localhost:11044/api/v1/realms
 
-# nginx records every one of those two-second retries
-docker logs --tail 30 $P-worlds-console-1
+# the same server on its other port, to tell a port-mapping problem from a server one
+curl -s -o /dev/null -w "%{http_code}\n" --max-time 60 http://localhost:11043/api/v1/realms
 
-# ask the console container itself whether it can reach the door
-docker exec $P-worlds-console-1 sh -c \
-  'wget -S -T 5 -O /dev/null "$WORLDS_URL/api/v1/realms" 2>&1 | grep -E "HTTP/|wget:"'
+# what the server itself says it did
+docker logs --tail 30 $P-worlds-1
 ```
 
-A working appliance answers **`401 in 0.004s`** on the first, logs a line per probe on the
-second, and prints `HTTP/1.1 401` on the third.
+A working appliance answers **`401 in 0.004s`** on the first two. Then:
 
-Read the access log's status:
-
-| Status, repeating | Meaning |
+| What you see | Meaning |
 |---|---|
-| 502 / 504 | the console cannot reach the worlds container — see the two causes below |
-| 401 | the server is answering correctly — the problem is in the browser; hard-refresh or use a private window |
-| no lines at all | your browser is not reaching this container |
-
-**A repeated 502 has two causes, and the first is invisible.**
-
-**The worlds container was replaced and the console is still dialling its old address.**
-nginx resolves a literal hostname once, when its config loads, and caches that address
-for the life of the process — so any `docker compose up` that recreates `worlds` strands
-the console until the *console* is restarted. Reproduced deliberately: recreating the
-worlds container turned a 401 in 10 ms into a permanent 502 in 1 ms, and only
-`docker restart $P-worlds-console-1` cleared it. Console images built
-after this was found re-resolve per request and follow the door across a move — verified
-by forcing the worlds container from `172.20.0.2` to `172.20.0.12`, after which an
-untouched console still answered 401. If yours predates that, restarting it is the fix:
-
-```bash
-docker restart $P-worlds-console-1
-```
-
-**Or the two disagree about the port.** The console bakes its proxy target when the
-container starts, so one created before setup settled your ports will aim at the wrong
-one:
-
-```bash
-docker exec $P-worlds-console-1 sh -c \
-  'grep -m1 -o "proxy_pass http://worlds:[0-9]*" /etc/nginx/conf.d/default.conf'
-docker exec $P-worlds-1 sh -c 'echo "worlds SERVER_PORT=$SERVER_PORT"'
-```
-
-Those two numbers must match. If they do not, recreate the console against your current
-`.env`:
-
-```bash
-cd ~/embabel/worlds && ./embabel compose --worlds up -d worlds-console
-```
+| 401 on both | the server is answering correctly — the problem is in the browser; hard-refresh or use a private window |
+| nothing on 11044, 401 on 11043 | the port mapping, not the server: `embabel compose ps` and compare with `.env` |
+| nothing on either | the server is not up or not finished starting — `embabel status`, then the logs above |
+| 404 on `http://localhost:11044/ui/` | the server is up but carries no console bundle, which is a build problem rather than a configuration one |
 
 ---
 
@@ -431,7 +395,7 @@ Defaults; `EMBABEL_PORT_BASE` in `.env` shifts the whole block.
 |---|---|
 | 11042 | Embabel Me — the assistant |
 | 11043 | Worlds — the API and both MCP doors |
-| 11044 | the Worlds console |
+| 11044 | the Worlds console, served by the server on this port as well as 11043 |
 | 11045 | Neo4j browser — a Neo4j appliance only |
 | 11046 | Neo4j bolt, for `cypher-shell` — a Neo4j appliance only |
 | 11047 | Grafana, when `EMBABEL_MONITORING=on` |
