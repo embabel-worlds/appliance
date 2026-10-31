@@ -55,6 +55,12 @@ done
 # rather than quietly testing nothing. In the distro images of
 # .github/workflows/installer.yml there is no docker CLI at all, which is where
 # these scenarios are a gate.
+# The interpreter by ABSOLUTE path, because the no-curl scenarios hand the script
+# a PATH with nothing on it but the stub directory — and `env -i PATH=... sh` has
+# to find `sh` on that PATH too, which failed with exit 127 and a message about
+# the harness rather than the installer.
+SH_BIN=$(command -v sh)
+
 REAL_DOCKER=""
 IFS=: ; for dir in $MIN_PATH; do
   [ "$dir" = "$WORK/stub" ] && continue
@@ -110,7 +116,8 @@ run() { # runs install.sh, captures both streams and the status
     ${EMBABEL_MODE:+EMBABEL_MODE="$EMBABEL_MODE"} \
     ${STUB_COMPOSE_EXIT:+STUB_COMPOSE_EXIT="$STUB_COMPOSE_EXIT"} \
     ${STUB_INFO_EXIT:+STUB_INFO_EXIT="$STUB_INFO_EXIT"} \
-    sh "$HERE/install.sh" > "$WORK/out" 2>&1
+    ${STUB_MODEL_EXIT:+STUB_MODEL_EXIT="$STUB_MODEL_EXIT"} \
+    "$SH_BIN" "$HERE/install.sh" > "$WORK/out" 2>&1
   STATUS=$?
   set -e
 }
@@ -194,6 +201,31 @@ if wants not-running offline; then
   STUB_INFO_EXIT=1 run
   unset STUB_INFO_EXIT
   check "not-running" 1 "Docker is installed but not running."
+fi
+
+# ── no curl, and no tar ─────────────────────────────────────────────────────
+# PATH is the stub directory and NOTHING else, which is the only honest way to
+# produce a machine without curl: on every distro it shares /usr/bin with
+# everything else the script calls. STUB_MODEL_EXIT=0 so the Model Runner notice
+# is skipped — it pipes a heredoc through sed, and sed is missing here too,
+# which under `set -e` would end the run before the check being tested.
+#
+# Each tool is its own scenario because each failed differently before: curl was
+# reported as a network problem, tar as "Could not unpack the download".
+if wants no-curl offline; then
+  for missing in curl tar; do
+    reset
+    stub_docker
+    # The OTHER tool is stubbed, so the scenario is about one absence at a time.
+    other=$([ "$missing" = curl ] && echo tar || echo curl)
+    stub "$other" 'exit 0'
+    saved_path="$MIN_PATH"
+    MIN_PATH="$WORK/stub"
+    STUB_MODEL_EXIT=0 run
+    unset STUB_MODEL_EXIT
+    MIN_PATH="$saved_path"
+    check "no-$missing" 1 "needs '$missing'"
+  done
 fi
 
 # ── the target directory holds somebody else's files ────────────────────────
