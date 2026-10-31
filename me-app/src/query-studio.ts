@@ -48,6 +48,7 @@ import { queryAsk } from './query-ask'
 import { queryComposer } from './query-composer'
 import { queryViews } from './query-views'
 import { querySchemaPanel } from './query-schema-panel'
+import { mountQueryPlan, type QueryPlan } from './query-plan'
 import './graph'
 import { EMPTY_SETTINGS, type StudioDeps } from './studio-deps'
 import type { SchemaSnapshot } from './wire'
@@ -110,7 +111,12 @@ function setEditorText(text: string, { edited = false }: { edited?: boolean } = 
   handEdited = edited
 }
 
+/* The plan panel follows every change, the composer's and Ask's included: it plans what is in the
+ * editor, whoever put it there. It is mounted at init, once settings exist. */
+let plan: QueryPlan | null = null
+
 cm.on('change', () => {
+  plan?.setGoal(editorText())
   if (programmatic) return
   handEdited = true
   scheduleValidation()
@@ -444,6 +450,8 @@ async function init() {
     onSchema: (snapshot: SchemaSnapshot) => { schema = snapshot },
   })
   void queryViews.init({ settings, editorText, setEditorText, scheduleValidation, run })
+  plan = mountQueryPlan($('plan'), () => settings)
+  plan.setGoal(editorText())
 }
 
 void init()
