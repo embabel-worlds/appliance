@@ -111,6 +111,20 @@ For Worlds, **11044 is where you go**: the console. The server serves the consol
 that port is its address — 11043 is the same server, so it answers too; both put the console at
 `/ui/` and redirect `/` there. There is no separate console container.
 
+The console's files travel with the server, so a console release arrives when a server image
+carrying it does. Two ways not to wait for one, in the order the server prefers them:
+
+```bash
+# serve them from a directory instead, read per request: a rebuild shows on the next refresh
+ASSISTANT_CONSOLE_PATH=/path/to/console    # in .env, or `environment:` on the worlds service
+
+# or hand the server a jar of them — /plugins is on its classpath
+docker cp worlds-console-static.jar $(embabel ps -q worlds):/plugins/
+```
+
+Both are documented, with which copy wins, in the console's own README
+(embabel-worlds/worlds-console, "Shipping a console change").
+
 `docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
 `docker compose up` starts the Me mode. Everything mode-agnostic — the graph, the
 local embedding model, document conversion, metrics — lives in `infra.yml`,
