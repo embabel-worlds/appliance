@@ -486,7 +486,7 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 
 | Variable | Default | Why you'd change it |
 |---|---|---|
-| `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. |
+| `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. `edge` follows main, which is where a merged change — the console's included, since its files ship inside this image — arrives before a release retags it as `latest`. |
 | `ASSISTANT_DOC_CONVERTER` | `docling` | `none` uses plain text extraction and makes the multi-GB docling image unnecessary — faster to start, worse fidelity on tables and figures in PDFs. |
 | `ASSISTANT_PUBLIC_BASE_URL` | `http://localhost:11042` | The externally visible origin. OAuth callbacks, MCP resource indicators and app links compose from it. Set it when running behind a proxy or on another host. No trailing slash. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000` | JVM memory, as a share of the app container's limit. |

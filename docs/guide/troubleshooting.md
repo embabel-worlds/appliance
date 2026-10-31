@@ -197,7 +197,7 @@ A working appliance answers **`401 in 0.004s`** on the first two. Then:
 | 401 on both | the server is answering correctly — the problem is in the browser; hard-refresh or use a private window |
 | nothing on 11044, 401 on 11043 | the port mapping, not the server: `embabel compose ps` and compare with `.env` |
 | nothing on either | the server is not up or not finished starting — `embabel status`, then the logs above |
-| 404 on `http://localhost:11044/ui/` | the server is up but carries no console bundle, which is a build problem rather than a configuration one |
+| 404 on `http://localhost:11044/ui/` | the server is up and has no console to serve. Almost always an image older than the console itself: the files travel inside the server image, and `:latest` only carries them from the first release that followed. `embabel version` names the tag; take a newer one, or `EMBABEL_VERSION=edge` in `.env` to track main. Not a port or proxy problem — the 401s above already proved the port reaches the server |
 
 ---
 
