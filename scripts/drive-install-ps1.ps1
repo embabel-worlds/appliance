@@ -88,7 +88,8 @@ function Invoke-Install {
     # the check and ran `docker model status` against the real CLI. Those two
     # scenarios refuse before any download, so they need no tools at all ??? and
     # PowerShell's own cmdlets do not come from PATH.
-    param([hashtable]$Env = @{}, [switch]$StubOnlyPath)
+    # -InstallArgs are install.ps1's own arguments: `--uninstall`, `--yes`.
+    param([hashtable]$Env = @{}, [switch]$StubOnlyPath, [string[]]$InstallArgs = @())
     $saved = @{}
     # EMBABEL_BIN_DIR into the work area ON PURPOSE: install.ps1 writes the shim
     # and prepends it to the User PATH for real, and a test has no business
@@ -120,7 +121,7 @@ function Invoke-Install {
         # A child host, so an `exit 1` inside install.ps1 ends IT and not this
         # harness, and so 5.1 vs 7 is the host under test rather than the caller.
         $exe = (Get-Process -Id $PID).Path
-        $out = & $exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'install.ps1') 2>&1 |
+        $out = & $exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'install.ps1') @InstallArgs 2>&1 |
             Out-String
         $script:status = $LASTEXITCODE
         $script:output = $out
@@ -269,6 +270,60 @@ try {
                 $script:failed++
                 Write-Host '  x  happy -- the shim lost chcp 65001; wizard prompts become mojibake'
             }
+        }
+    }
+
+    # -- uninstall from the one-liner ----------------------------------------
+    # It finds the install that is THERE and runs its own uninstall: nothing is
+    # downloaded (EMBABEL_REF points nowhere, so a download would fail the run),
+    # and an unrelated `embabel` on PATH comes out byte for byte as it went in.
+    if (Test-Wanted 'uninstall' 'offline') {
+        Reset-Machine
+        New-PythonStub
+        New-Stub embabel "@echo off`r`necho an older, unrelated embabel"
+        $foreign = Get-Content (Join-Path $stub 'embabel.cmd') -Raw
+        $install = Join-Path $work 'home\embabel\worlds'
+        New-Item -ItemType Directory -Force -Path $install | Out-Null
+        Set-Content -Path (Join-Path $install 'setup.py') -Value '# parser.add_argument("--keep-images")' -Encoding ASCII
+        Invoke-Install @{ EMBABEL_REF = "no-such-ref-$PID" } -InstallArgs @('--uninstall', '--yes')
+        Assert-Scenario 'uninstall' 0 @('Found Embabel in')
+        $log = Get-Content (Join-Path $work 'python.log') -ErrorAction SilentlyContinue
+        if ($log -notlike '*setup.py --uninstall --yes*') {
+            $script:failed++
+            Write-Host "  x  uninstall -- ran $($log -join ' ')"
+        }
+        if ((Get-Content (Join-Path $stub 'embabel.cmd') -Raw) -ne $foreign) {
+            $script:failed++
+            Write-Host '  x  uninstall -- the foreign embabel was changed'
+        }
+    }
+
+    # Nothing installed is not an error: the person wanted it gone, and it is.
+    if (Test-Wanted 'uninstall-none' 'offline') {
+        Reset-Machine
+        New-PythonStub
+        Invoke-Install -InstallArgs @('--uninstall', '--yes')
+        Assert-Scenario 'uninstall-none' 0 @('No Embabel install found')
+        if (Test-Path (Join-Path $work 'python.log')) {
+            $script:failed++
+            Write-Host '  x  uninstall-none -- ran setup with nothing to uninstall'
+        }
+    }
+
+    # -- a foreign `embabel` on PATH during install ---------------------------
+    # Left alone, and then named -- with this appliance's full path -- instead of
+    # "use the 'embabel' command", which would run the other program.
+    if (Test-Wanted 'foreign' 'network') {
+        Reset-Machine
+        New-DockerStub
+        New-PythonStub
+        New-Stub embabel "@echo off`r`necho an older, unrelated embabel"
+        Invoke-Install
+        Assert-Scenario 'foreign-embabel' 0 @('Done. Starting setup',
+            'It is not part of Embabel', 'embabel.cmd" uninstall')
+        if ($output -like "*after this, use the 'embabel' command*") {
+            $script:failed++
+            Write-Host "  x  foreign-embabel -- still told them to use the 'embabel' command"
         }
     }
 } finally {

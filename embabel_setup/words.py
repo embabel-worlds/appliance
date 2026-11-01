@@ -10,6 +10,7 @@ import re
 import textwrap
 
 from .core import APPLIANCE_DIR, SetupError
+from .launcher import launcher
 
 # ── copy ────────────────────────────────────────────────────────────────────
 #
@@ -55,16 +56,27 @@ def copy_text(name: str, **fields) -> str:
 # A command in copy is written as `embabel <verb>`, which acts on the default
 # instance. On any other instance the reader has to type --instance as well, so
 # it goes in here rather than in every file that names a command.
+#
+# AND THE LAUNCHER ITSELF, for the same reason. When `embabel` on PATH is some
+# other program, a copy file that says `embabel up` is telling the reader to run
+# that program; the full path to this appliance's launcher goes in instead. See
+# launcher.py for how that is decided.
 COMMAND = re.compile(r"(?<![\w/.$-])embabel (?=[a-z-])")
 
 
 def name_the_instance(text: str) -> str:
-    """[text] with `--instance <name>` after every `embabel` command, unless this
-    process is talking to the default instance."""
+    """[text] with every `embabel` command made to run THIS appliance: `--instance
+    <name>` unless it is the default one, and the full launcher path unless the
+    bare name on PATH is ours."""
     from .settings import DEFAULT_INSTANCE, instance
-    if instance() == DEFAULT_INSTANCE:
+    command = launcher(APPLIANCE_DIR)
+    if instance() != DEFAULT_INSTANCE:
+        command += f" --instance {instance()}"
+    if command == "embabel":
         return text
-    return COMMAND.sub(f"embabel --instance {instance()} ", text)
+    # A function, not a template: a Windows path is full of backslashes, which a
+    # replacement string would read as escapes.
+    return COMMAND.sub(lambda _: command + " ", text)
 
 
 # AN ASIDE, MARKED AS ONE. `((like this))` renders dim.

@@ -16,9 +16,10 @@ import shutil
 import subprocess
 import sys
 
-from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
+from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url, warn
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
 from .dockerlib import find_mode_container
+from .launcher import foreign_embabel
 from .settings import (SQL_VAR, embabel_command, console_url, instance, monitoring_enabled, port_base, ports_for,
                        sql_enabled, surface_urls)
 from .versions import jar_holds
@@ -54,6 +55,27 @@ def print_next(width: int = 58) -> None:
     column = max(16, *(len(name_the_instance(f"embabel {name}")) + 2 for name in ("doctor", "--help")))
     say("next", up=verb("up", column), doctor=verb("doctor", column),
         open=verb("open", column), help=verb("--help", column))
+    print()
+    print_launcher_conflict()
+
+
+def print_launcher_conflict() -> None:
+    """Say so, plainly, when `embabel` on PATH is somebody else's program.
+
+    The installer never overwrites a command it did not write, which is right — and then a
+    person who typed what the screen told them ran the other program, setup looked stalled, and
+    `embabel uninstall` could not remove anything. The commands above already carry the full
+    path; this is the sentence that says WHY they do, and how to take the appliance away, at the
+    bottom of the screen where it is still visible when everything else has scrolled.
+    """
+    foreign = foreign_embabel(APPLIANCE_DIR)
+    if not foreign:
+        return
+    print(f"  {warn('!!')} Another program called \"embabel\" is on your PATH:")
+    print(f"       {foreign}")
+    print("     It is not part of Embabel, and it was left alone. Typing `embabel` runs THAT")
+    print("     program, so every command above is this appliance's by its full path.")
+    print(f"     To remove Embabel:  {accent(embabel_command('uninstall'))}")
     print()
 
 

@@ -651,8 +651,8 @@ override, and a manifest recording when it was taken, from which images, at
 which checkout commit.
 
 Backups go under `~/embabel-backups` unless you name a directory — deliberately
-**outside the checkout**, because `embabel uninstall` deletes the checkout and a
-backup an uninstall removes is not a backup. Each run makes its own timestamped
+**outside the install folder**, because `embabel uninstall` deletes that folder and
+a backup an uninstall removes is not a backup. Each run makes its own timestamped
 folder, so backing up twice never overwrites the first one.
 
 **The copy is cold.** Whichever mode is running stops for it and starts again
@@ -1075,7 +1075,7 @@ else is refused rather than mangled. The default is `appliance`.
 Everything scopes: `backup` writes `embabel-backup-<instance>-<timestamp>` and
 records the instance in its manifest, `restore` says so when a backup came from
 a different one, `uninstall` removes only the instance you name (and keeps the
-`embabel` command while any other remains), and `prune` touches only the current
+`embabel` command, the install folder and the images while any other remains), and `prune` touches only the current
 instance's sandboxes. Every compose command run on an instance's behalf, including
 the services that finish downloading in the background after the first `up`,
 carries that instance's project, settings file and ports, so installing or
@@ -1091,30 +1091,54 @@ Stop the appliance, keeping everything. `embabel up` brings it back.
 
 ### `embabel uninstall`
 
-Undo the installation: the appliance's state, this machine's configuration —
-`.env`, the shared-folder override, the MCP registration whose token died with the
-volume — and **the `embabel` command itself**, taken back off your PATH.
+Take Embabel off this machine: everything the installer put here goes, and what you made
+stays. Before anything is touched it lists both — what will be removed, and what will be
+kept and why — and asks you to type `yes`.
 
-That last one only removes the launcher THIS installation wrote. `embabel` is not a
-rare name, and setup warns when another one already comes first on your PATH;
-uninstall reads the file before deleting it and leaves anything it did not write
-alone. If another `embabel` still answers afterwards, it says so — otherwise the next
-`which embabel` finds a hit and the uninstall looks like it failed.
+| Flag | |
+|---|---|
+| `--yes` | do not ask — for scripts that have already decided |
+| `--keep-images` | keep the Docker images and the local embedding model, to install again soon |
+| `--keep-dir` | keep the install folder |
 
-It also offers to remove stray code-sandbox containers. They are created by the
-app through the Docker socket as siblings of the appliance rather than as compose
-services, so `down` never sees them. It **asks** rather than assumes, because an
-assistant you are running from an IDE owns containers carrying the same label.
+What goes: the appliance's containers and volumes, sandbox containers it started, `.env` and
+the shared-folder override, the MCP registration that points at this appliance (and its marked
+token block in your shell profile), **the `embabel` command** and the PATH line setup added for
+it, the Docker images it downloaded and the local embedding model, and the install folder — with
+`~/embabel` too, if that held nothing else.
 
-Two things it deliberately keeps:
+What stays, named with its reason: a git repository you cloned into the realms folder; the
+install folder when it is a git working tree (a clone you develop in, which the installer did
+not create); `~/embabel-backups`; images and the model while another Embabel appliance on this
+machine still uses them, or while a container that is not ours does; and any other program
+called `embabel`. That last one only ever removes the launcher THIS installation wrote —
+`embabel` is not a rare name, and uninstall reads the file before deleting it. If another
+`embabel` still answers afterwards, it says so, so the next `which embabel` does not look like
+a failed uninstall.
 
-- **Images and the local embedding model.** The embedding artifact alone is over a
-  gigabyte, and re-downloading one that has not changed is waste. There is no flag
-  to remove them.
-- **Your realm checkouts.** They are your repositories.
-- **The installation directory.** `~/embabel/worlds` (or wherever you put it) stays,
-  so `./worlds.py` sets up again from it. Delete the directory yourself when you
-  want it gone — this script does not remove the ground it is standing on.
+It needs nothing from the appliance itself, so it works from any state: setup never finished,
+the container stopped, unhealthy or missing, an image pull that failed halfway. It refuses only
+when Docker is installed but not running — the data is still in Docker then, and removing the
+settings would orphan it — and says so before touching anything.
+
+**When `embabel` is not this command** — another program by that name comes first on your
+`PATH` — the installer says so at the end of the install and prints every command by its full
+path. Run it that way, or use the installer's own way out, which needs neither:
+
+```bash
+~/embabel/worlds/embabel uninstall
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh -s -- --uninstall
+```
+
+The one-liner downloads nothing. It finds the install already here — `EMBABEL_HOME`, else
+`~/embabel/worlds`, else wherever the `embabel` launcher says it forwards to — and runs that
+install's own uninstall, asking on your terminal even through `curl | sh`. `--yes` after
+`--uninstall` answers in advance; `EMBABEL_INSTANCE=<name>` before `sh` picks a named instance.
+On Windows:
+
+```powershell
+& ([scriptblock]::Create((irm https://worlds.embabel.com/install.ps1))) --uninstall
+```
 
 ### `embabel where`
 

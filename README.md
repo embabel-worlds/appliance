@@ -45,6 +45,14 @@ paste into an issue:
 curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/doctor.sh | sh
 ```
 
+**To remove it**, from any state — set up, half set up, or stuck — the same one line
+takes it away. It downloads nothing; it finds the install already on this machine and
+asks before it removes anything (see [Uninstalling](#uninstalling)):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh -s -- --uninstall
+```
+
 To install a BRANCH rather than main — testing a change the way a user meets it —
 name it with `EMBABEL_REF`:
 
@@ -557,29 +565,55 @@ documents, graph — and gives you a fresh appliance asking to be set up again.
 `./me.py --fresh` (or `./worlds.py --fresh`) does the same across both modes and then
 sets up, which is the usual way back to an empty appliance.
 
-**`./setup.py --uninstall` goes one step further**, and the difference matters if you
-are testing the experience rather than the software. `--fresh` leaves `.env` behind, so
-the next run never asks for a provider key, a timezone or a realms directory — it
-exercises none of the path a new user walks. `--uninstall` removes the state *and* this
-machine's configuration: `.env`, `docker-compose.override.yml`, the MCP registration whose
-token died with the volume, and the marked Codex token block setup added to a supported shell
-profile when its registration belongs to this appliance. An unverified or different Codex
-registration and its token block are kept. What remains is what a fresh clone looks like, and
-`./worlds.py` starts over from it.
+### Uninstalling
 
-It also offers to remove stray **code-sandbox containers**. Those are created by the app
-through the Docker socket as siblings of the appliance rather than as compose services,
-so `down` never sees them — and one whose JVM died without its shutdown hook is swept by
-neither of the server's two cleanup passes. It asks rather than assumes, because an
-assistant you are running from an IDE owns sandboxes carrying the same label.
+An uninstall removes everything the installer put on this machine, and keeps only what
+you made. Any of these does it, and they all run the same code:
 
-Two things it deliberately keeps:
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh -s -- --uninstall
+embabel uninstall
+~/embabel/worlds/embabel uninstall       # by path, when `embabel` is not ours (see below)
+```
 
-- **Images and the local embedding model.** The embedding artifact alone is over a
-  gigabyte, and re-downloading one that has not changed is pure waste. There is no flag
-  to remove them.
-- **`realms/` and any realm checkout.** Those are your repositories and your work in
-  progress; nothing here deletes them.
+The one-liner works however far the install got — setup never finished, the container
+stopped or missing, an image pull that failed halfway — because it needs nothing from the
+appliance itself. It downloads nothing: it finds the install already here (`EMBABEL_HOME`,
+else `~/embabel/worlds`, else wherever the `embabel` command says it forwards to), and runs
+that install's own uninstall. If there is nothing to remove it says so and stops. For a named
+instance, put `EMBABEL_INSTANCE=<name>` before `sh`.
+
+Before it touches anything it lists what will go and what will stay, then asks you to type
+`yes` — on your terminal, even through `curl | sh`. `--yes` answers in advance, for scripts.
+What goes:
+
+- the appliance and all of its data — containers, volumes, sandbox containers it started;
+- its settings: `.env` (your provider key, timezone, realms folder) and the shared-folder override;
+- the `embabel` MCP registration in Claude Code and Codex, only where it points at this
+  appliance, and the marked token block setup added to your shell profile for it;
+- the `embabel` command, and the marked PATH line setup added to your shell profile;
+- the Docker images it downloaded and the local embedding model — unless another Embabel
+  appliance on this machine still uses them, or a container that is not ours does;
+- the folder it was installed into, and `~/embabel` if that held nothing else.
+
+What stays, each named with its reason when it uninstalls:
+
+- **a git repository you cloned into the realms folder** — your work, not the installer's;
+- **the install folder itself, when it is a git working tree** — a clone you made to develop
+  the appliance, which the installer did not create;
+- **`~/embabel-backups`** and a realms folder outside the install;
+- **another program called `embabel`** — never touched, whatever it is.
+
+`--keep-images` keeps the images and the embedding model, which is what you want when you
+mean to install again soon; `--keep-dir` keeps the install folder. If Docker is installed but
+not running, it refuses and touches nothing — removing the settings while the data is still in
+Docker would orphan it. If Docker is not installed at all, there is nothing in it to remove,
+and the rest goes.
+
+**`--fresh` is the other way back**, and the difference matters if you are testing the
+experience rather than the software: `--fresh` wipes the data and keeps `.env`, so the next
+run never asks for a provider key, a timezone or a realms directory — it exercises none of
+the path a new user walks.
 
 ## What the assistant can reach
 
@@ -834,6 +868,9 @@ The commands below act on the default appliance. For another instance, run each
 |---|---|
 | `setup.py` cannot find the token | It already waits out a booting app, so the running container's log truly lacks one. `embabel compose restart assistant` (or `worlds`) — the token is printed afresh on every boot until setup completes |
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
+| `embabel` runs some other program, or `embabel uninstall` does nothing useful | Another program called `embabel` comes first on your `PATH`. The installer never overwrites a command it did not write, so it said so at the end of the install and printed every command by full path. Use those: `~/embabel/worlds/embabel up`, `~/embabel/worlds/embabel uninstall` |
+| Setup stalled, or you just want it gone | Remove it from any state with the one-liner: `curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh \| sh -s -- --uninstall` — see [Uninstalling](#uninstalling) |
+| Uninstall says Docker is not running | It will not remove the settings while the data is still in Docker. Start Docker, and run it again |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
 | Neo4j browser won't connect or log in (Neo4j appliance) | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:11046` (pre-filled; 7687 is not published to the host) |
 | Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:11046`, or open <http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>. Confirm with `docker compose exec neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |

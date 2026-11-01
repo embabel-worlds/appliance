@@ -11,8 +11,14 @@
 #   2. download this repo into ~/embabel/worlds
 #   3. hand off to ./me.py, which owns the actual setup
 #
-# It installs nothing globally, needs no root, and writes only inside that one
-# directory. To undo it: `docker compose down -v` in there, then delete it.
+# It needs no root, and outside that one directory writes only the `embabel`
+# command (~/.local/bin) and the PATH line that reaches it. To undo all of it —
+# from any state, including a setup that never finished:
+#
+#   curl -fsSL https://worlds.embabel.com/install.sh | sh -s -- --uninstall
+#
+# which downloads nothing, finds the install already on this machine, and runs
+# its own uninstall from there. See "Uninstall" below.
 #
 # Environment:
 #   EMBABEL_HOME   where to install         (default: ~/embabel/worlds)
@@ -21,6 +27,8 @@
 #   EMBABEL_REPO   org/repo of the source   (default: embabel-worlds/appliance)
 #   EMBABEL_TOKEN  GitHub token, private forks only
 #   EMBABEL_RELEASE  stable | beta | nightly | canary | X.Y.Z  (default: stable)
+#   EMBABEL_INSTANCE  which appliance to set up or remove  (default: appliance)
+#   EMBABEL_BIN_DIR  where the `embabel` command goes  (default: ~/.local/bin)
 #
 # EMBABEL_RELEASE is which build of the server the appliance follows. This script
 # does not read it: it passes through to setup, as do any arguments, so these two
@@ -98,6 +106,112 @@ step() { printf '  %s%s%s %s\n' "$C_CYAN" "::" "$C_RESET" "$*"; }
 ok()   { printf '  %s%s%s %s\n' "$C_GREEN" "OK" "$C_RESET" "$*"; }
 note() { printf '  %s%s%s\n' "$C_DIM" "$*" "$C_RESET"; }
 die()  { printf '\n  %s%s%s %s\n\n' "$C_YELLOW" "!!" "$C_RESET" "$*" >&2; exit 1; }
+
+# THE PYTHON THAT CAN RUN THIS. The setup code runs on the stock Mac 3.9 (deferred
+# annotations everywhere), but prefer a NEWER interpreter when one exists, and prove
+# whatever is chosen is at least 3.9 rather than dying in a traceback later.
+find_python() {
+  for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+      command -v "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+# A function, so the python3 it names is only run when there is something to say.
+no_python() {
+  die "Embabel needs Python 3.9 or newer — found $(python3 -V 2>/dev/null || echo 'no python3').
+  macOS:  brew install python@3.12   (then rerun this installer)
+  Linux:  apt install python3.10  ·  dnf install python3.12"
+}
+
+# Which `embabel` a launcher on PATH belongs to, read from the line every launcher
+# the installers have written carries: "Forwards to the Embabel appliance in <dir>.
+# Written by install.sh." Empty when it is not one of ours.
+launcher_home() {
+  [ -f "$1" ] || return 0
+  sed -n 's/^# Forwards to the Embabel appliance in \(.*\)\. Written by install\.sh\.$/\1/p' "$1" 2>/dev/null | head -n 1
+}
+
+# --- Uninstall ------------------------------------------------------------
+#
+#   curl -fsSL https://worlds.embabel.com/install.sh | sh -s -- --uninstall
+#   curl -fsSL https://worlds.embabel.com/install.sh | EMBABEL_INSTANCE=green sh -s -- --uninstall
+#
+# THE WAY OUT HAS TO WORK WHEN NOTHING ELSE DOES. A user with an older, unrelated
+# `embabel` on PATH had no working `embabel uninstall` — the name ran the other
+# program — and setup had stalled before telling them anything else. The one
+# command everybody still has is the one they installed with, so it removes too.
+#
+# NOTHING IS DOWNLOADED. Unpacking a fresh copy over an install in order to remove
+# it would replace the very code that knows what that install did; the install's
+# own uninstall is what runs, from where it already is.
+#
+# THE QUESTION IS STILL ASKED, of the person, on /dev/tty — the same hand-off the
+# wizard uses below, for the same reason: stdin here is the pipe this script is
+# being read from. `--yes` skips it, for scripts that have already decided.
+UNINSTALL=no
+YES=no
+for arg in "$@"; do
+  case "$arg" in
+    --uninstall) UNINSTALL=yes ;;
+    --yes) YES=yes ;;
+  esac
+done
+
+if [ "$UNINSTALL" = yes ]; then
+  printf '\n  %sEmbabel%s %s— uninstall%s\n\n' "$C_BOLD" "$C_RESET" "$C_DIM" "$C_RESET"
+  # Where it is: EMBABEL_HOME when given, else the default and the two older names
+  # an install may still live under, else wherever the `embabel` command says.
+  FOUND=""
+  if [ -n "${EMBABEL_HOME:-}" ]; then
+    [ -f "$EMBABEL_HOME/setup.py" ] && FOUND="$EMBABEL_HOME"
+  else
+    for candidate in "$HOME/embabel/worlds" "$HOME/embabel-worlds" "$HOME/embabel-me" \
+        "$(launcher_home "${EMBABEL_BIN_DIR:-$HOME/.local/bin}/embabel")" \
+        "$(launcher_home "$HOME/.local/bin/embabel")"; do
+      if [ -n "$candidate" ] && [ -f "$candidate/setup.py" ]; then
+        FOUND="$candidate"
+        break
+      fi
+    done
+  fi
+  if [ -z "$FOUND" ]; then
+    say "No Embabel install found in ${EMBABEL_HOME:-$DEFAULT_HOME} — nothing to uninstall."
+    note "Installed somewhere else? Name it:  curl … | EMBABEL_HOME=/that/folder sh -s -- --uninstall"
+    echo
+    exit 0
+  fi
+  step "Found Embabel in ${FOUND}."
+  echo
+  PY="$(find_python)" || no_python
+
+  # AN OLDER INSTALL HAS AN OLDER UNINSTALL, and it is the one that knows what that
+  # install did — but it predates --yes. There the answer is typed for it, which
+  # is what --yes means; and the stray-sandbox question an old uninstall may ask
+  # after it is answered "no", which leaves alone what it would have asked about.
+  if grep -q -- '--keep-images' "$FOUND/setup.py" 2>/dev/null; then
+    if [ "$YES" = yes ]; then
+      "$PY" "$FOUND/setup.py" "$@" < /dev/null
+      exit $?
+    fi
+  elif [ "$YES" = yes ]; then
+    printf 'yes\nn\n' | "$PY" "$FOUND/setup.py" --uninstall
+    exit $?
+  else
+    set -- --uninstall
+  fi
+  # In a subshell, and OPENED rather than tested with -r — see the hand-off at the
+  # end of this script for why each of those is load-bearing.
+  if ( : < /dev/tty ) 2>/dev/null; then
+    "$PY" "$FOUND/setup.py" "$@" < /dev/tty
+    exit $?
+  fi
+  die "No terminal to ask on, and uninstalling asks first. To answer yes in advance:
+  curl -fsSL https://worlds.embabel.com/install.sh | sh -s -- --uninstall --yes"
+fi
 
 # The door you are actually installing, described in the SITE'S words —
 # worlds-site/src/pages/index.astro. Somebody arrives here straight off that
@@ -359,22 +473,7 @@ chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" "$HOME_DIR
 # setup.py owns the real flow — starting the mode, streaming the first boot,
 # the account and model-provider key, and the offer to open the Me app. There
 # is deliberately no second implementation of any of that here.
-# THE PYTHON THAT CAN RUN THIS. The setup code runs on the stock Mac 3.9 (deferred
-# annotations everywhere), but prefer a NEWER interpreter when one exists, and prove
-# whatever is chosen is at least 3.9 rather than dying in a traceback later.
-find_python() {
-  for cand in python3.13 python3.12 python3.11 python3.10 python3; do
-    command -v "$cand" >/dev/null 2>&1 || continue
-    if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
-      command -v "$cand"
-      return 0
-    fi
-  done
-  return 1
-}
-PY="$(find_python)" || die "Embabel needs Python 3.9 or newer — found $(python3 -V 2>/dev/null || echo 'no python3').
-  macOS:  brew install python@3.12   (then rerun this installer)
-  Linux:  apt install python3.10  ·  dnf install python3.12"
+PY="$(find_python)" || no_python
 
 # ONE WRITER, reached from both paths. Setup owns the launcher because it also
 # has to restore it after uninstall; keeping a heredoc here made the curl entry
@@ -382,7 +481,29 @@ PY="$(find_python)" || die "Embabel needs Python 3.9 or newer — found $(python
 (cd "$HOME_DIR" && "$PY" -c 'from embabel_setup.lifecycle import write_cli_shim; write_cli_shim()' < /dev/null) ||
   say "Could not put the 'embabel' command on your PATH — run $HOME_DIR/embabel by path."
 
-ok "Done. Starting setup — after this, use the 'embabel' command."
+# ANOTHER `embabel` MAY ANSWER TO THE NAME, and an older, unrelated program called
+# that is exactly what one user had. Setup rightly leaves it alone, so "use the
+# 'embabel' command" would send them to it — `embabel uninstall` included. Read
+# from the file PATH finds, in shell, because the question is small and the answer
+# has to be right before Python is involved: ours names this directory.
+FOREIGN=""
+if found=$(command -v embabel 2>/dev/null) && [ -f "$found" ]; then
+  REAL_HOME=$(cd "$HOME_DIR" && pwd -P)
+  owner=$(launcher_home "$found")
+  if [ "$owner" != "$REAL_HOME" ] && [ "$owner" != "$HOME_DIR" ] &&
+     [ "$(cd "$(dirname "$found")" && pwd -P)/$(basename "$found")" != "$REAL_HOME/embabel" ]; then
+    FOREIGN="$found"
+  fi
+fi
+if [ -n "$FOREIGN" ]; then
+  ok "Done. Starting setup."
+  printf '  %s!!%s Another program called "embabel" is on your PATH: %s\n' "$C_YELLOW" "$C_RESET" "$FOREIGN"
+  say "   It is not part of Embabel, and it was left alone. Use this one by its full path:"
+  say "     $HOME_DIR/embabel"
+  say "   To remove Embabel later:  $HOME_DIR/embabel uninstall"
+else
+  ok "Done. Starting setup — after this, use the 'embabel' command."
+fi
 echo
 cd "$HOME_DIR"
 

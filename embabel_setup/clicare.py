@@ -317,7 +317,12 @@ def cmd_release(args) -> int:
 
 
 def cmd_uninstall(args) -> int:
-    return run_setup("--uninstall")
+    flags = [flag for flag, on in (("--yes", args.yes), ("--keep-images", args.keep_images),
+                                   ("--keep-dir", args.keep_dir)) if on]
+    # OUT OF THE FOLDER FIRST. The uninstall deletes the folder this command runs from, and
+    # Windows refuses to delete a directory any process is standing in — this one included.
+    os.chdir(os.path.expanduser("~"))
+    return run_setup("--uninstall", *flags)
 
 
 def cmd_instances(args) -> int:

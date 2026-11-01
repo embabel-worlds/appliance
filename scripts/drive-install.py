@@ -42,6 +42,9 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # scripted run should exercise.
 ANSWERS = [
     (r"Type 'yes' to wipe:", "yes"),
+    # Asked of the PERSON on /dev/tty when `install.sh --uninstall` runs, which is the
+    # hand-off this answers through: the same pty the wizard reads.
+    (r"Type 'yes' to uninstall:", "yes"),
     # MATCHED ON THE STEM, up to the colon. Both of these labels have been reworded once
     # already — "Your name" became "Your full name", then "Username" grew a parenthetical —
     # and each time this script stopped answering and the run died at the 900s timeout with
@@ -381,12 +384,59 @@ def release_followed(release: str, env_file: str | None):
     return check
 
 
+def foreign_embabel_named(foreign: str, home: str):
+    """With somebody else's `embabel` first on PATH, the install says so and every command it
+    prints is this appliance's launcher by its full path.
+
+    The bug this pins: the installer rightly left another program called `embabel` alone, and
+    then told the person to type `embabel up` and `embabel uninstall` — which ran that program.
+    Setup stalled, and nothing on screen admitted there was a way to remove the appliance.
+    """
+    def check(text: str) -> str | None:
+        clean = ANSI.sub("", text)
+        if 'Another program called "embabel" is on your PATH' not in clean:
+            return "the install never said another program called embabel is on PATH"
+        if foreign not in clean:
+            return f"the conflict was reported without naming the other program ({foreign})"
+        # Either spelling of the folder: a temporary one on macOS is /var/… to the person and
+        # /private/var/… to a process that asked the kernel where it is standing.
+        launchers = {os.path.join(home, "embabel"), os.path.join(os.path.realpath(home), "embabel")}
+        if not any(f"{launcher} uninstall" in clean for launcher in launchers):
+            return f"the way to remove it was not printed by full path ({sorted(launchers)[0]} uninstall)"
+        if "after this, use the 'embabel' command" in clean:
+            return "it still told them to use the 'embabel' command, which runs the other program"
+        bare = re.findall(r"(?m)^\s+embabel (?:up|doctor|open|uninstall)\b", clean)
+        if bare:
+            return f"a bare command was printed, which runs the other program: {bare[0].strip()}"
+        return None
+    check.__name__ = "foreign_embabel_named"
+    return check
+
+
+def uninstalled(text: str) -> str | None:
+    """`install.sh --uninstall` got there: the plan was shown, asked, and carried out."""
+    clean = ANSI.sub("", text)
+    if "TIMED OUT" in clean:
+        return "the uninstall timed out"
+    if "Traceback" in clean:
+        return "the uninstall died in a traceback"
+    if "REMOVED" not in clean:
+        return "no list of what would be removed was shown before asking"
+    if not re.search(r"(Embabel|This appliance|The '\S+' appliance) is uninstalled\.", clean):
+        return "no closing line saying it is uninstalled"
+    for jargon in ("checkout", "fresh clone"):
+        if jargon in clean:
+            return f"developer wording reached the user: {jargon!r}"
+    return None
+
+
 CHECKS = (transcript_is_readable, no_raw_log_lines, password_not_measured,
           no_stale_org, both_doors_offered, setup_link_opens, finished)
+UNINSTALL_CHECKS = (transcript_is_readable, uninstalled)
 
 
-def report(text: str, extra: tuple = ()) -> int:
-    checks = CHECKS + tuple(extra)
+def report(text: str, extra: tuple = (), base: tuple = CHECKS) -> int:
+    checks = base + tuple(extra)
     problems = [problem for check in checks if (problem := check(text))]
     for problem in problems:
         print(f"  ✗ {problem}")
@@ -423,6 +473,12 @@ def main() -> int:
     parser.add_argument("--transcript", default="/tmp/embabel-install.log")
     parser.add_argument("--check", metavar="FILE",
                         help="skip the run; check a transcript captured earlier")
+    parser.add_argument("--uninstall", action="store_true",
+                        help="drive `install.sh --uninstall` — the one-liner way out — and check it "
+                             "removed the install it found. Honours EMBABEL_HOME / EMBABEL_INSTANCE")
+    parser.add_argument("--foreign-embabel", metavar="PATH",
+                        help="an `embabel` that is NOT this appliance's sits first on PATH at PATH: "
+                             "check the install names it and prints every command by full path")
     parser.add_argument("--release", default=os.environ.get("EMBABEL_RELEASE") or None,
                         help="the release to install (default: EMBABEL_RELEASE, else the installer's own "
                              "default); passed through as --release, and checked in the transcript and .env")
@@ -438,6 +494,22 @@ def main() -> int:
         from embabel_setup.release import parse_release
         kept = parse_release(args.release)
         extra = (release_followed(kept, None if args.check else env_file_for(args.installer)),)
+
+    if args.foreign_embabel:
+        home = os.environ.get("EMBABEL_HOME") or os.path.expanduser("~/embabel/worlds")
+        extra = extra + (foreign_embabel_named(args.foreign_embabel, home),)
+
+    if args.uninstall:
+        # Through install.sh, as the one-liner runs it: nothing downloaded, the install's own
+        # uninstall run from where it is, its question answered on the pty.
+        command = ["sh", "./install.sh", "--uninstall"]
+        print(f"  Driving: {' '.join(command)}   (transcript: {args.transcript})\n")
+        if args.check:
+            with open(args.check, encoding="utf8") as f:
+                return report(f.read(), base=UNINSTALL_CHECKS)
+        text = drive(command, vars(args), args.transcript, args.timeout)
+        print()
+        return report(text, base=UNINSTALL_CHECKS)
 
     if args.check:
         with open(args.check, encoding="utf8") as f:

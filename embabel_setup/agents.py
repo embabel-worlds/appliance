@@ -211,6 +211,19 @@ def install_codex_token(token: str, target: str) -> None:
         os.chmod(target, 0o600)
 
 
+def codex_token_profiles() -> list[str]:
+    """The shell profiles that carry the appliance's marked Codex token block."""
+    found = []
+    for profile in shell_profiles():
+        try:
+            with open(profile, "rb") as f:
+                if TOKEN_BLOCK_BEGIN.encode() in f.read():
+                    found.append(profile)
+        except OSError:
+            continue
+    return found
+
+
 def remove_codex_token(target: str) -> bool:
     """Remove only complete appliance-owned token blocks from a shell profile."""
     if not os.path.exists(target):
@@ -364,7 +377,9 @@ def unwire_coding_agents() -> None:
     ours = this_appliance_urls()
     codex = shutil.which("codex")
     remove_profile_token = False
-    if codex is None:
+    # Only when there IS a token line to keep: said on a machine that never had Codex, it
+    # reads as an uninstall leaving something behind that does not exist.
+    if codex is None and codex_token_profiles():
         print(warn("  Kept any Codex shell-profile token because registration ownership could not be verified."))
     for name, cli in (("Claude Code", shutil.which("claude")), ("Codex", codex)):
         if not cli:

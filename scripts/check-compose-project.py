@@ -111,11 +111,15 @@ def collect_hints():
 def check_hints(name):
     """A hint names this instance and never suggests raw docker compose: the
     `embabel` command does that with the settings `up` uses. Before the command
-    is on PATH, the hint is the checkout's own launcher."""
+    is on PATH, the hint is the checkout's own launcher — and the same when the
+    `embabel` on PATH is some other program, which is the case that left a user
+    unable to uninstall: every hint ran the other program."""
+    from embabel_setup import launcher as launcher_module
     default = name == settings.DEFAULT_INSTANCE
     settings.use_instance(name)
-    for installed in ("/usr/local/bin/embabel", None):
-        with patch("shutil.which", return_value=installed):
+    for installed, ours in (("/usr/local/bin/embabel", True), ("/usr/local/bin/embabel", False), (None, False)):
+        with patch("shutil.which", return_value=installed), \
+                patch.object(launcher_module, "owns", return_value=ours):
             hints = collect_hints()
         assert len(hints) == 6, f"expected 6 hints, collected {len(hints)}: {hints}"
         text = "\n".join(hints)
@@ -123,7 +127,7 @@ def check_hints(name):
         cli = re.findall(r"(\S*)\bembabel ((?:--instance \S+ )?)(?:up|status|logs|doctor)\b", text)
         assert len(cli) >= 5, f"expected the embabel verbs, saw {cli} in:\n{text}"
         for launcher, flag in cli:
-            expected = "" if installed else os.path.join(settings.APPLIANCE_DIR, "")
+            expected = "" if ours else os.path.join(settings.APPLIANCE_DIR, "")
             assert launcher == expected, f"hint runs {launcher}embabel, expected {expected}embabel"
             assert flag == ("" if default else f"--instance {name} "), f"embabel hint for {name}: {flag!r}"
         if not installed and not default:
