@@ -478,7 +478,10 @@ def fresh_wipe() -> None:
     print("  --fresh DELETES the appliance's entire state:")
     print("    account and password, world, knowledge graph, documents, dashboards.")
     print("  Images and the local embedding model survive; nothing else does.")
-    answer = prompt("  Type 'yes' to wipe: ").strip().lower()
+    # --fresh IS the confirmation, when there is nobody to confirm to: an operator
+    # who typed both --headless and --fresh has said this once already, in a place
+    # no file descriptor can have faked.
+    answer = prompt("  Type 'yes' to wipe: ", headless="yes").strip().lower()
     if answer != "yes":
         raise SetupError("Not wiped — nothing was touched.")
     take_everything_down()
