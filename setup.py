@@ -96,6 +96,7 @@ from embabel_setup.scenarios import *    # noqa: F403 — the world in a named s
 from embabel_setup.sandbox import *      # noqa: F403 — a code-mode sandbox of your own
 from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, if any
 from embabel_setup.trust import *        # noqa: F403 — company certificate authorities
+from embabel_setup.pins import *         # noqa: F403 — what an install runs on, written down
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
@@ -187,13 +188,13 @@ def main() -> int:
     sql = parser.add_mutually_exclusive_group()
     sql.add_argument(
         "--sql", dest="sql", action="store_true", default=None,
-        help="run the SQL endpoint (Postgres wire) so BI tools, dbt and notebooks can query "
-             "this world as tables — Metabase, Grafana, DuckDB, psql. Written to .env as "
-             "EMBABEL_SQL; off unless asked for",
+        help="serve SQL (the Postgres wire protocol) so BI tools, dbt and notebooks can query "
+             "this world as tables — Metabase, Grafana, DuckDB, psql. The server does this by "
+             "default; this undoes an earlier --no-sql. Written to .env as EMBABEL_SQL",
     )
     sql.add_argument(
         "--no-sql", dest="sql", action="store_false", default=None,
-        help="do not run the SQL endpoint (the default)",
+        help="turn the server's SQL door off: no listener on the SQL port",
     )
     parser.add_argument(
         "--ignore-env",
@@ -209,6 +210,10 @@ def main() -> int:
     # Before compose is invoked for anything: a new instance without a block
     # would fall back to the default base and collide with the first appliance.
     if not args.uninstall:
+        # FIRST, while "is there a .env yet" still means "has this instance been
+        # created": the line below writes one. A new instance gets the new choices —
+        # the Embabel engine among them — and one that exists keeps what it runs on.
+        pin_install(creating=True)
         ensure_port_block()
 
     # Line-buffered even when stdout is a pipe. Subprocesses (compose, docker logs)
@@ -238,6 +243,24 @@ def main() -> int:
         # the forwarder before the wizard or its outcome can stop us.
         write_cli_shim()
 
+        # BEFORE ANYTHING IS STARTED: no image is pulled and no container exists
+        # until well below this line. The terms are accepted by installing, so
+        # asking afterwards would be telling someone what they had already done.
+        #
+        # ONLY ON A MACHINE THAT HAS NOT INSTALLED BEFORE. `embabel up` re-enters
+        # this function on a configured appliance, and that verb gets run by
+        # scripts, containers and cron with no terminal attached — a question
+        # there turns a routine restart into an exit 1. The answer comes from .env
+        # alone (see should_ask_trial_terms): this used configured_mode(), which
+        # reads EMBABEL_MODE from the environment first, so the documented
+        # `EMBABEL_MODE=worlds` install looked set up and never asked.
+        #
+        # Below write_cli_shim() so the forwarder is restored whatever the answer,
+        # and below ensure_port_block(), which has already written .env.
+        # --uninstall returns above both: leaving requires agreeing to nothing.
+        if should_ask_trial_terms():
+            accept_trial_terms()
+
         # What a bare `./setup.py --fresh` means: the door this machine was last
         # set up as, not a guess. Wiping a worlds appliance and bringing back the
         # Me door on top of its graph is not what anybody typing --fresh meant.
@@ -250,13 +273,14 @@ def main() -> int:
         # the variable exists, and an upgrade that silently undid it made it a trap.
         remember_source()
         ensure_realms_dir(mode, args.realms)
-        # --sql / --no-sql, persisted to .env BEFORE the containers start (compose reads the
-        # world-sql profile when it creates them). Unset leaves whatever .env already says — off
-        # by default. No prompt: the SQL endpoint is a deliberate, named choice, not a step
-        # every install walks through.
+        # --sql / --no-sql, persisted to .env BEFORE the containers start (compose hands it
+        # to the server as GRAPH_SQL_ENABLED when it creates them). Unset leaves whatever .env
+        # already says — on, when it says nothing. No prompt: the door costs a port on
+        # loopback and asks for the same sign-in as everything else, so turning it off is a
+        # deliberate, named choice rather than a step every install walks through.
         if args.sql is not None:
             set_env_var(SQL_VAR, "true" if args.sql else "false",
-                        why=("Whether the SQL endpoint (world-sql) runs — the Postgres surface for",
+                        why=("Whether the server's SQL door listens — the Postgres surface for",
                              "BI, dbt and notebooks. Set by --sql / --no-sql; edit to change."))
 
         if args.fresh:
@@ -313,6 +337,10 @@ def main() -> int:
             report_boot_warnings(container)
             print()
         status = call_when_ready(base, token)
+        # The terms were answered at the top of this run, or of the earlier one .env
+        # remembers (--resume, --fresh); the console's Welcome asks the appliance, so the
+        # appliance is told, and nobody agrees to the same terms twice.
+        record_trial_terms_on_appliance(base, token, status)
 
         # Before account details, provider keys or the permanent /complete: the person
         # doing the installation sees the report contract in the flow they are already

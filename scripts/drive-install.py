@@ -283,7 +283,7 @@ def no_stale_org(text: str) -> str | None:
     rots silently until the day somebody creates the old name again.
     """
     stale = re.findall(r"github\.com/embabel/(default-world|realm-spec|arts-world|"
-                       r"realm-esg|realm-legal|appliance|worlds-console)", text)
+                       r"realm-esg|realm-legal|appliance)", text)
     if stale:
         return f"stale org reference(s) printed: embabel/{stale[0]}"
     return None

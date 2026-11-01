@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import re
+import socket
 
 from .core import APPLIANCE_DIR, MODE_COMPOSE, SetupError
 
@@ -19,10 +20,12 @@ def default_base() -> str:
     port moves with the instance, so a constant could only ever be right once."""
     return f"http://localhost:{ports_for(port_base())['ASSISTANT_PORT']}"
 def console_url() -> str:
-    """WHERE A PERSON GOES in worlds mode — not the same as where the API is. The
-    worlds server also serves the old Vaadin UI, and sending a new operator there
-    instead of to the console makes their first impression a surface on its way out."""
-    return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}"
+    """WHERE A PERSON GOES in worlds mode. The server serves the console itself, at `/ui/` — but
+    this names the console's long-standing port rather than the API's, because that port still
+    answers (the compose file maps it onto the same server) and it is the address people have. The
+    credential their browser signs in with is keyed to that origin, port included; their settings
+    are kept by the appliance and follow the user rather than the browser."""
+    return f"http://localhost:{ports_for(port_base())['WORLDS_CONSOLE_PORT']}/ui/"
 def api_address(base: str) -> str:
     """The appliance's API as a DIAGNOSTIC, deliberately not as a link.
 
@@ -39,16 +42,34 @@ def api_address(base: str) -> str:
     return base.split("://", 1)[-1].rstrip("/")
 
 
+# The host Bolt clients on other machines dial; bolt.ensure_public_host writes it.
+BOLT_HOST_VAR = "BOLT_PUBLIC_HOST"
+
+
+def bolt_public_host() -> str:
+    """The host About, the routing table and these URLs name: localhost on an install not yet given one."""
+    return env_file_value(BOLT_HOST_VAR) or "localhost"
+
+
 def surface_urls() -> dict:
-    """Every address this instance publishes, by the name a person uses for it."""
+    """Every address this instance publishes, by the name a person uses for it.
+
+    `graph` is Neo4j Browser, so only an appliance that runs Neo4j has one. On the
+    Embabel engine the graph is inside the server and there is no browser to open;
+    `bolt` is then the server's own Bolt port, which Neo4j's tools connect to, named
+    by the host other machines reach it by (BOLT_PUBLIC_HOST)."""
     p = ports_for(port_base())
-    return {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
+    urls = {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
             "worlds": f"http://localhost:{p['WORLDS_PORT']}",
             "console": console_url(),
-            "graph": f"http://localhost:{p['NEO4J_BROWSER_PORT']}",
-            "bolt": f"bolt://localhost:{p['NEO4J_BOLT_PORT']}",
             "dashboards": f"http://localhost:{p['GRAFANA_PORT']}",
             "metrics": f"http://localhost:{p['PROMETHEUS_PORT']}"}
+    if graph_engine() == "NEO4J":
+        urls["graph"] = f"http://localhost:{p['NEO4J_BROWSER_PORT']}"
+        urls["bolt"] = f"bolt://localhost:{p['NEO4J_BOLT_PORT']}"
+    elif graph_engine() == "EMBABEL":
+        urls["bolt"] = f"bolt://{bolt_public_host()}:{p['WORLDS_BOLT_PORT']}"
+    return urls
 # Machine-local configuration: keys, timezone, world template, realms directory.
 # Gitignored, and removed by --uninstall — which is the difference between that
 # and --fresh, since a .env that survives means the next run asks nothing.
@@ -75,16 +96,22 @@ COMPOSE_PROJECT = "embabel-appliance"
 PHONE_HOME_ENDPOINT = "https://telemetry.embabel.com/v1/appliance"
 PHONE_HOME_VAR = "EMBABEL_PHONE_HOME"
 PHONE_HOME_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/PHONE_HOME.md"
+
+# The terms installing accepts. In this repository, next to PHONE_HOME.md and for
+# the same reason: the document has to be readable from a terminal session with
+# nothing but a URL, by someone who has not signed in anywhere yet.
+TRIAL_TERMS_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/TRIAL_TERMS.md"
 def phone_home_on() -> bool:
     """Whether this appliance reports usage. False unless .env says true."""
     value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()
     return value in ("1", "true", "yes", "on")
 
 
-# The opt-in SQL endpoint (world-sql): a Postgres-wire surface onto the world for
-# BI, dbt and notebooks. OFF by default — it is a power-user surface, and a default
-# install should not open a second port nobody asked for. Enabling it turns on the
-# `world-sql` compose profile (see dockerlib.compose_env).
+# The SQL door: the Postgres wire protocol onto the world, for BI, dbt and notebooks,
+# served by the server itself (GRAPH_SQL_ENABLED, which both compose files set from
+# this). ON unless .env says otherwise — loopback only, and behind the same sign-in as
+# Bolt, so it opens nothing the HTTP port does not. The name is the one the opt-in
+# sidecar used, so an install that said --no-sql to that is still off.
 SQL_VAR = "EMBABEL_SQL"
 
 
@@ -95,8 +122,10 @@ def _switched_on(var: str) -> bool:
 
 
 def sql_enabled() -> bool:
-    """Whether the SQL endpoint runs alongside the worlds mode. False unless .env says true."""
-    return _switched_on(SQL_VAR)
+    """Whether the server's SQL door listens. True unless .env says false — the words
+    Spring reads as false, since the server is what decides."""
+    value = (os.environ.get(SQL_VAR) or env_file_value(SQL_VAR) or "").strip().lower()
+    return value not in ("0", "false", "no", "off")
 
 
 # Prometheus and Grafana: OFF by default (embabel-worlds/appliance#112). Together they
@@ -146,10 +175,11 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
         with open(env_path()) as f:
             lines = f.read().splitlines()
     written = escape_for_env(value)
-    for index, line in enumerate(lines):
-        if line.startswith(f"{key}="):
-            lines[index] = f"{key}={written}"
-            break
+    # The LAST assignment is replaced, found by the reader's rules: that is the one
+    # compose acts on, and `KEY = value` or `export KEY=` is the same key to it.
+    found = [i for i, line in enumerate(lines) if (_dotenv_assignment(line) or ("",))[0] == key]
+    if found:
+        lines[found[-1]] = f"{key}={written}"
     else:
         lines += ["", *why, f"{key}={written}"]
     with open(env_path(), "w") as f:
@@ -172,6 +202,36 @@ def configured_mode() -> str | None:
                     value = line.split("=", 1)[1].strip()
                     return value if value in MODE_COMPOSE else None
     return None
+def recorded_mode() -> str | None:
+    """The door .env records — what this INSTALL has been set up as.
+
+    Not configured_mode(): that one answers from the environment first, which is right
+    for choosing a door and wrong for "has this machine installed before?". The
+    documented install names its mode (`EMBABEL_MODE=worlds … | sh`), so on a machine
+    that has never installed anything configured_mode() already says "worlds".
+    """
+    value = (env_file_value("EMBABEL_MODE") or "").strip()
+    return value if value in MODE_COMPOSE else None
+
+
+# The trial terms are accepted once, at first install, and the answer is kept in .env
+# so a run interrupted after accepting does not ask again on resume.
+TERMS_VAR = "EMBABEL_TERMS_ACCEPTED"
+
+
+def terms_accepted() -> bool:
+    """Whether this install's .env records that the trial terms were accepted."""
+    return bool((env_file_value(TERMS_VAR) or "").strip())
+
+
+def record_terms_accepted(when: str) -> None:
+    """Write the acceptance into .env. [when] is the date, YYYY-MM-DD."""
+    set_env_var(TERMS_VAR, when, (
+        "# When the free trial terms were accepted at install. While this line is",
+        "# here setup does not ask again.",
+    ))
+
+
 def remember_mode(mode: str) -> None:
     """Record the door, so the CLI can come back to it rather than to its default."""
     if configured_mode() == mode:
@@ -288,6 +348,9 @@ PORT_OFFSETS = {
     "GRAFANA_PORT": 5,
     "PROMETHEUS_PORT": 6,
     "OPEN_WEBUI_PORT": 7,
+    "WORLDS_BOLT_PORT": 8,            # Bolt: Neo4j Browser and drivers, a world or the graph
+    "WORLDS_PERSISTED_BOLT_PORT": 9,  # Bolt: persisted mode, the user's own Cypher database
+    "WORLDS_SQL_PORT": 10,            # SQL: the Postgres wire protocol, served by the server
 }
 # Instance 24 would land on 11434, which is Ollama's — and the compose files
 # talk to Ollama there. A ceiling nobody will reach, stated so it cannot be hit
@@ -384,6 +447,30 @@ def ensure_port_block() -> int:
     if instance() != DEFAULT_INSTANCE or base != DEFAULT_PORT_BASE:
         print(f"  Instance '{instance()}' uses ports {base}-{base + PORT_BLOCK - 1}.")
     return base
+# The graph engine, as the server spells it. Which one an install runs is decided once
+# and written into .env — see pins.py; these only read the answer.
+GRAPH_TYPE_VAR = "GRAPH_TYPE"
+# What compose falls back to when .env says nothing, and so what every install ran
+# before the engine was written down. It stays NEO4J for good: an upgrade runs the
+# installed CLI against the new compose files, and that run must not move anybody.
+UNPINNED_ENGINE = "NEO4J"
+# The Embabel engine was called MEMORY before it had a name of its own. The server still
+# accepts that spelling, and so does every reader here, so no .env has to be edited.
+ENGINE_ALIASES = {"MEMORY": "EMBABEL"}
+
+
+def canonical_engine(value: str | None) -> str | None:
+    """An engine name as the server reads it, the old spelling folded in; None for blank."""
+    value = (value or "").strip().upper()
+    return ENGINE_ALIASES.get(value, value) or None
+
+
+def graph_engine() -> str:
+    """The engine this appliance runs — GRAPH_TYPE from the environment or .env, and
+    NEO4J when neither says, which is what compose falls back to as well."""
+    return canonical_engine(os.environ.get(GRAPH_TYPE_VAR) or env_file_value(GRAPH_TYPE_VAR)) or UNPINNED_ENGINE
+
+
 def _docker_port_bases() -> set[int]:
     """Port blocks owned by appliance containers, including other checkouts."""
     # Late for the settings <-> dockerlib cycle documented in installed_instances().
@@ -447,6 +534,27 @@ def _docker_port_bases() -> set[int]:
     return used
 
 
+def _port_taken(port: int) -> bool:
+    """Whether something on this machine already listens on [port], on any address.
+
+    Compose publishes on 0.0.0.0, so a bind there is the question docker will ask; a
+    loopback-only listener is caught too, since the wildcard bind collides with it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("0.0.0.0", port))
+        except OSError:
+            return True
+    return False
+
+
+def _block_has_listener(base: int) -> bool:
+    """Whether any port of the block at [base] is already held by a process outside
+    Docker. The instances and Docker's own bindings say which blocks appliances use;
+    neither sees a dev server or a proxy left running on the host, and a block
+    allocated over one installs, then fails at `up` on the port it holds."""
+    return any(_port_taken(base + offset) for offset in range(PORT_BLOCK))
+
+
 def free_port_base() -> int:
     """The next unused block. Bases in use are read from the instances that
     exist rather than counted, so removing the second of three instances frees
@@ -456,7 +564,7 @@ def free_port_base() -> int:
     used.add(DEFAULT_PORT_BASE)  # reserved for the default instance, always
     for n in range(MAX_INSTANCES + 1):
         candidate = DEFAULT_PORT_BASE + n * PORT_BLOCK
-        if candidate not in used:
+        if candidate not in used and not _block_has_listener(candidate):
             return candidate
     raise SetupError(
         f"All {MAX_INSTANCES + 1} port blocks are in use. The next one would collide "
@@ -466,20 +574,104 @@ def volume_name(key: str) -> str:
     """The real Docker volume name — compose prefixes every volume with the project."""
     return f"{compose_project()}_{key}"
 def volume_exists(key: str) -> bool:
+    # Late for the settings <-> dockerlib cycle documented in installed_instances().
+    # Without it this raised NameError, and so did every backup that asked.
+    from .dockerlib import _docker
     run = _docker("volume", "inspect", volume_name(key), timeout=15)
     return run is not None and run.returncode == 0
+# What a double-quoted .env value may escape, as compose reads it.
+_DOTENV_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\", '"': '"', "$": "$"}
+
+
+def _dotenv_assignment(line: str) -> tuple[str, str] | None:
+    """One .env line as compose reads it: (key, value), or None for anything else.
+
+    THE SAME RULES AS COMPOSE, because the two read the same file and a value they
+    disagree on is a value the appliance acts on and the container never sees — or
+    the reverse. `GRAPH_TYPE=NEO4J   # pinned` is NEO4J to compose, and was the whole
+    tail, comment included, to a reader that only split on `=`: an engine name
+    matching nothing. So: `export ` is optional, whitespace around the key and before
+    the value is not part of either, a quoted value ends at its closing quote, and an
+    unquoted one ends where a `#` follows whitespace. `$$` is an escaped dollar
+    everywhere except inside single quotes, which compose does not interpolate.
+
+    Hand-written rather than a library because the installer is standard library
+    only, and the format is small and fixed by compose. Multi-line quoted values are
+    not read; nothing the appliance writes or reads is one.
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export "):].lstrip()
+    key, eq, rest = stripped.partition("=")
+    key = key.strip()
+    if not eq or not key:
+        return None
+    rest = rest.lstrip(" \t")
+    if rest[:1] == "'":
+        end = rest.find("'", 1)
+        return key, rest[1:end] if end > 0 else rest[1:]
+    if rest[:1] == '"':
+        out, i = [], 1
+        while i < len(rest) and rest[i] != '"':
+            if rest[i] == "\\" and i + 1 < len(rest):
+                i += 1
+                out.append(_DOTENV_ESCAPES.get(rest[i], "\\" + rest[i]))
+            else:
+                out.append(rest[i])
+            i += 1
+        return key, "".join(out).replace("$$", "$")
+    comment = re.search(r"\s#", rest)
+    if comment:
+        rest = rest[:comment.start()]
+    return key, rest.strip().replace("$$", "$")
+
+
 def _env_file_value(path: str, key: str) -> str | None:
+    """The value compose would read for `key`, unescaped — what was stored is a
+    doubled-dollar form for compose's benefit, not the value itself. The LAST
+    assignment wins, as it does for compose."""
     if not os.path.exists(path):
         return None
+    found = None
     with open(path) as f:
         for line in f:
-            stripped = line.strip()
-            if stripped.startswith(f"{key}="):
-                # Unescaped on the way out: what was stored is a doubled-dollar
-                # form for compose's benefit, not the value itself.
-                raw = stripped.split("=", 1)[1].strip()
-                return raw.replace("$$", "$") or None
-    return None
+            parsed = _dotenv_assignment(line)
+            if parsed and parsed[0] == key:
+                found = parsed[1] or None
+    return found
+
+
+def env_file_assigns(key: str) -> bool:
+    """Whether this instance's .env has a line for `key` at all, empty or not. An empty
+    one is still somebody's answer — `embabel embeddings off` writes exactly that."""
+    if not os.path.exists(env_path()):
+        return False
+    with open(env_path()) as f:
+        return any((_dotenv_assignment(line) or ("",))[0] == key for line in f)
+
+
+# A setting whose NAME says it is a credential. Matched by underscore-separated part, so
+# NEO4J_PASSWORD, OPENAI_API_KEY, EMBABEL_KEY_SECRET, GITHUB_TOKEN and NEO4J_AUTH all
+# count, and ASSISTANT_EMBEDDING_MODEL does not. Erring wide is the cheap mistake: a
+# value hidden that could have been shown costs a look in .env; the other way round is a
+# password in a scrollback, a screen-share or a pasted bug report.
+SECRET_NAME_PARTS = frozenset({
+    "PASSWORD", "PASSWD", "PASS", "PWD", "SECRET", "SECRETS", "TOKEN", "KEY", "APIKEY",
+    "CREDENTIAL", "CREDENTIALS", "AUTH", "PRIVATE", "BEARER",
+})
+
+
+def is_secret_setting(key: str) -> bool:
+    """Whether a setting's value is a credential and must never be printed."""
+    return any(part in SECRET_NAME_PARTS for part in re.split(r"[^A-Z0-9]+", key.upper()))
+
+
+def shown_setting(key: str, value: str) -> str:
+    """`KEY=value` for a person to read — with the value withheld when the key names a
+    credential. Every line the CLI prints about a setting goes through here."""
+    return f"{key}=<hidden>" if is_secret_setting(key) else f"{key}={value}"
 
 
 def env_file_value(key: str, name: str | None = None) -> str | None:

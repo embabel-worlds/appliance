@@ -31,8 +31,10 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
                    Timeout, TokenRejected, Unreachable, prompt)
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
-from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, api_address,
-                       console_url, embabel_command, phone_home_on, resume_command, set_env_var)
+from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, TERMS_VAR, TRIAL_TERMS_DOC_URL,
+                       api_address, console_url, embabel_command, env_file_value, phone_home_on,
+                       record_terms_accepted, recorded_mode, resume_command,
+                       set_env_var, terms_accepted)
 from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
 from .words import copy_text, say
@@ -387,6 +389,77 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
 
 
 # ── rendering ───────────────────────────────────────────────────────────────
+
+def should_ask_trial_terms() -> bool:
+    """Whether this run is a first install that has not yet accepted the trial terms.
+
+    From .env alone. An install that already accepted says so there; one made before
+    acceptance was recorded still has its mode there, and `embabel up` on it runs from
+    scripts and cron with no terminal, where a question would turn a routine restart
+    into an exit 1. Never from the environment: `EMBABEL_MODE` in the shell is how a
+    first install picks its door, not evidence of an earlier one.
+    """
+    return not terms_accepted() and not recorded_mode()
+
+
+def accept_trial_terms() -> None:
+    """Show the free trial terms and take an answer, before anything is installed.
+
+    The terms are accepted by installing, which makes WHEN this runs the whole
+    point: after the images are pulled and the containers are up, a person has
+    already done the accepting and is only being told about it. So this sits at
+    the top of the run, before any state is written.
+
+    Declining is a clean stop rather than an error. Nothing has been installed at
+    this point, so there is nothing to undo and nothing to resume.
+    """
+    print("\n" + heading("Free trial terms"))
+    say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL)
+
+    answer = prompt("\n  Accept and continue? [Y/n]: ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        raise SetupError(
+            "Setup stopped: the free trial terms were not accepted. Nothing has "
+            "been started and no data has been created.\n"
+            "  The installer has already unpacked the appliance into "
+            + APPLIANCE_DIR + "; delete that directory to remove it.\n"
+            "  The terms are at: " + TRIAL_TERMS_DOC_URL
+        )
+    record_terms_accepted(time.strftime("%Y-%m-%d"))
+
+
+def record_trial_terms_on_appliance(base: str, token: str, status: dict) -> None:
+    """Tell the appliance the trial terms were accepted here, so the console does not ask again.
+
+    Two records of one answer: this run keeps it in .env, and the appliance keeps its own,
+    against the version it is configured with, which is what the console's Welcome reads.
+    Without this the person who just typed "y" here was asked to tick the same terms in the
+    browser a minute later.
+
+    ONLY THE SAME DOCUMENT. The appliance is told only when the terms it is configured with
+    are the ones this run showed; a deployment pointing it at other terms still has them
+    agreed to in the console, where they can be read.
+
+    Never a reason to stop. If the appliance refuses or cannot be reached, the console asks,
+    as it did before.
+    """
+    version = status.get("termsVersion")
+    if not version or status.get("termsAccepted") or not terms_accepted():
+        return
+    # AN ACCEPTANCE OLDER THAN THE TERMS is not one of them. .env records the day the
+    # terms were accepted, and the appliance names its terms by the day they were
+    # issued, so terms issued since (a --fresh run long after the first install) are
+    # left for the console to ask, rather than reported as agreed to.
+    accepted = (env_file_value(TERMS_VAR) or "").strip()
+    if accepted < version:
+        return
+    if status.get("termsUrl") != TRIAL_TERMS_DOC_URL:
+        return
+    try:
+        call(base, "/terms", token, {"version": version})
+    except SetupError:
+        pass
+
 
 def disclose_usage_reporting(base: str) -> None:
     """Put the complete report shape in the first-run path, before setup closes.

@@ -64,6 +64,22 @@ services:
       # Unpublishing this port silently breaks every sandbox tool call.
       # Same port on BOTH sides — see SERVER_PORT below.
       - "127.0.0.1:${ASSISTANT_PORT:-11042}:${ASSISTANT_PORT:-11042}"
+      # Bolt, the Neo4j wire protocol, for Neo4j Browser, the drivers and the graph tools
+      # built on them. The server speaks it on 7687 (a world through Virtual Cypher, or
+      # the engine's graph for an administrator) and 7688 (persisted mode: your own
+      # Cypher database, read and write). Host and container ports differ, unlike the
+      # HTTP port above: nothing hands a Bolt URL to a sibling container.
+      # Unlike every other port here, these two are published beyond loopback: they
+      # exist to be dialled by Neo4j Browser and the drivers, from this machine or any
+      # other, and every session signs in with an appliance account or an API key.
+      # BOLT_BIND=127.0.0.1 in .env keeps them on this machine.
+      - "${BOLT_BIND:-0.0.0.0}:${WORLDS_BOLT_PORT:-11050}:7687"
+      - "${BOLT_BIND:-0.0.0.0}:${WORLDS_PERSISTED_BOLT_PORT:-11051}:7688"
+      # SQL, the Postgres wire protocol, for psql, JDBC, BI tools, dbt and postgres_fdw:
+      # the caller's world as tables, served from this JVM. On unless EMBABEL_SQL=false.
+      # In the port block, like Bolt, because it is on for every install now: a fixed
+      # host port would stop the second appliance on a machine from starting at all.
+      - "127.0.0.1:${WORLDS_SQL_PORT:-11052}:15432"
     # Realm credentials, without a compose edit per realm: a realm names the key it
     # needs (`token-env:` in its apis.yml), the key goes in secrets.env beside this
     # file, and every line of it enters the container as-is. Optional and gitignored;
@@ -77,27 +93,63 @@ services:
       # remapped port leaves every code-mode call dialling nothing. Moving the
       # appliance to another port therefore moves both sides together.
       - SERVER_PORT=${ASSISTANT_PORT:-11042}
+      # What a `neo4j://` client is told to reconnect to, and what About shows: the host's
+      # name and ports, not the container's. Each port says so for itself, because the server
+      # would otherwise derive the persisted one from the container port, 7688. The name is
+      # one other machines can dial, written into .env by `embabel up` (embabel_setup/bolt.py).
+      - GRAPH_BOLT_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_BOLT_PORT:-11050}
+      - GRAPH_BOLT_PERSISTED_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_PERSISTED_BOLT_PORT:-11051}
+      # The SQL door's switch. EMBABEL_SQL is the name .env has always used for SQL, so an
+      # install that said --no-sql keeps it off; unset, the server's default — on — stands.
+      - GRAPH_SQL_ENABLED=${EMBABEL_SQL:-true}
+      # Where About tells people the SQL door is: the host port, not the container's. It is
+      # localhost rather than BOLT_PUBLIC_HOST because the port is published on 127.0.0.1
+      # only (the password arrives in clear text), so no other machine could dial it.
+      - GRAPH_SQL_ADVERTISED_ADDRESS=localhost:${WORLDS_SQL_PORT:-11052}
+      # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
+      # guides.json from the repository this checkout follows and indexes what is new
+      # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
+      # EMBABEL_REPO in .env) is told about that branch's guides and not main's.
+      - ASSISTANT_GUIDES_REPOSITORY=${EMBABEL_REPO:-embabel-worlds/appliance}
+      - ASSISTANT_GUIDES_REF=${EMBABEL_REF:-main}
       # Two MCP doors — see the worlds compose file's note. /mcp (also /mcp/chat)
       # is the chat surface, `embabel-chat`; /mcp/code is the building surface,
       # `embabel-code`, which is where setup wires coding agents. The server names
       # them itself, so nothing here has to.
       - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
+      # Email is part of Me and opt-in everywhere else: with it on, the models are
+      # shown the user's mail schema and offered the email tools. The Worlds mode
+      # leaves it off, and a user who connects a mailbox there turns it on for
+      # themselves.
+      - ASSISTANT_EMAIL_ENABLED=true
       # The image runs UTC unless told otherwise, and a wrong zone skews every
       # "now" the assistant utters and every schedule it keeps. setup.py detects
       # the host's zone and writes TZ into .env; the JVM honors the variable.
       - TZ=${TZ:-Etc/UTC}
       # Neo4j on the compose network — the in-container Bolt port, not the 7891
       # host mapping a workstation checkout uses.
-      # The appliance's engine is a SET default, not an inherited one: the app
-      # image now defaults to its in-process engine when GRAPH_TYPE is absent
-      # (embabel/me#1061), and an appliance composition must not change engines
-      # because the app's default moved. NEO4J unless .env says otherwise; the
-      # graph-memory/falkordb overlays override this explicitly.
+      # The engine is .env's answer — setup writes EMBABEL for a new appliance, and
+      # the CLI writes NEO4J for one made before — and the graph-embabel/falkordb
+      # overlays then set it explicitly. This fallback is for an appliance whose .env
+      # does not say yet, which ran Neo4j by default, and it stays NEO4J for good: an
+      # upgrade runs the installed CLI against these files, and that run must not
+      # move anybody's graph (embabel_setup/pins.py).
       - GRAPH_TYPE=${GRAPH_TYPE:-NEO4J}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
+      # The graph connection pool, exposed so an operator can change it — which until now
+      # they could not: the server reads NEO4J_POOL_MAX and nothing passed it in, so the
+      # pool was effectively fixed at this value with no way to move it.
+      #
+      # 50 is what the server already defaults to, so wiring it changes nothing until
+      # somebody sets it. What raising it buys, measured at 256 concurrent engine runs:
+      # refusals went from 26 to 0, and latency did NOT improve (p50 3.6s -> 3.7s). More
+      # connections stop the graph REFUSING work; they do not make it faster, so the
+      # waiting moves from the pool into the database. Worth knowing before raising it to
+      # fix a slowness complaint, because it will not.
+      - NEO4J_POOL_MAX=${NEO4J_POOL_MAX:-50}
       # The host-published ports, for the Neo4j link in the UI: a browser resolves
       # them from outside the compose network, so BOTH halves of that link must be
       # host ports — the HTTP one it opens and the Bolt one it then dials. Left
@@ -177,38 +229,27 @@ services:
       # today and the wallet reports itself EMPTY rather than erroring. Every OAuth
       # app and API key silently needed re-entering after each restart.
       #
-      # BARE FORM, and unlike OPENAI_API_KEY below: `${VAR:-}` would hand the
+      # BARE FORM, like the provider keys below: `${VAR:-}` would hand the
       # container an empty wallet key, which is worse than none — an empty key
       # decrypts nothing and silently loses every stored credential, where an
       # absent one makes setup.py generate a real one into .env on first run.
-      # OpenAI takes the opposite treatment because its config THROWS on an
-      # absent key and merely constructs on an empty one.
       - EMBABEL_KEY_SECRET
-      # At least one of these is required — the assistant cannot answer without a
-      # model provider. See .env.example.
-      # ${VAR:-}, LIKE ANTHROPIC BELOW, and for the same reason — which cost a
-      # developer a broken fresh install to learn. OpenAiModelsConfig reads
-      # `envApiKey ?: properties.apiKey ?: error(...)`: an UNSET variable is null
-      # and throws in the constructor, crash-looping the whole app, while an
-      # EMPTY one is a value and constructs. A server that cannot boot without a
-      # key cannot be asked for one — setup drives the server's own /setup steps
-      # over HTTP — so the bare form made a genuinely fresh machine unsetuppable.
+      # The provider keys, BARE: forwarded only when .env or the shell sets them.
       #
-      # The bare form was there to stop an empty variable SHADOWING the key
-      # first-run setup writes into the data volume (env beats config files in
-      # Spring). That is still true, and is now handled where it belongs: setup
-      # writes the key it collects into .env, so this variable carries a real
-      # value from the first boot after setup rather than an empty one. See
-      # remember_provider_key in setup.py.
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      # ANTHROPIC keeps the ${VAR:-} form ON PURPOSE, unlike OPENAI above: the
-      # Anthropic auto-config THROWS in its constructor when no key is present
-      # ("Anthropic API key required"), which crash-loops the whole app for anyone
-      # who only has an OpenAI key — i.e. everyone setup.py serves by default. An
-      # empty value constructs, and the appliance's default LLM roles are OpenAI,
-      # so nothing routes there unless configured. Remove this workaround when
-      # BYOK lands and a missing provider key is simply inert.
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # The server does NOT read its model keys from here. It reads them from the
+      # credential store in the data volume (admin/.credentials.yml), where setup,
+      # the console's Models tab and the setup API all put them, and from nowhere
+      # else — so an empty variable cannot shadow a stored key, and a key set ONLY
+      # here does not connect a provider (the appliance starts with no model and
+      # chat asks for one). Connect a provider through setup or Models instead.
+      #
+      # These used to be `${VAR:-}` because the image once baked the provider
+      # starters, whose configs threw at startup on an absent key. The published
+      # image has shipped without them since embabel/me#1848, so an absent value
+      # is simply absent. What still reads ANTHROPIC_API_KEY from the environment
+      # is the per-user code sandbox, which is handed it as-is.
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
       # An appliance ships with NO embedding model, and document features are off
       # until somebody chooses one:
       #
@@ -303,6 +344,13 @@ services:
       # nothing. Set EMBABEL_PHONE_HOME=true in .env to opt in — setup.py resolves
       # that to the collector address, which lives in this repo and not in the image.
       - ASSISTANT_PHONE_HOME_ENDPOINT=${ASSISTANT_PHONE_HOME_ENDPOINT:-}
+      # THE TERMS SETUP ASKS FOR are the Free Trial Terms and Conditions, the copy in
+      # this repo, and only those. The image's defaults are the website's terms of use
+      # and privacy policy, which are not the agreement the trial runs under; an empty
+      # privacy URL leaves that link out. A new version asks everyone to agree again.
+      - ASSISTANT_SETUP_TERMS_URL=${ASSISTANT_SETUP_TERMS_URL:-https://github.com/embabel-worlds/appliance/blob/main/TRIAL_TERMS.md}
+      - ASSISTANT_SETUP_TERMS_VERSION=${ASSISTANT_SETUP_TERMS_VERSION:-2026-10-13}
+      - ASSISTANT_SETUP_PRIVACY_URL=${ASSISTANT_SETUP_PRIVACY_URL:-}
       # ENTITY EXTRACTION OFF BY DEFAULT. Every ingested document otherwise costs
       # an LLM call that asks a model to pull typed entities out of it, and on
       # this appliance it failed on every single one: the model returns a null
@@ -400,9 +448,10 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - OPENAI_API_BASE_URL=${OPEN_WEBUI_OPENAI_BASE_URL:-https://api.openai.com/v1}
-      # Bare here, deliberately, where the appliance's own service is not: this
-      # is a third-party UI that simply shows no models without a key, rather
-      # than refusing to start. An empty string would be a key it tries to use.
+      # Bare, deliberately: this is a third-party UI that simply shows no models
+      # without a key, rather than refusing to start. An empty string would be a
+      # key it tries to use. Unlike the appliance's own service, it DOES read its
+      # key from here, which is why setup.py copies an OpenAI key into .env.
       - OPENAI_API_KEY
       - ENABLE_OLLAMA_API=false
       # Don't download a local sentence-transformers model on first boot — it can

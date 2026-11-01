@@ -1,8 +1,10 @@
 # Embabel Worlds — the world-runtime mode of the appliance.
 #
 #   ./worlds.py                 # or: docker compose -f docker-compose-worlds.yml up -d
-#   open http://localhost:11044  # THE CONSOLE — start here.
-#                                # 11043 is the server: API and MCP, not a place to look.
+#   open http://localhost:11044  # THE CONSOLE — start here. The server serves it, and this port
+#                                # is its old address kept pointing at the server, so a browser
+#                                # that holds the console's state keeps it. 11043 is the same
+#                                # server; both answer /ui/, and / redirects there.
 #
 # THE SAME IMAGE, THE SAME DATA as the Me mode (docker-compose-me.yml) — this is
 # the superset design: the world runtime is always in the product, and this mode
@@ -67,6 +69,30 @@ services:
       # Same host-equals-container port rule as the Me mode: the code sandbox is
       # handed host.docker.internal:${server.port}, so the two move together.
       - "127.0.0.1:${WORLDS_PORT:-11043}:${WORLDS_PORT:-11043}"
+      # THE CONSOLE'S OLD ADDRESS, KEPT, pointed at the app that now serves the console itself.
+      # It is the address people have, and it is where their browser holds the credential the
+      # console signs in with (`worlds-auth`), which is keyed to the ORIGIN — port included. Moving
+      # everybody to the server's port would have asked every one of them to sign in again for no
+      # reason they could see. Their SETTINGS would survive either way: theme, wallpaper, window
+      # look, pins and the dock are kept by the appliance in the signed-in user's world
+      # (/api/v1/profile/console), not by the browser. `/` on either port redirects to the console.
+      - "127.0.0.1:${WORLDS_CONSOLE_PORT:-11044}:${WORLDS_PORT:-11043}"
+      # Bolt, the Neo4j wire protocol, for Neo4j Browser, the drivers and the graph tools
+      # built on them. The server speaks it on 7687 (a world through Virtual Cypher, or
+      # the engine's graph for an administrator) and 7688 (persisted mode: your own
+      # Cypher database, read and write). Host and container ports differ, unlike the
+      # HTTP port above: nothing hands a Bolt URL to a sibling container.
+      # Unlike every other port here, these two are published beyond loopback: they
+      # exist to be dialled by Neo4j Browser and the drivers, from this machine or any
+      # other, and every session signs in with an appliance account or an API key.
+      # BOLT_BIND=127.0.0.1 in .env keeps them on this machine.
+      - "${BOLT_BIND:-0.0.0.0}:${WORLDS_BOLT_PORT:-11050}:7687"
+      - "${BOLT_BIND:-0.0.0.0}:${WORLDS_PERSISTED_BOLT_PORT:-11051}:7688"
+      # SQL, the Postgres wire protocol, for psql, JDBC, BI tools, dbt and postgres_fdw:
+      # the caller's world as tables, served from this JVM. On unless EMBABEL_SQL=false.
+      # In the port block, like Bolt, because it is on for every install now: a fixed
+      # host port would stop the second appliance on a machine from starting at all.
+      - "127.0.0.1:${WORLDS_SQL_PORT:-11052}:15432"
     # Realm credentials, without a compose edit per realm. A realm names the key it
     # needs (`token-env:` in its apis.yml) and you put that key in secrets.env, beside
     # this file — every line of it enters the container as-is. The alternative was a
@@ -78,6 +104,25 @@ services:
         required: false
     environment:
       - SERVER_PORT=${WORLDS_PORT:-11043}
+      # What a `neo4j://` client is told to reconnect to, and what About shows: the host's
+      # name and ports, not the container's. Each port says so for itself, because the server
+      # would otherwise derive the persisted one from the container port, 7688. The name is
+      # one other machines can dial, written into .env by `embabel up` (embabel_setup/bolt.py).
+      - GRAPH_BOLT_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_BOLT_PORT:-11050}
+      - GRAPH_BOLT_PERSISTED_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_PERSISTED_BOLT_PORT:-11051}
+      # The SQL door's switch. EMBABEL_SQL is the name .env has always used for SQL, so an
+      # install that said --no-sql keeps it off; unset, the server's default — on — stands.
+      - GRAPH_SQL_ENABLED=${EMBABEL_SQL:-true}
+      # Where About tells people the SQL door is: the host port, not the container's. It is
+      # localhost rather than BOLT_PUBLIC_HOST because the port is published on 127.0.0.1
+      # only (the password arrives in clear text), so no other machine could dial it.
+      - GRAPH_SQL_ADVERTISED_ADDRESS=localhost:${WORLDS_SQL_PORT:-11052}
+      # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
+      # guides.json from the repository this checkout follows and indexes what is new
+      # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
+      # EMBABEL_REPO in .env) is told about that branch's guides and not main's.
+      - ASSISTANT_GUIDES_REPOSITORY=${EMBABEL_REPO:-embabel-worlds/appliance}
+      - ASSISTANT_GUIDES_REF=${EMBABEL_REF:-main}
       # TWO MCP DOORS from the one server, named for their SURFACES:
       #
       #   /mcp  (also /mcp/chat)  embabel-chat  a chat client — Cowork, Desktop —
@@ -94,16 +139,28 @@ services:
       - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
       # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
       - TZ=${TZ:-Etc/UTC}
-      # The appliance's engine is a SET default, not an inherited one: the app
-      # image now defaults to its in-process engine when GRAPH_TYPE is absent
-      # (embabel/me#1061), and an appliance composition must not change engines
-      # because the app's default moved. NEO4J unless .env says otherwise; the
-      # graph-memory/falkordb overlays override this explicitly.
+      # The engine is .env's answer — setup writes EMBABEL for a new appliance, and
+      # the CLI writes NEO4J for one made before — and the graph-embabel/falkordb
+      # overlays then set it explicitly. This fallback is for an appliance whose .env
+      # does not say yet, which ran Neo4j by default, and it stays NEO4J for good: an
+      # upgrade runs the installed CLI against these files, and that run must not
+      # move anybody's graph (embabel_setup/pins.py).
       - GRAPH_TYPE=${GRAPH_TYPE:-NEO4J}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-embabel-assistant}
+      # The graph connection pool, exposed so an operator can change it — which until now
+      # they could not: the server reads NEO4J_POOL_MAX and nothing passed it in, so the
+      # pool was effectively fixed at this value with no way to move it.
+      #
+      # 50 is what the server already defaults to, so wiring it changes nothing until
+      # somebody sets it. What raising it buys, measured at 256 concurrent engine runs:
+      # refusals went from 26 to 0, and latency did NOT improve (p50 3.6s -> 3.7s). More
+      # connections stop the graph REFUSING work; they do not make it faster, so the
+      # waiting moves from the pool into the database. Worth knowing before raising it to
+      # fix a slowness complaint, because it will not.
+      - NEO4J_POOL_MAX=${NEO4J_POOL_MAX:-50}
       - NEO4J_BROWSER_PORT=${NEO4J_BROWSER_PORT:-11045}
       # Which appliance this server belongs to, stamped onto every code-sandbox
       # container it creates (JvmInstance.INSTANCE_LABEL_KEY). Sandboxes are
@@ -115,7 +172,10 @@ services:
       - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:${WORLDS_PORT:-11043}}
       # Where people open the console, so a request an agent raises in a conversation held elsewhere
       # (an OpenAI client) links to its Approvals window.
-      - ASSISTANT_CONSOLE_URL=${WORLDS_CONSOLE_PUBLIC_URL:-http://localhost:${WORLDS_CONSOLE_PORT:-11044}}
+      # The server serves the console itself now, so the address it links to is its own — but the
+      # port people have bookmarked still answers (see `ports:` below), which is why that is what
+      # this names. WORLDS_CONSOLE_PUBLIC_URL still overrides for an appliance behind a proxy.
+      - ASSISTANT_CONSOLE_URL=${WORLDS_CONSOLE_PUBLIC_URL:-http://localhost:${WORLDS_CONSOLE_PORT:-11044}/ui/}
       # The code-mode sandbox image, so the app launches whatever the pre-pull in
       # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
       # value as unset, because a compose file forwarding an unset variable sets it
@@ -128,36 +188,27 @@ services:
       # today and the wallet reports itself EMPTY rather than erroring. Every OAuth
       # app and API key silently needed re-entering after each restart.
       #
-      # BARE FORM, and unlike OPENAI_API_KEY below: `${VAR:-}` would hand the
+      # BARE FORM, like the provider keys below: `${VAR:-}` would hand the
       # container an empty wallet key, which is worse than none — an empty key
       # decrypts nothing and silently loses every stored credential, where an
       # absent one makes setup.py generate a real one into .env on first run.
-      # OpenAI takes the opposite treatment because its config THROWS on an
-      # absent key and merely constructs on an empty one.
       - EMBABEL_KEY_SECRET
-      # ${VAR:-}, LIKE ANTHROPIC BELOW, and for the same reason — which cost a
-      # developer a broken fresh install to learn. OpenAiModelsConfig reads
-      # `envApiKey ?: properties.apiKey ?: error(...)`: an UNSET variable is null
-      # and throws in the constructor, crash-looping the whole app, while an
-      # EMPTY one is a value and constructs. A server that cannot boot without a
-      # key cannot be asked for one — setup drives the server's own /setup steps
-      # over HTTP — so the bare form made a genuinely fresh machine unsetuppable.
+      # The provider keys, BARE: forwarded only when .env or the shell sets them.
       #
-      # The bare form was there to stop an empty variable SHADOWING the key
-      # first-run setup writes into the data volume (env beats config files in
-      # Spring). That is still true, and is now handled where it belongs: setup
-      # writes the key it collects into .env, so this variable carries a real
-      # value from the first boot after setup rather than an empty one. See
-      # remember_provider_key in setup.py.
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      # ANTHROPIC keeps the ${VAR:-} form ON PURPOSE, unlike OPENAI above: the
-      # Anthropic auto-config THROWS in its constructor when no key is present
-      # ("Anthropic API key required"), which crash-loops the whole app for anyone
-      # who only has an OpenAI key — i.e. everyone setup.py serves by default. An
-      # empty value constructs, and the appliance's default LLM roles are OpenAI,
-      # so nothing routes there unless configured. Remove this workaround when
-      # BYOK lands and a missing provider key is simply inert.
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # The server does NOT read its model keys from here. It reads them from the
+      # credential store in the data volume (admin/.credentials.yml), where setup,
+      # the console's Models tab and the setup API all put them, and from nowhere
+      # else — so an empty variable cannot shadow a stored key, and a key set ONLY
+      # here does not connect a provider (the appliance starts with no model and
+      # chat asks for one). Connect a provider through setup or Models instead.
+      #
+      # These used to be `${VAR:-}` because the image once baked the provider
+      # starters, whose configs threw at startup on an absent key. The published
+      # image has shipped without them since embabel/me#1848, so an absent value
+      # is simply absent. What still reads ANTHROPIC_API_KEY from the environment
+      # is the per-user code sandbox, which is handed it as-is.
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
       # Same embedding model as the Me mode, NON-NEGOTIABLY: both modes write
       # vectors into the same graph, and every vector in it has to come from one
       # model. The pin lives in embeddings-local-worlds.yml / -me.yml, which say so.
@@ -276,6 +327,13 @@ services:
       # nothing. Set EMBABEL_PHONE_HOME=true in .env to opt in — setup.py resolves
       # that to the collector address, which lives in this repo and not in the image.
       - ASSISTANT_PHONE_HOME_ENDPOINT=${ASSISTANT_PHONE_HOME_ENDPOINT:-}
+      # THE TERMS SETUP ASKS FOR are the Free Trial Terms and Conditions, the copy in
+      # this repo, and only those. The image's defaults are the website's terms of use
+      # and privacy policy, which are not the agreement the trial runs under; an empty
+      # privacy URL leaves that link out. A new version asks everyone to agree again.
+      - ASSISTANT_SETUP_TERMS_URL=${ASSISTANT_SETUP_TERMS_URL:-https://github.com/embabel-worlds/appliance/blob/main/TRIAL_TERMS.md}
+      - ASSISTANT_SETUP_TERMS_VERSION=${ASSISTANT_SETUP_TERMS_VERSION:-2026-10-13}
+      - ASSISTANT_SETUP_PRIVACY_URL=${ASSISTANT_SETUP_PRIVACY_URL:-}
       # ENTITY EXTRACTION OFF BY DEFAULT. Every ingested document otherwise costs
       # an LLM call that asks a model to pull typed entities out of it, and on
       # this appliance it failed on every single one: the model returns a null
@@ -340,80 +398,19 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # ── Console — the Worlds web face ───────────────────────────────────────────
-  # Static app + nginx proxying /api to the server on the SAME ORIGIN, so the
-  # browser's login applies with no CORS and no token plumbing. Ships as an image
-  # like everything else: no checkout, no Node, no dev server.
-  # PUBLISHED FROM embabel-worlds, unlike the assistant images: the console's repo
-  # lives in that org, and GITHUB_TOKEN can only push to packages linked to its own
-  # repository — the same lesson mirror-docling records, which is why docling sits
-  # in that namespace too. Its CI could not publish at all until this moved.
-  worlds-console:
-    image: ghcr.io/embabel-worlds/worlds-console:${EMBABEL_VERSION:-latest}
-    logging: *logging
-    restart: unless-stopped
-    depends_on:
-      - worlds
-    ports:
-      - "127.0.0.1:${WORLDS_CONSOLE_PORT:-11044}:80"
-    environment:
-      # In-container address of the server: same compose network, container port.
-      - WORLDS_URL=http://worlds:${WORLDS_PORT:-11043}
-      # OPTIONAL: skip the console's sign-in by having the proxy authenticate for
-      # you. Convenient on your own laptop; understand what it means before setting
-      # it — ANYONE who can reach the console port is then this user, and it acts as
-      # them (chat, memory, document ingest). Empty by default: the console asks.
-      - WORLDS_CONSOLE_USER=${WORLDS_CONSOLE_USER:-}
-      - WORLDS_CONSOLE_PASSWORD=${WORLDS_CONSOLE_PASSWORD:-}
-    volumes:
-      # THE GUIDES, FOR SETUP TO PUT INTO THE NEW WORLD. A world starts empty, so the
-      # first question anybody has — what is this, and what can I ask it — was one it
-      # could not answer about itself. The terminal installer uploaded these files
-      # itself (embabel_setup/seed.py); setup that finishes in the browser cannot,
-      # because a page cannot read this checkout. So the console is handed them:
-      # nginx lists /guides/ and the last step of setup ingests what it finds.
-      #
-      # FROM THE CHECKOUT, NOT BAKED INTO THE IMAGE, so a world is told about the
-      # appliance that is installed rather than the one the console was built beside.
-      #
-      # The same set seed.py names, and for its reasons: CONTRIBUTING, CLAUDE.md and
-      # AGENT_GUIDE.md are instructions to people and agents working ON or WITH an
-      # appliance, and somebody searching their world should not get them back.
-      #
-      # Read-only. The top four are single-file mounts, which pin the file as it was
-      # when the container started — an upgrade recreates the container, so that is
-      # the version that should be served.
-      - ./README.md:/usr/share/nginx/guides/README.md:ro
-      - ./CLI.md:/usr/share/nginx/guides/CLI.md:ro
-      - ./PHONE_HOME.md:/usr/share/nginx/guides/PHONE_HOME.md:ro
-      - ./WORLD_TEMPLATES.md:/usr/share/nginx/guides/WORLD_TEMPLATES.md:ro
-      - ./docs/guide:/usr/share/nginx/guides/guide:ro
-      - ./skills:/usr/share/nginx/guides/skills:ro
-
-  # ── SQL endpoint (opt-in) ────────────────────────────────────────────────────
-  # A Postgres-wire surface onto the world, so BI tools, dbt and notebooks can query
-  # it as tables — Metabase, Grafana, DuckDB, psql, even another Postgres via
-  # postgres_fdw. OFF by default: it starts only under the `world-sql` compose
-  # profile, which the installer turns on for `--sql` (setup.py → dockerlib.compose_env
-  # sets COMPOSE_PROFILES). A plain `docker compose up` never starts it. PUBLISHED
-  # FROM embabel-worlds, like the console — pinned separately from EMBABEL_VERSION
-  # because world-sql versions on its own repo.
+  # ── The console ─────────────────────────────────────────────────────────────
+  # NOT A SERVICE ANY MORE. The console was an nginx container serving the built app and proxying
+  # /api, /apps, /diagrams, /mcp and the session endpoints back to the server, so a browser saw ONE
+  # origin. The server holds those files itself now and mounts them at /ui/ (embabel/me,
+  # ConsoleResources): the single origin is no longer arranged, it simply is, and the host-header
+  # rewriting, the per-request DNS re-resolution and the credential forwarding that arranged it went
+  # with the container. Its port still answers — see `ports:` on the world runtime above.
   #
-  # It holds NO credentials. A client's own username and password are forwarded per
-  # connection and authenticated against the appliance, so a connection sees exactly
-  # that user's scope — multi-tenant for free, and nothing here is a second identity.
-  world-sql:
-    image: ghcr.io/embabel-worlds/world-sql:${WORLD_SQL_VERSION:-latest}
-    logging: *logging
-    profiles: ["world-sql"]
-    restart: unless-stopped
-    depends_on:
-      - worlds
-    ports:
-      - "127.0.0.1:${WORLDS_SQL_PORT:-15432}:15432"
-    environment:
-      # In-container address of the server: same compose network, container port.
-      - APPLIANCE_BASE=http://worlds:${WORLDS_PORT:-11043}
-      # Bind every interface INSIDE the container; what is exposed is the ports:
-      # line above. The image already defaults to this — explicit is clearer.
-      - WORLDSQL_BIND=0.0.0.0
+  # WHAT THIS TAKES WITH IT, so nobody goes looking. The zero-friction sign-in:
+  # WORLDS_CONSOLE_USER and WORLDS_CONSOLE_PASSWORD made the PROXY authenticate for a browser that
+  # had not, which made everyone who could reach that port into that one user. There is no proxy to
+  # do it, so everybody signs in; nothing else about authentication changes.
+  #
+  # And the guides mount, which handed setup a listing of this checkout's own documentation. The
+  # server keeps its guides current itself (assistant.guides, guides.json — the ASSISTANT_GUIDES_*
+  # variables above), which is what makes that work for a world set up in a browser at all.

@@ -677,7 +677,25 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
    * and WorldLists query, so these lists answer from the same rows chat and Query Studio do.
    */
   { method: 'POST', path: /^\/api\/v1\/admin\/kg\/execute$/ },
+  /*
+   * Sweeps (fills): the slow materializations the appliance drives over hours or days. Listed,
+   * started, and stopped — a stop is a DELETE of one, so the id is a single segment and never a
+   * dot segment, the same guard the agent routes above use for the same reason.
+   */
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/fills$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/fills$/ },
+  { method: 'DELETE', path: /^\/api\/v1\/admin\/kg\/fills\/(?!\.\.?(?:\/|$))[^/?#]+$/ },
   { method: 'POST', path: /^\/api\/v1\/cron\/compile-schedule$/ },
+  /*
+   * Query Studio's plan panel. Planning and running are separate routes on the appliance, so the one
+   * the panel calls as the author types cannot run anything; the run is its own button. The views
+   * listing tells the panel whether goal views can be saved, and a save goes where the Studio's other
+   * views do.
+   */
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/plan$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/plan\/run$/ },
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/views$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/views$/ },
 ]
 
 async function kitSend(settings: Settings, spec: RequestSpec): Promise<Outcome<unknown>> {

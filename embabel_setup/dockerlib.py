@@ -23,15 +23,15 @@ from .core import (
 )
 from .memory import memory_env
 from .settings import (
-    compose_project, configured_mode, embabel_command, env_file_value, env_path, instance, monitoring_enabled,
-    phone_home_on, port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
+    compose_project, configured_mode, embabel_command, env_file_value, env_path, graph_engine, instance,
+    monitoring_enabled, phone_home_on, port_base, ports_for, resume_command, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
-# boot dependency — the mode services depend only on neo4j — and between them
-# they are most of a first run's download, docling especially. Pulling them
-# before handing over the terminal meant staring at a progress bar for several
-# gigabytes to reach a login page that needed one.
+# boot dependency — the mode services depend only on the graph's container, when
+# there is one — and between them they are most of a first run's download,
+# docling especially. Pulling them before handing over the terminal meant staring
+# at a progress bar for several gigabytes to reach a login page that needed one.
 DEFERRED_SERVICES = ("sandbox-image", "prometheus", "grafana", "docling")
 # Behind the `monitoring` profile, off unless EMBABEL_MONITORING is on (#112).
 MONITORING_SERVICES = ("prometheus", "grafana")
@@ -170,10 +170,9 @@ def compose_env() -> dict:
     # Opt-in services are compose PROFILES, off unless enabled. Turning them on here —
     # in the environment compose runs with — rather than in .env keeps the compose files
     # pull-only and means a profile the operator set by hand is merged, not clobbered.
-    wanted = [name for name, on in (("world-sql", sql_enabled()), ("monitoring", monitoring_enabled())) if on]
-    if wanted:
+    if monitoring_enabled():
         profiles = [p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()]
-        env["COMPOSE_PROFILES"] = ",".join(profiles + [p for p in wanted if p not in profiles])
+        env["COMPOSE_PROFILES"] = ",".join(profiles if "monitoring" in profiles else [*profiles, "monitoring"])
     return env
 
 
@@ -201,6 +200,29 @@ def retire_monitoring(mode: str) -> None:
         print(dim(f"  Could not remove the monitoring containers ({e}); `{embabel_command('down')}` stops them."))
 
 
+# The SQL sidecar the server's own SQL door replaced. Gone from the compose files, so
+# compose no longer knows the service and only the labels find what an older install left.
+RETIRED_SQL_SERVICE = "world-sql"
+
+
+def retire_sql_sidecar() -> None:
+    """Remove the SQL sidecar an install from before the built-in door still runs.
+
+    Compose leaves a container whose service it no longer has, and this one would go
+    on answering SQL on the old port beside the server's door. It held nothing — it
+    forwarded each connection to the server — so removing it loses nothing. A server
+    image older than the door has no SQL until it is upgraded; print_sql_line says so.
+    """
+    container = service_container(RETIRED_SQL_SERVICE, stopped=True)
+    if not container:
+        return
+    run = _docker("rm", "--force", container, timeout=60)
+    if run is None or run.returncode != 0:
+        print(dim(f"  Could not remove the old SQL container {container}; `docker rm -f {container}` does."))
+    else:
+        print(dim(f"  Removed the old SQL container ({container}): the server serves SQL itself now."))
+
+
 def announce_github_token() -> None:
     """Say once, before the containers start, whether private realms will resolve. Never print the
     token itself — this runs in terminals people screen-share."""
@@ -219,8 +241,9 @@ LOCAL_EMBEDDING_MODEL = "docker.io/ai/qwen3-embedding:0.6B-F16"
 def core_services(mode: str) -> tuple[str, ...]:
     """MODE_CORE, adjusted for the graph engine. `compose up <name>` force-activates
     a service even when an overlay parks it behind a profile, so the bring-up list
-    itself must know the engine: FalkorDB swaps the graph service, MEMORY brings
-    none at all — the engine lives inside the app."""
+    itself must know the engine: FalkorDB swaps the graph service, EMBABEL brings
+    none at all — the engine lives inside the server, and naming neo4j here would
+    start the very container the overlay parked."""
     engine = graph_engine()
     base = MODE_CORE[mode]
     if engine == "NEO4J":
@@ -305,21 +328,40 @@ def refresh_floating_images(mode: str, services: tuple[str, ...] | list[str]) ->
         print("  " + dim("    Starting on the images already here."))
 
 
-def graph_engine() -> str:
-    """The engine this appliance runs — GRAPH_TYPE in .env; NEO4J when unset."""
-    chosen = os.environ.get("GRAPH_TYPE") or env_file_value("GRAPH_TYPE")
-    return (chosen or "NEO4J").strip().upper()
-
-
 def graph_overlay_file(mode: str) -> str | None:
-    """The engine overlay for this mode, or None for the default engine.
-    One file per mode per engine — see the note in the files."""
+    """The engine overlay for this mode, or None for Neo4j, which is the composition
+    itself. One file per mode per engine — see the note in the files. MEMORY reads as
+    EMBABEL by now, so an install that still says MEMORY gets the same file."""
     engine = graph_engine()
     if engine == "FALKORDB":
         return f"graph-falkordb-{mode}.yml"
-    if engine == "MEMORY":
-        return f"graph-memory-{mode}.yml"
+    if engine == "EMBABEL":
+        return f"graph-embabel-{mode}.yml"
     return None
+
+
+# The engine's stores that are a server, the host the bundled one answers on inside the
+# compose network, and the URL .env carries for it. A URL naming any other host is a server
+# somebody else runs, and the appliance bundles nothing for it.
+BUNDLED_STORES = {
+    "postgres": ("graph-postgres", "GRAPH_EMBABEL_POSTGRES_URL", "jdbc:postgresql://graph-postgres:5432/embabel"),
+    "oracle": ("graph-oracle", "GRAPH_EMBABEL_ORACLE_URL", "jdbc:oracle:thin:@//graph-oracle:1521/FREEPDB1"),
+}
+
+
+def graph_store_bundled(store: str | None) -> bool:
+    """Whether .env's store is a server this appliance runs itself: its URL names the bundled host."""
+    entry = BUNDLED_STORES.get((store or "").strip().lower())
+    return bool(entry) and f"//{entry[0]}:" in (env_file_value(entry[1]) or "")
+
+
+def graph_store_overlay_file(mode: str) -> str | None:
+    """The bundled store's overlay for this mode, or None: only on the Embabel engine, and only for
+    a store on a server the appliance runs itself."""
+    store = (env_file_value("VC_EMBABEL_STORE") or "").strip().lower()
+    if graph_engine() != "EMBABEL" or not graph_store_bundled(store):
+        return None
+    return f"graph-store-{store}-{mode}.yml"
 
 
 def local_embeddings_wanted() -> bool:
@@ -375,6 +417,11 @@ def compose_command(modes: str | tuple[str, ...], *argv: str) -> list[str]:
         graph_overlay = graph_overlay_file(mode)
         if graph_overlay and os.path.exists(graph_overlay):
             cmd += ["-f", graph_overlay]
+        # AND THE ENGINE'S STORE, when it is a server the appliance runs itself. A store on a
+        # server somebody else runs is only a URL in .env, and composes nothing.
+        store_overlay = graph_store_overlay_file(mode)
+        if store_overlay and os.path.exists(store_overlay):
+            cmd += ["-f", store_overlay]
     return cmd + list(argv)
 
 
@@ -444,7 +491,6 @@ _IMAGES_FOR_MODE: dict[str, list[str]] = {}
 # conversion" tells them what they lose by not waiting.
 IMAGE_PURPOSE = {
     "assistant": "the appliance itself",
-    "worlds-console": "the console",
     "neo4j": "the graph",
     "docling": "structured PDF and Office conversion",
     "sandbox": "the code sandbox",
@@ -463,7 +509,6 @@ IMAGE_SIZE = {
     "neo4j": "~600 MB",
     "grafana": "~400 MB",
     "prometheus": "~300 MB",
-    "worlds-console": "~80 MB",
 }
 
 # The images the mode WAITS on. Everything else arrives via start_deferred while
@@ -472,7 +517,9 @@ IMAGE_SIZE = {
 # fresh install, 2026-08-25). "sandbox" is checked FIRST when classifying: the
 # sandbox image name contains "assistant" too, and matching that fragment would
 # promote a background pull into the boot count.
-BOOT_IMAGE_FRAGMENTS = ("neo4j", "worlds-console", "assistant")
+# The console used to be the third: it was its own image, and a boot waited for it. The server
+# carries the console now, so there is nothing left to wait for beyond these two.
+BOOT_IMAGE_FRAGMENTS = ("neo4j", "assistant")
 
 def _boots(image: str) -> bool:
     if "sandbox" in image:
@@ -553,7 +600,10 @@ def service_container(service: str, stopped: bool = False) -> str | None:
     names = run.stdout.split() if run and run.returncode == 0 else []
     return names[0] if names else None
 def find_graph_container() -> str | None:
-    return service_container("neo4j")
+    """The graph's own container, or None — always None on the Embabel engine, whose
+    graph is inside the server."""
+    service = {"NEO4J": "neo4j", "FALKORDB": "falkordb"}.get(graph_engine())
+    return service_container(service) if service else None
 def _answers(base: str) -> bool:
     """Does the door answer at all? Any HTTP status counts — 401 is an answer."""
     try:
