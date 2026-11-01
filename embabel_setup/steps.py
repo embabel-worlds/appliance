@@ -31,8 +31,8 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
                    Timeout, TokenRejected, Unreachable, prompt)
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
-from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, TRIAL_TERMS_DOC_URL,
-                       api_address, console_url, embabel_command, phone_home_on,
+from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, TERMS_VAR, TRIAL_TERMS_DOC_URL,
+                       api_address, console_url, embabel_command, env_file_value, phone_home_on,
                        record_terms_accepted, recorded_mode, resume_command,
                        set_env_var, terms_accepted)
 from .status import STATUS, boot_phase, wait_until_serving
@@ -434,6 +434,39 @@ def accept_trial_terms() -> None:
             "  The terms are at: " + TRIAL_TERMS_DOC_URL
         )
     record_terms_accepted(time.strftime("%Y-%m-%d"))
+
+
+def record_trial_terms_on_appliance(base: str, token: str, status: dict) -> None:
+    """Tell the appliance the trial terms were accepted here, so the console does not ask again.
+
+    Two records of one answer: this run keeps it in .env, and the appliance keeps its own,
+    against the version it is configured with, which is what the console's Welcome reads.
+    Without this the person who just typed "y" here was asked to tick the same terms in the
+    browser a minute later.
+
+    ONLY THE SAME DOCUMENT. The appliance is told only when the terms it is configured with
+    are the ones this run showed; a deployment pointing it at other terms still has them
+    agreed to in the console, where they can be read.
+
+    Never a reason to stop. If the appliance refuses or cannot be reached, the console asks,
+    as it did before.
+    """
+    version = status.get("termsVersion")
+    if not version or status.get("termsAccepted") or not terms_accepted():
+        return
+    # AN ACCEPTANCE OLDER THAN THE TERMS is not one of them. .env records the day the
+    # terms were accepted, and the appliance names its terms by the day they were
+    # issued, so terms issued since (a --fresh run long after the first install) are
+    # left for the console to ask, rather than reported as agreed to.
+    accepted = (env_file_value(TERMS_VAR) or "").strip()
+    if accepted < version:
+        return
+    if status.get("termsUrl") != TRIAL_TERMS_DOC_URL:
+        return
+    try:
+        call(base, "/terms", token, {"version": version})
+    except SetupError:
+        pass
 
 
 def disclose_usage_reporting(base: str) -> None:

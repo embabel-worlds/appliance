@@ -80,7 +80,7 @@ crash-looping, copy the log out before anyone runs `docker compose up` again.
 | `error getting credentials … docker-credential-*` | `ls "$(dirname "${DOCKER_CONFIG:-$HOME/.docker}")"` — it is PATH, not the network. See below. |
 | Install stopped, no `embabel` command | `sh doctor.sh` — the container may never have started |
 | A container "is running" but nothing works | `docker inspect -f '{{.RestartCount}}' <name>` — a climbing count is a crash loop |
-| Console stuck on "Connecting to Worlds" | `docker logs --tail 30 $P-worlds-console-1` — read the status of the repeating `/api/v1/realms` lines |
+| Console stuck on "Connecting to Worlds" | `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:$CONSOLE/api/v1/realms` — 401 is correct and means the problem is in the browser; nothing at all means the server or the port mapping |
 | Wizard: "did not answer … still waiting for OpenAI" | `docker exec $P-worlds-1 sh -c 'curl -s -o /dev/null -w "%{http_code}\n" --max-time 20 https://api.openai.com/v1/models'` |
 | `Bearer token resolved to user 'x' but the user could not be loaded` | Compare the token's user against the credential store — see below |
 | Neo4j errors in the log (a Neo4j appliance; `embabel version` says which engine) | `docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' $P-neo4j-1` |
@@ -101,14 +101,17 @@ the verdict; `RestartCount` is the tell. `NEO4J_HEAP=1G` in `.env` is a tested f
 appliance's own JVM starved of memory restarts repeatedly and takes the console's `/api` calls
 to 502 with it, which reads as a networking fault and is not one.
 
-**A repeated 502 from the console.** Either the worlds container was replaced and the console
-is still dialling its old address — `docker restart $P-worlds-console-1` fixes
-that outright — or the two disagree about the port. Compare:
+**The console does not load.** There is no proxy between it and the server any more — the server
+serves the console itself at `/ui/`, on both its own port and the console's old one — so there are
+only two things it can be. Compare the two ports; if one answers and the other does not, it is the
+port mapping rather than the server:
 
 ```bash
-docker exec $P-worlds-console-1 sh -c 'grep -m1 -o "proxy_pass http://worlds:[0-9]*" /etc/nginx/conf.d/default.conf'
-docker exec $P-worlds-1 sh -c 'echo $SERVER_PORT'
+curl -s -o /dev/null -w "console port %{http_code}\n" http://localhost:$CONSOLE/ui/
+curl -s -o /dev/null -w "server port %{http_code}\n" http://localhost:$WORLDS/ui/
 ```
+
+A 404 on both means the server is up but carries no console bundle, which is a build problem.
 
 **`Bearer token resolved to user 'x' but the user could not be loaded`.** An MCP client
 retrying with a token that names a user the appliance cannot load — usually left over from an

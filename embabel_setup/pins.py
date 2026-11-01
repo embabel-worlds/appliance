@@ -41,7 +41,7 @@ from typing import Callable
 
 from .settings import (
     GRAPH_TYPE_VAR, UNPINNED_ENGINE, canonical_engine, configured_mode, env_file, env_file_assigns, env_file_value,
-    env_path, set_env_var, volume_exists, volume_name,
+    env_path, set_env_var, shown_setting, volume_exists, volume_name,
 )
 
 # The volumes whose presence says this instance has run before, whatever its .env says.
@@ -215,7 +215,10 @@ def pin_install(creating: bool) -> dict[str, str]:
         written[pin.key] = value
     if written:
         # stderr: the Me app reads a verb's stdout as JSON, and this can come before any verb.
-        print(f"  Pinned in {env_file()}: " + ", ".join(f"{k}={v}" for k, v in written.items()), file=sys.stderr)
+        # NAMED, NOT ECHOED, for a credential: NEO4J_PASSWORD is one of these rows, and an
+        # upgrade's output is exactly what gets pasted into an issue or shown on a call.
+        print(f"  Pinned in {env_file()}: " + ", ".join(shown_setting(k, v) for k, v in written.items()),
+              file=sys.stderr)
     return written
 
 

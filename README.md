@@ -107,8 +107,23 @@ same data**:
 | **Me** | `./me.py` | **11042** | the personal assistant — web UI, chat, memory |
 | **Worlds** | `./worlds.py` | **11044** — the console | the world runtime — realms, documents, keys, views, chat, MCP, automations |
 
-For Worlds, **11044 is where you go**: the console. The server itself is on 11043 —
-that is the API and MCP endpoint, not where you go to look at anything.
+For Worlds, **11044 is where you go**: the console. The server serves the console itself, and
+that port is its address — 11043 is the same server, so it answers too; both put the console at
+`/ui/` and redirect `/` there. There is no separate console container.
+
+The console's files travel with the server, so a console release arrives when a server image
+carrying it does. Two ways not to wait for one, in the order the server prefers them:
+
+```bash
+# serve them from a directory instead, read per request: a rebuild shows on the next refresh
+ASSISTANT_CONSOLE_PATH=/path/to/console    # in .env, or `environment:` on the worlds service
+
+# or hand the server a jar of them — /plugins is on its classpath
+docker cp worlds-console-static.jar $(embabel ps -q worlds):/plugins/
+```
+
+Both are documented, with which copy wins, in the console's own README
+(embabel-worlds/worlds-console, "Shipping a console change").
 
 `docker-compose.yml` is an alias for `docker-compose-me.yml`, so plain
 `docker compose up` starts the Me mode. Everything mode-agnostic — the graph, the
@@ -241,7 +256,7 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 |---|---|---|---|
 | +0 | **11042** | assistant | **Me's front door** — web UI, REST API, tool gateway, MCP |
 | +1 | 11043 | worlds | the Worlds server: API and MCP, not a place to look |
-| +2 | **11044** | worlds-console | **Worlds' front door** |
+| +2 | **11044** | worlds | **Worlds' front door** — the console, served by the server on this port too |
 | +3 | 11045 | neo4j | the knowledge graph, browser — on a Neo4j appliance; unused on the Embabel engine |
 | +4 | 11046 | neo4j | the same, Bolt — on a Neo4j appliance; unused on the Embabel engine |
 | +5 | 11047 | grafana | dashboards over the metrics — off by default, `EMBABEL_MONITORING=on` |
@@ -302,25 +317,25 @@ Values are read by the container at start. Quote nothing unless the value contai
 spaces, and never add trailing comments on a value line — `KEY=value # note` makes the
 comment part of the value.
 
-## Required — at least one model provider
+## Model provider keys
 
-The assistant cannot answer without one of these.
+The assistant cannot answer without a model provider, but **its key does not go in `.env`**.
+`./setup.py` (or the console's onboarding) collects a key, validates it against the provider,
+and stores it inside the data volume; the console's **Models** tab adds, replaces and removes
+keys afterwards. The server reads its keys from there and from nowhere else, so a key set
+only in `.env` connects nothing: the appliance starts with no model and chat asks for one.
 
-| Variable | Notes |
+If either variable is already exported in the shell you run `./setup.py` from, it uses that
+instead of asking; `./setup.py --ignore-env` always asks. That is your *shell's* environment,
+not `.env`.
+
+| Variable | What still reads it from `.env` |
 |---|---|
-| `OPENAI_API_KEY` | The default provider for the shipped model configuration. |
-| `ANTHROPIC_API_KEY` | Used by the app builder for stronger code generation, and available to any action configured for it. |
+| `OPENAI_API_KEY` | Open WebUI beside the Me door. |
+| `ANTHROPIC_API_KEY` | The per-user code sandbox, which is handed it as-is. |
 
-**You normally do not set these here** — `./setup.py` collects a key, validates it against
-the provider, and stores it inside the data volume. If either variable is already exported
-in the shell you run it from, it uses that instead of asking; `./setup.py --ignore-env`
-always asks. Note that is your *shell's* environment, not `.env` — a key set only in `.env`
-reaches the appliance but is invisible to the script, so setup still asks for one. Use `.env` if you would rather supply a
-key up front (an air-gapped build, a scripted deployment, or to add a second provider after
-setup); a key set here is picked up at boot exactly the same way.
-
-Set both if you have both — model choice is per-action, so different parts of the product
-route to different providers.
+`./setup.py` copies the key it collects into `.env` for those two, and the copy is not kept
+in step: a key rotated later in Models leaves the `.env` line as it was.
 
 ## Authorization fallback
 
@@ -471,7 +486,7 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 
 | Variable | Default | Why you'd change it |
 |---|---|---|
-| `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. |
+| `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. `edge` follows main, which is where a merged change — the console's included, since its files ship inside this image — arrives before a release retags it as `latest`. |
 | `ASSISTANT_DOC_CONVERTER` | `docling` | `none` uses plain text extraction and makes the multi-GB docling image unnecessary — faster to start, worse fidelity on tables and figures in PDFs. |
 | `ASSISTANT_PUBLIC_BASE_URL` | `http://localhost:11042` | The externally visible origin. OAuth callbacks, MCP resource indicators and app links compose from it. Set it when running behind a proxy or on another host. No trailing slash. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000` | JVM memory, as a share of the app container's limit. |
@@ -608,6 +623,31 @@ open on an empty world behind a login that still works. Switching by hand is cho
 different, empty graph; switch back and the old one is still there. `MEMORY`, the
 engine's old name, still means `EMBABEL`.
 
+To bring a Neo4j appliance's graph WITH it, migrate instead of switching:
+
+```bash
+embabel upgrade                         # a server that can import, and this verb
+embabel graph migrate --to embabel      # copy, verify every value, switch over
+```
+
+The server copies the graph into its engine as it opens, before anything else touches
+it, then compares the two value for value; only a verified copy switches the appliance
+over, and anything else leaves it on Neo4j as it was. Neo4j's volume is never changed,
+so `GRAPH_TYPE=NEO4J` and `embabel up` go back. [CLI.md](CLI.md) has the details.
+
+The Embabel engine's graph can also live on a **database server** instead of its SQLite
+file: Postgres, or Oracle (23ai, where the graph is a SQL property graph too). The same verb
+moves it there, from Neo4j or from wherever the engine keeps it now, and back again:
+
+```bash
+embabel graph migrate --to postgres     # a Postgres bundled with the appliance
+embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph
+embabel graph migrate --to embabel      # back to the SQLite file
+```
+
+Without `--url` the appliance runs the server itself, with a volume of its own and a password
+generated into `secrets.env`. With `--url` it uses yours.
+
 The engine is one of a handful of defaults with data or a provider behind them, and each
 is written into `.env` the same way, so that no later release can move an appliance off
 what it runs on: the Embabel engine's store and its file paths, the Neo4j version and
@@ -635,6 +675,23 @@ The copy is cold — the appliance stops for it and starts again afterwards —
 because a graph copied live restores as a corrupt graph: Community Neo4j has no
 online backup, and a SQLite file caught mid-write is torn the same way. See [CLI.md](CLI.md) for what a backup folder holds and what
 a restore replaces.
+
+### Moving it, or sending it
+
+`embabel backup` copies the volumes this appliance uses, for this appliance. To move what it
+knows to **another** appliance — a new machine, another graph store, a colleague's — or to send a
+piece of it to support, export it to one file:
+
+```bash
+embabel export my-appliance.tar.gz              # graph, worlds and setup; no secrets
+embabel import my-appliance.tar.gz --login ann  # on the other appliance, any store; verified, with rollback
+embabel export support.tar.gz --world ann --no-private   # one world, nothing private
+embabel export setup.tar.gz --setup             # realms, apps, lenses, preferences — no data
+```
+
+A bundle never holds a password, a key or a token; it says what it left out. See
+[CLI.md](CLI.md#embabel-export-file-and-embabel-import-file) for what is in one, live versus cold,
+and [sending a support bundle](CLI.md#sending-a-support-bundle).
 
 Three more volumes hold state you can throw away — `embabel_appliance_open_webui_data`,
 `embabel_appliance_prometheus_data` (metric history) and `embabel_appliance_grafana_data`

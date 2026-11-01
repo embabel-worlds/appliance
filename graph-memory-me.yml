@@ -21,6 +21,28 @@ services:
       - GRAPH_EMBABEL_SQLITE_PATH=${GRAPH_EMBABEL_SQLITE_PATH:-/data/graph/graph.sqlite}
       # always | everysec | off. everysec bounds a crash's loss at about a second of writes.
       - VC_EMBABEL_FSYNC=${VC_EMBABEL_FSYNC:-${VC_MEMORY_FSYNC:-everysec}}
+      # A Neo4j graph to copy into the engine as it opens, when it opens empty. Set by
+      # `embabel graph migrate --to embabel` for the one boot that copies, and empty
+      # otherwise, which is off: the server reads nothing from Neo4j unless asked.
+      - GRAPH_EMBABEL_IMPORT_NEO4J_URL=${GRAPH_EMBABEL_IMPORT_NEO4J_URL:-}
+      - GRAPH_EMBABEL_IMPORT_NEO4J_USERNAME=${GRAPH_EMBABEL_IMPORT_NEO4J_USERNAME:-neo4j}
+      - GRAPH_EMBABEL_IMPORT_NEO4J_PASSWORD=${GRAPH_EMBABEL_IMPORT_NEO4J_PASSWORD:-}
+      # The store on a server, when VC_EMBABEL_STORE says postgres or oracle: where it is and
+      # as whom. The passwords are NOT here — they are in secrets.env, which the app loads
+      # whole, and a line here would override them with whatever .env says.
+      - GRAPH_EMBABEL_POSTGRES_URL=${GRAPH_EMBABEL_POSTGRES_URL:-}
+      - GRAPH_EMBABEL_POSTGRES_USERNAME=${GRAPH_EMBABEL_POSTGRES_USERNAME:-embabel}
+      - GRAPH_EMBABEL_ORACLE_URL=${GRAPH_EMBABEL_ORACLE_URL:-}
+      - GRAPH_EMBABEL_ORACLE_USERNAME=${GRAPH_EMBABEL_ORACLE_USERNAME:-embabel}
+      - GRAPH_EMBABEL_ORACLE_LAYOUT=${GRAPH_EMBABEL_ORACLE_LAYOUT:-auto}
+      # The tables' prefix on a server store. `embabel import` gives an imported graph a prefix
+      # of its own, so the tables it replaced stay where they were, as the way back.
+      - GRAPH_EMBABEL_POSTGRES_PREFIX=${GRAPH_EMBABEL_POSTGRES_PREFIX:-embabel_graph}
+      - GRAPH_EMBABEL_ORACLE_PREFIX=${GRAPH_EMBABEL_ORACLE_PREFIX:-embabel_graph}
+      # Another of the engine's stores to copy this one from as it opens, when this one is
+      # empty. Set by `embabel graph migrate` for the boot that copies; empty is off.
+      - GRAPH_EMBABEL_IMPORT_STORE_KIND=${GRAPH_EMBABEL_IMPORT_STORE_KIND:-}
+      - GRAPH_EMBABEL_IMPORT_STORE_PATH=${GRAPH_EMBABEL_IMPORT_STORE_PATH:-}
     # No graph service to wait for: the graph starts when the server does.
     depends_on: !override []
 
