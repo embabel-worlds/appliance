@@ -134,11 +134,6 @@ jobs:
     timeout-minutes: 25
     env:
       EMBABEL_INSTANCE: ci
-      EMBABEL_PORT_BASE: '11242'
-      # API = base+1, console = base+2, SQL = base+10. The block is contiguous by
-      # design, which is why one number sets all of them.
-      APPLIANCE_BASE: http://localhost:11243
-      APPLIANCE_SQL_PORT: '11252'
       COMPOSE_PROJECT: embabel-ci
       APPLIANCE_USER: acceptance
       EMBABEL_NO_BROWSER: '1'
@@ -169,6 +164,23 @@ jobs:
           python3 -c "import secrets, pathlib; pathlib.Path('ci-password').write_text(secrets.token_urlsafe(24))"
           chmod 600 ci-password
           EMBABEL_SETUP_PASSWORD_FILE="$PWD/ci-password" python3 setup.py worlds --headless
+
+      # READ, NOT DICTATED. EMBABEL_PORT_BASE is only ever read from the instance's
+      # own .env — a block is allocated at creation and never recomputed, so that
+      # removing a sibling instance cannot move an appliance out from under every
+      # bookmark and registered MCP URL that names it. Setting the variable in this
+      # job's environment did nothing, and the first run proved it by handing the
+      # suite an address where nothing was listening.
+      - name: Which ports it took
+        run: |
+          base=$(sed -n 's/^EMBABEL_PORT_BASE=//p' .env.ci | tail -1)
+          if [ -z "$base" ]; then
+            echo "::error::no EMBABEL_PORT_BASE in .env.ci — the install did not record a block"
+            exit 1
+          fi
+          echo "block $base-$((base + 15)): API $((base + 1)), console $((base + 2)), SQL $((base + 10))"
+          echo "APPLIANCE_BASE=http://localhost:$((base + 1))" >> "$GITHUB_ENV"
+          echo "APPLIANCE_SQL_PORT=$((base + 10))" >> "$GITHUB_ENV"
 
       - name: Acceptance suite
         run: |
