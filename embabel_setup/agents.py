@@ -386,7 +386,7 @@ def unwire_coding_agents() -> None:
             continue
         url = registered_mcp_url(cli, MCP_SERVER_NAME)
         if url is None:
-            if name == "Codex":
+            if name == "Codex" and codex_token_profiles():
                 print(warn("  Kept the Codex shell-profile token because its registration ownership could not be verified."))
             continue
         if url.rstrip("/").lower() not in ours:
