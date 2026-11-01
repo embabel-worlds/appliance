@@ -122,12 +122,13 @@ def cmd_version(args) -> int:
               + (f"   {s.dim('follows ' + out['ref'])}" if out.get("ref") and out.get("ref") != "main" else ""))
     print(f"              {s.APPLIANCE_DIR}")
 
-    # The pin that outranks the checkout, where somebody comparing two machines
-    # would look for it. Silent unless they disagree — see announce_version_pin.
+    # Which release it follows, and a legacy pin that outranks it, where somebody comparing
+    # two machines would look. The pin is silent unless they disagree — see announce_version_pin.
+    print(f"\n  Release     {s.accent(v.get('release') or '?')}   {s.dim('`' + embabel_command('release') + '` for more')}")
     conflict = s.version_pin_conflict(v["mode"])
     if conflict:
         pinned, expected = conflict
-        print(f"              {s.warn('!')} .env pins {pinned}; this checkout expects {expected}")
+        print(f"              {s.warn('!')} .env pins EMBABEL_VERSION={pinned}, which outranks {expected}")
 
     if app:
         print(f"\n  Server      {src.get('version') or app.get('image', '').rpartition(':')[2] or '?'}")
@@ -218,22 +219,95 @@ def cmd_upgrade(args) -> int:
     app's menu moved both, and the two doors meant different things by the same
     word. setup.py owns it now, so they cannot drift again.
     """
+    release = getattr(args, "release", None)
+    retry = embabel_command("upgrade", "--release", release) if release else embabel_command("upgrade")
+    return _upgrade(args, release, retry)
+
+
+def _upgrade(args, release: str | None, retry: str) -> int:
+    """`upgrade` and `release <value>`: one move, onto the newest build of a release.
+
+    [retry] is how the person asked, because a refused step back answers with the same
+    command and --allow-downgrade, and a different command than the one they typed reads
+    like a different thing.
+    """
     mode = resolved_mode(args.mode)
-    print(f"  Upgrading the {mode} mode to the latest build. Your data is untouched.\n")
+    try:
+        target = s.parse_release(release) if release else s.followed_release()
+    except s.SetupError as e:
+        print(f"\n  {e}\n", file=sys.stderr)
+        return 2
+    try:
+        following = s.followed_release()
+    except s.SetupError:
+        # .env names something that does not parse; choosing a release is how that is fixed.
+        following = None
+    if release and target != following:
+        print(f"  Moving the {mode} mode from {s.bold(following or '?')} to {s.bold(target)} "
+              f"({s.describe_release(target)}). Your data is untouched.\n")
+    else:
+        print(f"  Upgrading the {mode} mode to the newest {s.bold(target)} build. Your data is untouched.\n")
     # Before the images move: an older `use openai` left a model NAME that newer builds
     # cannot resolve here, and the symptom is documents quietly never indexing again.
     if s.migrate_legacy_embedding_choice():
         print(f"  {s.TICK} Embedding model recorded as the `hosted` role, which newer builds resolve")
         print("  " + s.dim("Same model and the same vectors — nothing is re-embedded.\n"))
     try:
-        result = s.upgrade(mode)
+        result = s.upgrade(mode, release=release, allow_downgrade=getattr(args, "allow_downgrade", False))
+    except s.DowngradeRefused as e:
+        print("\n  " + s.warn("!") + " " + s.downgrade_message(e, retry) + "\n", file=sys.stderr)
+        return 1
     except s.SetupError as e:
         print(f"\n  {e}\n", file=sys.stderr)
         return 1
     print()
     for note in result["notes"]:
         print(f"  {note}")
-    print(f"\n  `{embabel_command('version')}` says exactly what you are on now.\n")
+    print(f"\n  `{embabel_command('release')}` says what you follow and what is running now.\n")
+    return 0
+
+
+def cmd_release(args) -> int:
+    """Which release this appliance follows and what is running; or, given one, move to it.
+
+    Showing reads the running container's image by id — its labels say what the build
+    calls itself, which commit it is and when it was built — so the answer is about what
+    is serving, not about what the tag has moved to since.
+    """
+    if args.value:
+        return _upgrade(args, args.value, embabel_command("release", args.value))
+    mode = resolved_mode(args.mode)
+    report = s.release_report(mode)
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    print()
+    if report["problem"]:
+        print(f"  {s.warn('!')} {report['problem']}\n")
+        return 1
+    where = "" if report["recorded"] else s.dim("  (the default — .env names none)")
+    print(f"  Follows     {s.accent(report['release'])}   {report['about']}{where}")
+    print(f"              image tag :{report['tag']}")
+    pin = report["legacyPin"]
+    if pin:
+        print(f"              {s.warn('!')} EMBABEL_VERSION={pin['tag']} in {pin['from']} outranks it — the "
+              "server runs that tag")
+    run = report["running"]
+    if run:
+        print(f"\n  Running     {run.get('image')}" + s.dim(f"   in {run.get('container')}"))
+        if run.get("version"):
+            print(f"              version   {run['version']}")
+        if run.get("revision"):
+            print(f"              revision  {run['revision']}")
+        if run.get("created"):
+            print(f"              built     {run['created'][:19].replace('T', ' ')}Z")
+        if run.get("digest"):
+            print(f"              digest    {run['digest']}")
+    else:
+        print("\n  Running     nothing yet — the first `up` starts the release above")
+    print("\n  " + s.dim("Releases: " + " · ".join(f"{name} — {about}" for name, about in s.ABOUT.items())))
+    print("  " + s.dim("or one build: X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx"))
+    print(f"\n  {embabel_command('release', '<release>')}   follow another, and upgrade onto it\n")
     return 0
 
 

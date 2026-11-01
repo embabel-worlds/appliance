@@ -3,7 +3,7 @@
 # the mode files include: it. Everything here is mode-agnostic: the graph, the
 # local embedding model, document conversion, the sandbox pre-pull, and metrics.
 #
-# One EMBABEL_VERSION moves every Embabel image AND both modes together: a shared
+# One release (EMBABEL_RELEASE) moves every Embabel image AND both modes together: a shared
 # graph only stays coherent if schema migrations and the embedding model can never
 # diverge between the processes writing to it.
 #
@@ -150,9 +150,10 @@ services:
   # ── Code sandbox image, pre-pulled ──────────────────────────────────────────
   # Not a running service: a one-shot that exists so `docker compose up` pulls the
   # sandbox image onto the host daemon up front. Without it the first code-mode
-  # call in a chat blocks on a multi-GB pull and reads as a hang. The tag MUST
-  # match WorldConfig.DEFAULT_SANDBOX_IMAGE — that is the name the app asks the
-  # daemon for (overridable per world via `sandboxDockerimage` in its config.yml).
+  # call in a chat blocks on a multi-GB pull and reads as a hang. The image MUST
+  # match the ASSISTANT_SANDBOX_IMAGE both mode files hand the app — that is the name
+  # the app asks the daemon for (overridable per world via `sandboxDockerimage` in its
+  # config.yml) — so the two are written as the same expression.
   # On GHCR like every other Embabel image — the old unqualified name pointed at a
   # Docker Hub repository that was never public, so first pull failed for everyone.
   # OVERRIDABLE, and by the same name the app reads. The shipped image carries the
@@ -162,7 +163,10 @@ services:
   # the container the app launches follow it — a single world can still override it
   # further with `sandboxDockerimage` in its config/world.yml.
   sandbox-image:
-    image: ${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:latest}
+    # FOLLOWS THE RELEASE (EMBABEL_IMAGE_TAG, resolved by the CLI from EMBABEL_RELEASE): every
+    # release publishes a sandbox beside its server. Not the legacy EMBABEL_VERSION pin, which
+    # takes any tag — a local build's included — and no sandbox is published under those.
+    image: ${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:${EMBABEL_IMAGE_TAG:-latest}}
     restart: "no"
     command: ["true"]
 
@@ -202,9 +206,10 @@ services:
   grafana:
     profiles: ["monitoring"]
     # Stock Grafana with the Embabel dashboards baked in, because a pull-only
-    # appliance has no directory to mount them from. Moves with EMBABEL_VERSION so
-    # the dashboards match the metrics the app of that version actually emits.
-    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-latest}
+    # appliance has no directory to mount them from. Moves with the server's tag — the
+    # release, or a legacy EMBABEL_VERSION pin — so the dashboards match the metrics the
+    # app of that version actually emits.
+    image: ghcr.io/embabel/assistant-grafana:${EMBABEL_VERSION:-${EMBABEL_IMAGE_TAG:-latest}}
     logging: *logging
     restart: unless-stopped
     mem_limit: ${GRAFANA_MEM_LIMIT:-0}

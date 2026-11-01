@@ -14,15 +14,16 @@ import struct
 import subprocess
 import zlib
 
-from .core import APPLIANCE_DIR
+from .core import APPLIANCE_DIR, SetupError
 from .dockerlib import MODE_SERVICE, _compose, _docker, backup_mode, find_mode_container, service_container
+from .release import followed_release
 from .settings import compose_project, env_file_value, graph_engine, source_ref, source_repo
 
 # ── what is actually running ────────────────────────────────────────────────
 #
 # FOUR LAYERS DIFFER, and only one of them is the thing people say out loud.
-# EMBABEL_VERSION defaults to `latest`, which is a name rather than an
-# identity — two machines both "on latest" can be weeks apart. What
+# A release (stable, canary…) resolves to a tag like `latest`, which is a name rather
+# than an identity — two machines both "on latest" can be weeks apart. What
 # pins an install is the image DIGEST, and what pins the code inside it is the
 # commit the jar was built from.
 #
@@ -146,6 +147,71 @@ def image_identity(image: str) -> dict:
         return {"image": image, "digest": None, "created": None}
     digest, _, created = run.stdout.strip().partition("\t")
     return {"image": image, "digest": digest.partition("@")[2] or None, "created": created or None}
+# The labels every Embabel image is built with (OCI image-spec annotations). `version` is
+# what the build calls itself — a release number, or `sha-` and the commit for a main build —
+# and `created` is when it was built, which is the one order a stream like canary has.
+LABEL_VERSION = "org.opencontainers.image.version"
+LABEL_REVISION = "org.opencontainers.image.revision"
+LABEL_CREATED = "org.opencontainers.image.created"
+
+
+def image_facts(reference: str | None) -> dict:
+    """One image as the release commands talk about it: tag, version, revision, build time,
+    digest and local id. [reference] is a tag, or an image id — a container's own image is
+    asked for by id, because the tag it was created from may have moved since. {} when the
+    image is not on this machine."""
+    if not reference:
+        return {}
+    run = _docker("image", "inspect", reference, "--format", "{{json .}}", timeout=20)
+    if not run or run.returncode != 0:
+        return {}
+    try:
+        found = json.loads(run.stdout)
+    except ValueError:
+        return {}
+    labels = (found.get("Config") or {}).get("Labels") or {}
+    digests = found.get("RepoDigests") or []
+    tag = reference.rpartition(":")[2] if ":" in reference and not reference.startswith("sha256:") else None
+    return {
+        "image": reference,
+        "tag": tag,
+        "version": labels.get(LABEL_VERSION),
+        "revision": labels.get(LABEL_REVISION),
+        # The label is the build's own clock; Docker's field is when the image was assembled,
+        # which for these images is the same minute, and is there for a build without labels.
+        "created": labels.get(LABEL_CREATED) or found.get("Created"),
+        "digest": digests[0].partition("@")[2] if digests else None,
+        "id": found.get("Id"),
+    }
+
+
+def running_image(mode: str) -> dict:
+    """What this mode's container is running — by the image it was CREATED from, not the tag
+    it names, which a pull moves. A stopped container counts: it is what `up` starts again.
+    {} when there is no container at all, which is a first boot and nothing to step back from."""
+    container = service_container(MODE_SERVICE[mode], stopped=True)
+    if not container:
+        return {}
+    run = _docker("inspect", container, "--format", "{{.Image}}\t{{.Config.Image}}", timeout=15)
+    if not run or run.returncode != 0:
+        return {}
+    image_id, _, named = run.stdout.strip().partition("\t")
+    facts = image_facts(image_id)
+    if facts:
+        facts.update({"image": named, "tag": named.rpartition(":")[2] if ":" in named else "latest",
+                      "container": container})
+    return facts
+
+
+def _release_or_none() -> str | None:
+    """The release this install follows, or None when .env names one that does not parse —
+    `version` still answers then, and `embabel release` says what is wrong with it."""
+    try:
+        return followed_release()
+    except SetupError:
+        return None
+
+
 def source_identity(mode: str) -> dict:
     """The commit the running appliance was BUILT from, read out of its jar.
 
@@ -190,6 +256,13 @@ def mode_image(mode: str) -> str | None:
         run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15)
         if run and run.returncode == 0 and run.stdout.strip():
             return run.stdout.strip()
+    return composed_image(mode)
+
+
+def composed_image(mode: str) -> str | None:
+    """The image compose would run for this mode NOW — the release resolved, whatever the
+    container is still on. mode_image asks the container first; a release change is the
+    moment the two differ, and this is the side that says where it is going."""
     run = _compose(mode, "config", "--format", "json", capture=True)
     if run is None or run.returncode != 0:
         return None
@@ -233,6 +306,9 @@ def appliance_versions(mode: str | None = None) -> dict:
     image = mode_image(mode)
     return {
         "mode": mode,
+        # What this install follows — stable, beta, nightly, canary, or one build — and so
+        # what the next upgrade will move it to. The tag below is where that has got to.
+        "release": _release_or_none(),
         "checkout": checkout_identity(),
         "appliance": image_identity(image) if image else {},
         "source": source_identity(mode),

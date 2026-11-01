@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """One command that installs a fresh appliance and climbs the release ladder on it.
 
-    python3 scripts/release-check.py                         # :latest, five realms, torn down after
-    python3 scripts/release-check.py --version 0.4.0         # pin a release, and prove it is the one running
+    python3 scripts/release-check.py                         # stable, five realms, torn down after
+    python3 scripts/release-check.py --release 0.4.0         # one build, and prove it is the one running
+    python3 scripts/release-check.py --release canary        # every merge to main, as users on canary get it
     python3 scripts/release-check.py --secrets ~/realm-keys.env --battery ~/realms/realm-account-health
     python3 scripts/release-check.py --keep                  # leave the instance up to look at afterwards
 
@@ -46,6 +47,11 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMAGE_REPO = "ghcr.io/embabel/assistant"
+
+# The appliance's own reading of a release — what is valid, and which tag it pulls — rather than a
+# second copy of the table here. Standard library all the same: the package is this checkout's.
+sys.path.insert(0, HERE)
+from embabel_setup.release import parse_release, release_tag  # noqa: E402
 
 DEFAULT_REALMS = (
     "embabel-worlds/realm-business-vocabulary",
@@ -254,8 +260,12 @@ class Instance:
                     or os.path.join(os.path.expanduser("~"), ".docker")}
         if args.ref:
             self.env["EMBABEL_REF"] = args.ref
-        if args.version:
-            self.env["EMBABEL_VERSION"] = args.version
+        # The release goes in the way a user's does — EMBABEL_RELEASE to the installer, which
+        # writes it into the instance's .env — so the run proves that path, not a side door.
+        # A legacy EMBABEL_VERSION exported in this shell would outrank it for compose and check
+        # some other build than the one asked for, so it does not reach the installer.
+        self.env["EMBABEL_RELEASE"] = args.release
+        self.env.pop("EMBABEL_VERSION", None)
 
     @property
     def env_file(self) -> str:
@@ -344,12 +354,11 @@ def rung_install(inst: Instance, report: Report) -> bool:
     if not inst.port_base:
         report.add("instance settings", "FAIL", f"no EMBABEL_PORT_BASE in {inst.env_file}")
         return False
-    # The installer uses EMBABEL_VERSION for the run and deliberately does not persist it. Without
-    # this line the first `embabel up` afterwards would move the instance back to :latest.
-    if inst.args.version:
-        with open(inst.env_file, "a", encoding="utf8") as f:
-            f.write(f"\n# Pinned by scripts/release-check.py --version.\nEMBABEL_VERSION={inst.args.version}\n")
-        report.add("version pinned", "PASS", f"EMBABEL_VERSION={inst.args.version} appended to {os.path.basename(inst.env_file)}")
+    # The release has to OUTLIVE the install: every later `up` and `upgrade` reads it from here.
+    recorded = inst.env_value("EMBABEL_RELEASE")
+    report.add("release recorded", "PASS" if recorded == inst.args.release else "FAIL",
+               f"EMBABEL_RELEASE={recorded} in {os.path.basename(inst.env_file)}"
+               + ("" if recorded == inst.args.release else f", asked for {inst.args.release}"))
     report.add("instance", "PASS", f"API {inst.api}, console http://127.0.0.1:{inst.port_base + 2}")
     healthy = inst.wait_healthy()
     report.add("container healthy", "PASS" if healthy else "FAIL", inst.health())
@@ -371,13 +380,38 @@ def rung_image(inst: Instance, report: Report) -> None:
         report.add("docker inspect", "FAIL", run.stderr.strip()[:200])
         return
     ref, image_id = run.stdout.split()
-    digests = subprocess.run(["docker", "image", "inspect", image_id, "--format", "{{json .RepoDigests}}"],
-                             capture_output=True, text=True)
-    repo_digests = as_json(digests.stdout) or []
+    inspected = subprocess.run(["docker", "image", "inspect", image_id, "--format", "{{json .}}"],
+                               capture_output=True, text=True)
+    image = as_json(inspected.stdout) or {}
+    repo_digests = image.get("RepoDigests") or []
+    labels = (image.get("Config") or {}).get("Labels") or {}
     local = sorted({d.split("@", 1)[1] for d in repo_digests if d.startswith(IMAGE_REPO + "@")})
-    report.facts["image"] = {"ref": ref, "imageId": image_id, "repoDigests": local}
+    report.facts["image"] = {"ref": ref, "imageId": image_id, "repoDigests": local,
+                             "version": labels.get("org.opencontainers.image.version"),
+                             "revision": labels.get("org.opencontainers.image.revision"),
+                             "created": labels.get("org.opencontainers.image.created")}
     report.add("running image", "PASS", f"{ref} {', '.join(local) or image_id[:19]}")
     tag = ref.rsplit(":", 1)[1] if ":" in ref.rsplit("/", 1)[-1] else "latest"
+    # The release, as the table's first word on what was checked: which stream, which tag, and
+    # what the build calls itself — a stream's tag alone does not say which build it was today.
+    built = report.facts["image"]
+    expected = release_tag(inst.args.release)
+    report.add("release", "PASS" if tag == expected else "FAIL",
+               f"{inst.args.release} → :{expected}"
+               + (f", running :{tag}" if tag != expected else "")
+               + (f", version {built['version']}" if built.get("version") else "")
+               + (f", revision {built['revision'][:12]}" if built.get("revision") else "")
+               + (f", built {built['created'][:16]}" if built.get("created") else ""))
+    # And as the appliance itself reports it, which is what a user sees.
+    shown = inst.cli("release", "--json", timeout=120)
+    said = as_json(shown.stdout) if shown.returncode == 0 else None
+    if isinstance(said, dict):
+        running = (said.get("running") or {}).get("id")
+        ok = said.get("release") == inst.args.release and running == image_id
+        report.add("embabel release", "PASS" if ok else "FAIL",
+                   f"follows {said.get('release')}, running {(said.get('running') or {}).get('image')}")
+    else:
+        report.add("embabel release", "FAIL", (shown.stderr or shown.stdout).strip()[-200:])
     want = f"{IMAGE_REPO}:{tag}"
     published = remote_digest(want)
     if not published:
@@ -390,8 +424,6 @@ def rung_image(inst: Instance, report: Report) -> None:
         # For a floating tag this means the install started on a stale local pull — the run would
         # be checking some other build than the one users are downloading.
         report.add(f"matches {want}", "FAIL", f"registry has {published}, running {', '.join(local) or image_id}")
-    if inst.args.version and tag != inst.args.version:
-        report.add("pinned version runs", "FAIL", f"asked for {inst.args.version}, running :{tag}")
 
 
 def rung_setup_link(inst: Instance, report: Report) -> None:
@@ -903,7 +935,9 @@ def teardown(inst: Instance, report: Report) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--instance", default="relcheck", help="instance name (default relcheck)")
-    parser.add_argument("--version", help="image tag to install: X.Y.Z, sha-xxxxxxx or edge (default: :latest)")
+    parser.add_argument("--release", "--version", dest="release", default="stable",
+                        help="the release to install: stable (default), beta, nightly, canary, or one build — "
+                             "X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx. --version is the old name")
     parser.add_argument("--ref", help="appliance branch or tag install.sh downloads (EMBABEL_REF; default main)")
     parser.add_argument("--realms", default=",".join(DEFAULT_REALMS),
                         help="comma-separated owner/repo list to install_realm (empty for none)")
@@ -925,17 +959,22 @@ def main() -> int:
     args.realms = [r.strip() for r in args.realms.split(",") if r.strip()]
     if args.no_install and not args.home:
         parser.error("--no-install needs --home")
-    if args.version and re.fullmatch(r"v\d+\.\d+\.\d+", args.version):
-        args.version = args.version[1:]  # image tags carry no v; git tags do
+    try:
+        # Kept in the form .env keeps it: `v0.4.1` is 0.4.1, `edge` is canary.
+        args.release = parse_release(args.release)
+    except Exception as e:
+        parser.error(str(e))
 
     scratch = tempfile.mkdtemp(prefix=f"embabel-release-check-{args.instance}-")
     args.report_dir = tempfile.gettempdir()
     report_path = args.report or os.path.join(args.report_dir, f"embabel-release-check-{args.instance}.json")
     inst = Instance(args, scratch)
     report = Report()
-    report.facts.update({"instance": args.instance, "home": inst.home, "requestedVersion": args.version or "latest",
+    report.facts.update({"instance": args.instance, "home": inst.home, "release": args.release,
+                         "imageTag": release_tag(args.release),
                          "realmsRequested": args.realms, "started": time.strftime("%Y-%m-%dT%H:%M:%S")})
-    print(f"Release check — instance '{args.instance}', image :{args.version or 'latest'}, home {inst.home}")
+    print(f"Release check — instance '{args.instance}', release {args.release} (:{release_tag(args.release)}), "
+          f"home {inst.home}")
     try:
         if rung_install(inst, report):
             rung_image(inst, report)

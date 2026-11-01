@@ -33,6 +33,7 @@ embabel open          # the console, in your browser
 embabel backup        # everything it knows, copied somewhere safe
 embabel export x.tar.gz  # graph, worlds and setup in one file another appliance imports
 embabel version       # tag, digest, the commit it was built from
+embabel release       # stable, beta, nightly or canary — what you follow, and what runs
 embabel bugreport     # one folder to attach to an issue, with no secrets in it
 embabel sample add …  # fictional records, marked so they can be taken back out
 embabel scenario run … # put the world in a named state, for a demo or a repro
@@ -156,8 +157,8 @@ Which realms the appliance can currently see.
 Would this realm checkout load? The same checks `realm_validate` runs over MCP — `realm.yml`,
 types and their parents, joins, producers and the governance their source can honour, views,
 rules, apps, the wasm build — answered with **no appliance running**. It runs the validator
-that ships in this appliance's own server image (`ghcr.io/embabel/assistant` at its
-`EMBABEL_VERSION`) in a throwaway container, so the answer is the one the server you will
+that ships in this appliance's own server image (`ghcr.io/embabel/assistant` at the release it
+follows, or a legacy `EMBABEL_VERSION` pin) in a throwaway container, so the answer is the one the server you will
 install into would give. `realms validate` is the same command.
 
 ```
@@ -187,7 +188,8 @@ two installs. There is no single number, and printing one would be a lie:
 | | |
 |---|---|
 | **Checkout** | this repo's commit — the pin for everything in files rather than images: the compose files, `setup.py`, the skills |
-| **Server** | the image **tag** as compose resolves it, and the **digest** that tag currently means. `EMBABEL_VERSION` defaults to a snapshot tag, so the tag is a name; the digest is the artifact |
+| **Release** | what the appliance follows — `stable`, `beta`, `nightly`, `canary` or one build — and a legacy `EMBABEL_VERSION` pin, if one outranks it. `embabel release` says more |
+| **Server** | the image **tag** as compose resolves it, and the **digest** that tag currently means. A release names a stream, so the tag is a name; the digest is the artifact |
 | **Built from** | the commit the server's jar was built from, read out of `git.properties` inside it — with the branch, the subject line, and whether the build carried **uncommitted changes** |
 | **Graph** | the Neo4j image and its digest — or, on the Embabel engine, that the graph is inside the server, whose version is its version |
 
@@ -991,10 +993,12 @@ embabel completion fish > ~/.config/fish/completions/embabel.fish
 Verbs, their flags, and positional choices (`open console`, `realms link`) all
 complete. Flags hidden from `--help` stay hidden here too.
 
-### `embabel upgrade`
+### `embabel upgrade [--release <release>] [--allow-downgrade]`
 
-Onto the latest published build: **the checkout and the images**. Your data is
-untouched — this is the opposite of `up --fresh`.
+Onto the newest published build of **the release this appliance follows** — the
+checkout and the images. Your data is untouched — this is the opposite of
+`up --fresh`. `--release` moves the appliance to another release first, exactly as
+`embabel release <release>` does.
 
 Both halves, because for a long time this moved only the images while the Me
 app's menu moved both, and the two doors meant different things by the same
@@ -1012,10 +1016,40 @@ word. `setup.py` owns it now, so they cannot drift again.
   when it starts and once a day after, indexes guides that are new or changed,
   and removes ones that were withdrawn. It only ever removes documents it put
   there, so nothing you added is touched. No command, and no password.
-- **It builds nothing.** The compose files are pull-only by design. If the
-  published image turns out to be *older* than a local build it just replaced,
-  it says so — that is what `upgrade` means, but a local build vanishing in
-  silence costs somebody an afternoon.
+- **It builds nothing.** The compose files are pull-only by design.
+- **It never steps back without being told.** The target is pulled and compared
+  with the running build before anything is recreated: by release number when
+  both are `X.Y.Z`, by build time (`org.opencontainers.image.created`) otherwise.
+  An older target stops here with both builds named — the running server stays,
+  and `.env` still says what it said. `--allow-downgrade` goes ahead; take
+  `embabel backup` first, because an older server may not read what a newer one
+  wrote.
+
+### `embabel release [<release>] [--allow-downgrade] [--json]`
+
+Bare, which release this appliance follows and what is actually running: the
+release and the tag it resolves to, then the running container's image — its
+version, revision and build time from the image's own labels, and its digest. Read
+by the container's image id, not its tag, so it is the build that is serving rather
+than wherever the tag has moved since.
+
+Given a release, it follows that one from now on and upgrades onto it — the same
+move as `embabel upgrade --release`, with the same refusal to step back.
+
+| Release | |
+|---|---|
+| `stable` | the release most people should run (the image tag `latest`) |
+| `beta` | release candidates — try what is coming next |
+| `nightly` | yesterday's main, built once it passed CI |
+| `canary` | every merge to main as it lands; it may break (`edge` is its old name) |
+| `X.Y.Z`, `X.Y.Z-rc.N`, `sha-xxxxxxx` | one exact build, kept until you choose another |
+
+The choice is `EMBABEL_RELEASE` in `.env`, written at install (`--release`, or
+`EMBABEL_RELEASE` in the installer's environment; `stable` when neither says) and
+by this verb — never by a later install or `up`, which say how to change it rather
+than changing it. Compose gets the tag through the environment the CLI runs it
+with, and the server is told the release it follows. A legacy `EMBABEL_VERSION`
+pin still outranks it; choosing a release here comments that line out.
 
 ### Working with more than one appliance
 

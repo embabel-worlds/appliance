@@ -40,7 +40,10 @@ services:
 
   # ── The world runtime ───────────────────────────────────────────────────────
   worlds:
-    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-latest}
+    # The release this install follows (EMBABEL_RELEASE in .env), as the tag the CLI resolves
+    # it to — stable is `latest`, which is also what a hand-run compose gets. EMBABEL_VERSION
+    # is the older spelling of a pin and still outranks it. See embabel_setup/release.py.
+    image: ghcr.io/embabel/assistant:${EMBABEL_VERSION:-${EMBABEL_IMAGE_TAG:-latest}}
     logging: *logging
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers
@@ -169,6 +172,10 @@ services:
       # another's — without it `embabel prune` on a machine with two appliances
       # removes live sessions belonging to the other one.
       - EMBABEL_INSTANCE=${EMBABEL_INSTANCE:-appliance}
+      # Which release this appliance follows — stable, beta, nightly, canary or a pinned
+      # build — so the server can say so in About and in what it reports. The CLI passes
+      # what is actually in force (a legacy EMBABEL_VERSION pin's tag, where one wins).
+      - EMBABEL_RELEASE=${EMBABEL_RELEASE:-stable}
       - ASSISTANT_PUBLIC_BASE_URL=${WORLDS_PUBLIC_BASE_URL:-http://localhost:${WORLDS_PORT:-11043}}
       # Where people open the console, so a request an agent raises in a conversation held elsewhere
       # (an OpenAI client) links to its Approvals window.
@@ -177,10 +184,11 @@ services:
       # this names. WORLDS_CONSOLE_PUBLIC_URL still overrides for an appliance behind a proxy.
       - ASSISTANT_CONSOLE_URL=${WORLDS_CONSOLE_PUBLIC_URL:-http://localhost:${WORLDS_CONSOLE_PORT:-11044}/ui/}
       # The code-mode sandbox image, so the app launches whatever the pre-pull in
-      # infra.yml fetched. Blank means "the shipped one" — the app treats an empty
-      # value as unset, because a compose file forwarding an unset variable sets it
-      # to the empty string, and a set-but-empty value outranks every default.
-      - ASSISTANT_SANDBOX_IMAGE=${EMBABEL_SANDBOX_IMAGE:-}
+      # infra.yml fetched — the same expression, so the two cannot name different
+      # builds. Named rather than left to the app's own default, because that default
+      # is `:latest` whatever release this install follows, and a canary server asking
+      # for a stable sandbox is a pair nobody tested.
+      - ASSISTANT_SANDBOX_IMAGE=${EMBABEL_SANDBOX_IMAGE:-ghcr.io/embabel/assistant-sandbox:${EMBABEL_IMAGE_TAG:-latest}}
       # The key your wallet is encrypted with. The appliance runs `wallet.mode: local`
       # (see application-appliance.yml) — the browser holds the encrypted blob and
       # nothing decryptable rests here — but WITHOUT this the server generates a key

@@ -7,10 +7,10 @@ second command (`realm-validate`), and this runs it in a throwaway container:
 
     docker run --rm --entrypoint realm-validate -v <checkout>:/realms/<name>:ro <image> /realms/<name>
 
-THE IMAGE IS THIS APPLIANCE'S, at its EMBABEL_VERSION, so the answer is the one the server you
-are about to install into would give — not some other build's opinion. EMBABEL_VERSION in the
-environment wins, then .env, then the default the compose file names, read from the file rather
-than restated here, so the checkout stays its version. `--image` overrides for a local build.
+THE IMAGE IS THIS APPLIANCE'S, at the release it follows, so the answer is the one the server you
+are about to install into would give — not some other build's opinion. A legacy EMBABEL_VERSION
+pin, in the environment or .env, outranks the release exactly as it does for compose (see
+release.py). `--image` overrides for a local build.
 
 Nothing running is touched: no compose project, no volume, no network of the appliance's. The
 checkout and every `--with` directory are mounted READ-ONLY; validation builds into a copy
@@ -19,11 +19,9 @@ inside the container.
 
 from __future__ import annotations
 import os
-import re
 import subprocess
 
-from .core import APPLIANCE_DIR, MODE_COMPOSE
-from .settings import env_file_value
+from .release import effective_tag
 
 ENTRYPOINT = "realm-validate"
 DEFAULT_IMAGE_REPO = "ghcr.io/embabel/assistant"
@@ -34,24 +32,11 @@ DEFAULT_IMAGE_REPO = "ghcr.io/embabel/assistant"
 DOCKER_COULD_NOT_RUN = 125
 NO_SUCH_COMMAND = 127
 
-# The server service's image line. Both compose files spell it this way, and matching the repository
-# rather than the variable keeps any other image that takes EMBABEL_VERSION from being read instead.
-IMAGE_LINE = re.compile(r"image:\s*(" + re.escape(DEFAULT_IMAGE_REPO) + r"):\$\{EMBABEL_VERSION:-([^}]+)\}")
-
 
 def appliance_image(mode: str) -> str:
-    """The server image this appliance runs at its EMBABEL_VERSION."""
-    tag = (os.environ.get("EMBABEL_VERSION") or env_file_value("EMBABEL_VERSION") or "").strip()
-    if not tag:
-        tag = "latest"
-        try:
-            with open(os.path.join(APPLIANCE_DIR, MODE_COMPOSE[mode])) as f:
-                found = IMAGE_LINE.search(f.read())
-            if found:
-                tag = found.group(2).strip()
-        except (OSError, KeyError):
-            pass
-    return f"{DEFAULT_IMAGE_REPO}:{tag}"
+    """The server image this appliance runs: the tag compose resolves for it, through
+    release.effective_tag. Both modes run the same image, so [mode] does not change it."""
+    return f"{DEFAULT_IMAGE_REPO}:{effective_tag()}"
 
 
 def docker_argv(realm: str, with_dirs: list[str], image: str, *,

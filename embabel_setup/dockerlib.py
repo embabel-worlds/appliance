@@ -22,6 +22,7 @@ from .core import (
     SetupError, prompt,
 )
 from .memory import memory_env
+from .release import compose_release_env
 from .settings import (
     compose_project, configured_mode, embabel_command, env_file_value, env_path, graph_engine, instance,
     monitoring_enabled, phone_home_on, port_base, ports_for, resume_command, PHONE_HOME_ENDPOINT,
@@ -161,6 +162,9 @@ def compose_env() -> dict:
     for var, value in ports_for(port_base()).items():
         env[var] = str(value)
     env["EMBABEL_INSTANCE"] = instance()
+    # The release resolved to an image tag, because compose cannot map `stable` onto `latest`
+    # itself; and what the server is told it follows. See release.py.
+    env.update(compose_release_env())
     # Container memory limits sized from what Docker has (#111). Already resolved
     # against .env and the environment, so a value the operator set is passed through.
     env.update(memory_env(graph_engine(), monitoring_enabled()))
@@ -255,8 +259,9 @@ def core_services(mode: str) -> tuple[str, ...]:
 # A tag that MOVES. Everything else is a version somebody pinned, and a pinned
 # version is immutable: the copy on this machine is the copy the registry has,
 # so asking again buys nothing. `latest` is the opposite — it is a name, and
-# the build behind it changes several times a day.
-FLOATING_TAGS = ("latest",)
+# the build behind it changes several times a day. So is every other named
+# release (release.RELEASES), and `edge`, which canary was called before.
+FLOATING_TAGS = ("latest", "beta", "nightly", "canary", "edge")
 
 
 def floating_services(mode: str, services: tuple[str, ...] | list[str]) -> list[str]:
@@ -309,7 +314,9 @@ def refresh_floating_images(mode: str, services: tuple[str, ...] | list[str]) ->
 
     IT SPEAKS, because it can replace a locally-built `:latest` — which is the
     correct outcome for a tag that means "what the registry publishes", and still
-    a surprise worth a line. Pin EMBABEL_VERSION to keep your own build.
+    a surprise worth a line. Pin EMBABEL_VERSION to keep your own build. A named release
+    other than stable moves too — `beta`, `nightly`, `canary` are all names whose build
+    changes — while a pinned one (0.4.1, sha-…) does not, and is left alone.
     """
     moving = floating_services(mode, services)
     if not moving:

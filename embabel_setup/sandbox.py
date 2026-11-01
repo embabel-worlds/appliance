@@ -46,7 +46,10 @@ def effective_image() -> tuple[str, str]:
     from_file = env_file_value(IMAGE_VAR)
     if from_file:
         return from_file, ".env"
-    return "ghcr.io/embabel/assistant-sandbox:latest", "the shipped default"
+    # The shipped one at this install's release — the expression infra.yml and the mode files use.
+    from .release import followed_release, release_tag
+    release = followed_release()
+    return f"ghcr.io/embabel/assistant-sandbox:{release_tag(release)}", f"the shipped one, {release} release"
 
 
 def build_sandbox(dockerfile: str | None = None, tag: str = LOCAL_TAG,
@@ -118,7 +121,7 @@ def reset_sandbox() -> None:
     if not env_file_value(IMAGE_VAR):
         print(f"  {MIDDOT} " + dim("Already using the shipped image."))
         return
-    # Set to empty rather than deleting the line: the app reads blank as "the shipped
+    # Set to empty rather than deleting the line: compose reads blank as "the shipped
     # one", and an operator scanning .env should see that the choice was made and undone
     # rather than wonder whether it was ever there.
     set_env_var(IMAGE_VAR, "")

@@ -20,6 +20,11 @@
 #   EMBABEL_REPO     org/repo of the source   (default: embabel-worlds/appliance)
 #   EMBABEL_TOKEN    GitHub token, private forks only
 #   EMBABEL_BIN_DIR  where to put the shim    (default: $env:LOCALAPPDATA\Programs\embabel\bin)
+#   EMBABEL_RELEASE  stable | beta | nightly | canary | X.Y.Z  (default: stable)
+#
+# EMBABEL_RELEASE is which build of the server the appliance follows. Like
+# install.sh, this script does not read it: the variable passes through to setup,
+# which writes it into the appliance's .env. `embabel release` changes it later.
 #
 # ASCII-only on purpose. PS 5.1 reads .ps1 files as the system ANSI codepage
 # unless the file carries a UTF-8 BOM; box-drawing chars and em-dashes then
