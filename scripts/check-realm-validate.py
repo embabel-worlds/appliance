@@ -4,8 +4,8 @@
 What has to stay true for it to be a check a realm repository can rely on:
 
 - The command is reachable as `realm validate` and `realms validate`, with every flag.
-- The image is THIS appliance's: EMBABEL_VERSION from the environment, then .env, then
-  the default the compose file names — the same order compose itself applies.
+- The image is THIS appliance's: a legacy EMBABEL_VERSION from the environment, then .env,
+  then the release it follows — the same order compose itself applies.
 - The checkout and every --with directory are mounted READ-ONLY, each under its own
   name, and the validator's flags pass through untouched.
 - The validator's status is the command's status (0 passes, 1 fails), and docker's own
@@ -26,7 +26,7 @@ from unittest.mock import patch
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from embabel_setup import cli, realmvalidate  # noqa: E402
+from embabel_setup import cli, realmvalidate, release  # noqa: E402
 from embabel_setup.cliparser import build_parser  # noqa: E402
 
 failures = []
@@ -58,23 +58,28 @@ for argv, expected in ((["realm", "validate", ".", "--image", "x:1"], 0), (["rea
     check(got == expected, f"`embabel {' '.join(argv)}` with two appliances resolved as {got}, not {expected}")
 
 # ── which image ──────────────────────────────────────────────────────────────
+# The release's tag, unless a legacy EMBABEL_VERSION pin outranks it — the environment's, then
+# .env's — which is the order compose applies to the same image line (scripts/check-release.py
+# holds the compose files to it).
+def env_values(**values):
+    return lambda key, *_: values.get(key)
+
+
 with patch.dict(os.environ, {"EMBABEL_VERSION": "1.2.3"}), \
-        patch.object(realmvalidate, "env_file_value", return_value="9.9.9"):
+        patch.object(release, "env_file_value", env_values(EMBABEL_VERSION="9.9.9")):
     image = realmvalidate.appliance_image("worlds")
     check(image == "ghcr.io/embabel/assistant:1.2.3", f"the environment's EMBABEL_VERSION lost: {image}")
 with patch.dict(os.environ, {"EMBABEL_VERSION": ""}), \
-        patch.object(realmvalidate, "env_file_value", return_value="9.9.9"):
+        patch.object(release, "env_file_value", env_values(EMBABEL_VERSION="9.9.9", EMBABEL_RELEASE="beta")):
     image = realmvalidate.appliance_image("worlds")
-    check(image == "ghcr.io/embabel/assistant:9.9.9", f".env's EMBABEL_VERSION lost: {image}")
-for mode, compose in (("worlds", "docker-compose-worlds.yml"), ("me", "docker-compose-me.yml")):
-    with open(os.path.join(ROOT, compose)) as f:
-        found = realmvalidate.IMAGE_LINE.search(f.read())
-    check(found is not None, f"{compose}: no server image line with an EMBABEL_VERSION default")
+    check(image == "ghcr.io/embabel/assistant:9.9.9", f".env's EMBABEL_VERSION lost to the release: {image}")
+for recorded, tag in ((None, "latest"), ("stable", "latest"), ("canary", "canary"), ("0.4.1", "0.4.1")):
     with patch.dict(os.environ, {"EMBABEL_VERSION": ""}), \
-            patch.object(realmvalidate, "env_file_value", return_value=None):
-        image = realmvalidate.appliance_image(mode)
-        expected = f"ghcr.io/embabel/assistant:{found.group(2) if found else '?'}"
-        check(image == expected, f"{mode}: with no pin the image is {image}, the compose default is {expected}")
+            patch.object(release, "env_file_value", env_values(EMBABEL_RELEASE=recorded)):
+        for mode in ("worlds", "me"):
+            image = realmvalidate.appliance_image(mode)
+            check(image == f"ghcr.io/embabel/assistant:{tag}",
+                  f"{mode}: following {recorded or 'nothing'} the image is {image}, not :{tag}")
 
 # ── the docker run ───────────────────────────────────────────────────────────
 with tempfile.TemporaryDirectory() as tmp:

@@ -15,7 +15,7 @@ export ANTHROPIC_API_KEY=…   # and/or OPENAI_API_KEY — every one that is set
 python3 scripts/release-check.py --secrets ~/realm-keys.env
 ```
 
-That installs a fresh appliance from `:latest`, climbs every rung below, prints a table and
+That installs a fresh appliance on the **stable** release, climbs every rung below, prints a table and
 removes the appliance again. It runs beside whatever this machine already has: the install
 goes into a temporary directory as its own instance (`relcheck` by default), with its own
 port block, and nothing outside that directory is touched — not your `embabel` command, not
@@ -24,7 +24,7 @@ most of it model calls and realm fetches.
 
 | Flag | |
 |---|---|
-| `--version 0.4.1` | install that image instead of `:latest`: a release (`X.Y.Z`), a main build (`sha-abc1234`) or `edge`. It is written into the instance's `.env.<instance>` too, because the installer uses `EMBABEL_VERSION` for the run and deliberately does not keep it — without that line the first `embabel up` would move the instance back to `:latest`. For a release, the running image's digest must equal the registry's for that tag |
+| `--release beta` | install another release instead of stable: `beta`, `nightly`, `canary`, or one build — a release (`0.4.1`), a candidate (`0.5.0-rc.1`) or a main build (`sha-abc1234`). It goes in the way a user's does, as `EMBABEL_RELEASE` to the installer, which writes it into the instance's `.env.<instance>`; the run checks that line is there, so a later `embabel up` stays on it, and that the running image is the release's tag. `--version` is the old name and still works. A legacy `EMBABEL_VERSION` exported in your shell is not passed on, since it would outrank the release |
 | `--secrets FILE` | realm keys (`ODOO_API_KEY=…`, `LAGO_API_KEY=…`, `CHATWOOT_API_TOKEN=…`, the names each realm's `apis.yml` asks for), copied to the instance's `secrets.env` before the realms go in. Without it the realms install, and every view that needs a source says so as `SOURCE_UNAVAILABLE` |
 | `--realms a/b,c/d` | the realms to install from git. Defaults to the account-health set: `realm-business-vocabulary`, `realm-chatwoot`, `realm-lago`, `realm-odoo`, `realm-account-health` |
 | `--battery DIR` | a realm checkout whose `tests/verify.sh` runs last, against this instance, with `FROM_TEXT=1` |
@@ -50,8 +50,11 @@ checks must pass — no raw JVM warnings on screen, no secret measured back, bot
 the closing block, and that it finished. Then the container reports healthy.
 
 **L0.1 image.** Which image is running, by tag and digest, and that the digest is the one the
-registry publishes for that tag. For `:latest` a mismatch means the install started on a
-stale local pull and every rung after it would be checking some other build.
+registry publishes for that tag. For a release that moves (stable's `:latest`, beta, nightly,
+canary) a mismatch means the install started on a stale local pull and every rung after it
+would be checking some other build. The **release** row says which release was installed, the
+tag it resolves to, and what the running build calls itself — version, revision and build
+time, from the image's labels — and `embabel release` must agree with it.
 
 **L0.5 setup link.** The `…/#setup=` link the install printed opens: HTTP 200 on its path.
 A doubled slash in it once made every fresh install print a link the server refused with 400,

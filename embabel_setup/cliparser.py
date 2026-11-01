@@ -12,7 +12,7 @@ import os
 from .cli import _emit, _subparsers, current_mode, resolve_instance, resolved_mode, run_setup, s
 from .clibundle import cmd_export, cmd_import
 from .clicare import (cmd_backup, cmd_bugreport, cmd_completion, cmd_graph, cmd_instances,
-                      cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
+                      cmd_release, cmd_reset_password, cmd_restore, cmd_trust, cmd_uninstall, cmd_upgrade,
                       cmd_version, cmd_where)
 from .clidata import (cmd_agents, cmd_contract, cmd_data, cmd_diagram, cmd_embeddings, cmd_realms,
                       cmd_run_view, cmd_sample, cmd_sandbox, cmd_scenario)
@@ -20,7 +20,7 @@ from .clirun import (cmd_compose, cmd_doctor, cmd_down, cmd_logs, cmd_open, cmd_
                      cmd_status, cmd_up)
 
 
-EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        Neo4j, or a server store, onto the engine\'s SQLite file\n  embabel graph migrate --to postgres       onto a Postgres server bundled with the appliance\n  embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph', 'export': 'embabel export my-appliance.tar.gz             graph, worlds and setup, to move or keep\n  embabel export support.tar.gz --world ann --no-private   one world, nothing private: a support bundle\n  embabel export setup.tar.gz --setup                     realms, apps, lenses, preferences; no data', 'import': 'embabel import my-appliance.tar.gz --login ann   replaces the graph and worlds, verified; ann can sign in\n  embabel import setup.tar.gz                       adds the setup to this appliance\'s world', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars'}
+EXAMPLES = {'up': 'embabel up\n  embabel up --me            the personal-assistant door\n  embabel up --fresh         delete everything first, then set up again', 'logs': "embabel logs -f            follow the appliance's own log\n  embabel logs neo4j         a particular service\n  embabel logs --tail 500", 'backup': 'embabel backup             to ~/embabel-backups\n  embabel backup /Volumes/ext\n  embabel backup --list', 'restore': 'embabel restore ~/embabel-backups/embabel-backup-appliance-2026-08-23-1118', 'realms': 'embabel realms link ~/src  point it at your realm checkouts\n  embabel realms list\n  embabel realm validate .   would this checkout load?', 'open': "embabel open               this appliance's front door\n  embabel open graph         the Neo4j browser", 'version': 'embabel version\n  embabel version --json     for a script', 'bugreport': 'embabel bugreport          to ~/embabel-backups\n  embabel bugreport --all-logs   full logs; read before sending', 'completion': 'source <(embabel completion bash)\n  embabel completion zsh > "${fpath[1]}/_embabel"', 'graph': 'embabel graph migrate --to embabel        Neo4j, or a server store, onto the engine\'s SQLite file\n  embabel graph migrate --to postgres       onto a Postgres server bundled with the appliance\n  embabel graph migrate --to oracle --url jdbc:oracle:thin:@//db:1521/FREEPDB1 --username graph', 'export': 'embabel export my-appliance.tar.gz             graph, worlds and setup, to move or keep\n  embabel export support.tar.gz --world ann --no-private   one world, nothing private: a support bundle\n  embabel export setup.tar.gz --setup                     realms, apps, lenses, preferences; no data', 'import': 'embabel import my-appliance.tar.gz --login ann   replaces the graph and worlds, verified; ann can sign in\n  embabel import setup.tar.gz                       adds the setup to this appliance\'s world', 'data': 'embabel data add target/shop-1.0.war --to jars\n  embabel data add target/classes --to jars --as shop-classes\n  embabel data ls jars', 'release': 'embabel release            what this appliance follows, and what is running\n  embabel release beta       follow release candidates, and upgrade onto the newest\n  embabel release 0.4.1      one build, kept until you choose another\n  embabel release stable --allow-downgrade   back from canary, after `embabel backup`', 'upgrade': 'embabel upgrade            the newest build of the release you follow\n  embabel upgrade --release nightly'}
 
 # `realms validate` is a verb's verb, so the per-verb pass at the end of build_parser never sees it.
 REALM_VALIDATE_EXAMPLES = (
@@ -294,9 +294,28 @@ def build_parser() -> argparse.ArgumentParser:
                    help="print the MCP token for manual client configuration")
     p.set_defaults(func=cmd_agents)
 
-    p = sub.add_parser("upgrade", help="pull newer images, keep your data")
+    def release_flags(p):
+        p.add_argument("--allow-downgrade", action="store_true",
+                       help="go ahead when the release's build is OLDER than the running one "
+                            "(take `embabel backup` first)")
+
+    p = sub.add_parser("upgrade", help="pull the newest build of your release, keep your data")
     mode_flags(p)
+    p.add_argument("--release", metavar="RELEASE",
+                   help="follow this release from now on: stable, beta, nightly, canary, X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx")
+    release_flags(p)
     p.set_defaults(func=cmd_upgrade)
+
+    # Its own verb as well as `upgrade --release`: which build an appliance follows is a
+    # question people ask without wanting anything to move, and bare, this only answers it.
+    p = sub.add_parser("release", help="which release this appliance follows; give one to follow it")
+    mode_flags(p)
+    p.add_argument("value", nargs="?", metavar="RELEASE",
+                   help="stable, beta, nightly, canary, or one build (X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx); "
+                        "omit to see what this appliance follows and runs")
+    p.add_argument("--json", action="store_true", help="what it follows and runs, as JSON")
+    release_flags(p)
+    p.set_defaults(func=cmd_release)
 
     p = sub.add_parser("down", help="stop the appliance")
     mode_flags(p)

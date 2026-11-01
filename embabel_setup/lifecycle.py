@@ -36,7 +36,8 @@ from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred
                         stray_sandbox_containers, other_running_appliances,
                         take_everything_down)
 from .settings import (embabel_command, compose_project, console_url, env_file, instance, installed_instances,
-                       remember_mode, resume_command, version_pin_conflict)
+                       remember_mode, resume_command)
+from .release import parse_release, version_pin_conflict
 from .status import STATUS
 from .steps import probe
 
@@ -198,24 +199,27 @@ def report_boot_warnings(container: str) -> None:
 
 
 def announce_version_pin(mode: str) -> None:
-    """Say when .env's image pin overrides the tag this checkout was written against.
+    """Say when a legacy EMBABEL_VERSION in .env outranks the release this install follows.
 
     Silent unless they actually disagree, which is the only case worth a line — and
-    the case that costs an afternoon: a branch carries its own compose files AND the
-    server tag they expect, so an EMBABEL_VERSION left in .env from some earlier
-    experiment quietly runs the branch's plumbing against a different server. Both
-    halves are legitimate, which is exactly why nobody suspects either.
+    the case that costs an afternoon: somebody chooses beta, and a pin left in .env
+    from some earlier experiment quietly keeps the server where it was. Both halves
+    are legitimate, which is exactly why nobody suspects either.
 
     A NOTE, not a refusal. The pin is the operator's own and wins on purpose; this
-    only makes sure they meant it.
+    only makes sure they meant it, and names what settles it.
     """
     conflict = version_pin_conflict(mode)
     if not conflict:
         return
     pinned, expected = conflict
-    print(f"  {warn('!')} .env pins EMBABEL_VERSION={pinned}, and this checkout expects {expected}.")
-    print("  " + dim(f"    Your pin wins. Remove that line from .env to run the {expected} "
-                     "this checkout was written against."))
+    print(f"  {warn('!')} .env pins EMBABEL_VERSION={pinned}, and this appliance follows {expected}.")
+    try:
+        # A pin that is also a release can simply become the release; a local build's tag cannot.
+        settle = f"`{embabel_command('release', parse_release(pinned))}` makes it the release, or remove"
+    except SetupError:
+        settle = "Remove"
+    print("  " + dim(f"    Your pin wins. {settle} that line from .env to follow {expected}."))
     print()
 
 

@@ -16,6 +16,27 @@ pipe installs the personal assistant instead:
 curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh
 ```
 
+That installs the **stable** release, which is what most people should run. To follow
+another, say so on the same line — either spelling works, and neither asks a question:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | EMBABEL_RELEASE=beta sh
+curl -fsSL https://raw.githubusercontent.com/embabel-worlds/appliance/main/install.sh | sh -s -- --release nightly
+```
+
+| Release | What you get |
+|---|---|
+| `stable` | The release. What most people should run. |
+| `beta` | Release candidates: try what is coming next, before it is the release. |
+| `nightly` | Yesterday's main, built once it passed CI. New things a day after they merge. |
+| `canary` | Every merge to main, as it lands. The newest, and it may break. |
+| `0.4.1`, `0.5.0-rc.2`, `sha-24b7301` | One exact build, kept until you choose another. |
+
+The choice is written into the appliance's `.env` as `EMBABEL_RELEASE`, so every later
+`embabel up` and `embabel upgrade` keeps following it. `embabel release` shows what you
+follow and what is running, and `embabel release <release>` moves you — see
+[Upgrading](#upgrading).
+
 **If that goes wrong**, this checks the machine and says what to fix, in order. It needs
 nothing installed, reads only, and prints no key or password — so its output is safe to
 paste into an issue:
@@ -139,8 +160,8 @@ Because the modes share one graph and one data volume, two rules hold:
 1. **Run one mode at a time.** Both up at once means two identical JVMs running
    the singleton background work — cron firing twice, the same Telegram bot
    token connected twice (an API conflict, not just waste).
-2. **`EMBABEL_VERSION` and the embedding model move both modes together** — they
-   are set once, in `.env` and `infra.yml`, deliberately.
+2. **The release (`EMBABEL_RELEASE`) and the embedding model move both modes
+   together** — they are set once, in `.env` and `infra.yml`, deliberately.
 
 ## Working on a realm
 
@@ -477,7 +498,7 @@ MCP Surface, HTTP & JVM, Graph & Tenancy, Code Mode & Sandbox, Virtual Cypher �
 the dashboard list. There is no login: like every other port here it binds to
 `127.0.0.1`, so anyone who can reach 11047 is an admin.
 
-The dashboards ship inside the Grafana image and move with `EMBABEL_VERSION`, so they
+The dashboards ship inside the Grafana image and move with the release, so they
 always match the metrics the running assistant emits. That means they are read-only —
 panel edits in the UI won't persist across a restart. Prometheus scrapes
 `/actuator/prometheus` on the assistant every 10 seconds over the compose network.
@@ -486,7 +507,8 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 
 | Variable | Default | Why you'd change it |
 |---|---|---|
-| `EMBABEL_VERSION` | pinned in the compose file | Pin to a specific release instead of tracking the default. `edge` follows main, which is where a merged change — the console's included, since its files ship inside this image — arrives before a release retags it as `latest`. |
+| `EMBABEL_RELEASE` | `stable`, written at install | Which build of the server, Grafana and the sandbox this appliance follows. `stable` is the release most people should run; `beta` is release candidates, to try what is coming next; `nightly` is yesterday's main once it passed CI; `canary` is every merge to main as it lands, and may break. Or one exact build — `0.4.1`, `0.5.0-rc.2`, `sha-24b7301` — kept until you choose another. Change it with `embabel release <release>`, which refuses to step back onto an older server unless told. `edge` is read as `canary`, its old name. |
+| `EMBABEL_VERSION` | unset | The older spelling of a pin, still honoured: any image tag, a local build's included, and it outranks `EMBABEL_RELEASE` for the server and Grafana. `embabel release` retires the line when you choose a release. |
 | `ASSISTANT_DOC_CONVERTER` | `docling` | `none` uses plain text extraction and makes the multi-GB docling image unnecessary — faster to start, worse fidelity on tables and figures in PDFs. |
 | `ASSISTANT_PUBLIC_BASE_URL` | `http://localhost:11042` | The externally visible origin. OAuth callbacks, MCP resource indicators and app links compose from it. Set it when running behind a proxy or on another host. No trailing slash. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=45 -XX:G1PeriodicGCInterval=60000` | JVM memory, as a share of the app container's limit. |
@@ -766,7 +788,10 @@ so it is never in the blast radius of an appliance's prune.
 ## Upgrading
 
 ```bash
-embabel upgrade           # checkout, then images, then verify
+embabel upgrade                  # the newest build of the release you follow: checkout, images, verify
+embabel release                  # what you follow, and what is running — tag, version, revision, digest
+embabel release beta             # follow another release, and upgrade onto it now
+embabel upgrade --release 0.4.1  # the same thing, spelled as an upgrade
 ```
 
 Both halves. The images are most of the appliance, but the checkout is the rest
@@ -779,11 +804,25 @@ container's actual image id, because "pulled" and "the container is running it"
 are different claims and only the second is the one you wanted.
 
 Nothing is built. The compose files are pull-only by design, so `upgrade` lands
-on what the registry publishes — and says so if that turns out to be *older* than
-a locally-built image it just replaced.
+on what the registry publishes for your release (`EMBABEL_RELEASE` in `.env`;
+see [Quick start](#quick-start) for the four releases and exact builds).
 
-Your volumes survive. Pin `EMBABEL_VERSION` in `.env` if you'd rather control when you
-move between versions.
+**Never backwards without being told.** Moving from canary to stable, or to last
+month's release, can land on an *older* server than the one running — and an
+older server may not read what a newer one wrote. So the target is pulled and
+compared with the running build first, by release number when both have one and
+by build time otherwise. When it is older, nothing changes: both builds are named,
+the running server stays, and `.env` keeps what it said. To step back anyway:
+
+```bash
+embabel backup
+embabel release stable --allow-downgrade
+```
+
+Same build or newer goes ahead without a question. Your volumes survive either
+way. An `EMBABEL_VERSION` line in `.env` — the older spelling of a pin — still
+works and outranks the release; choosing a release with `embabel release`
+retires it.
 
 ## Troubleshooting
 
@@ -804,7 +843,7 @@ The commands below act on the default appliance. For another instance, run each
 | `assistant` restarts during boot | On a Neo4j appliance, Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
 | An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
-| Nothing on 11047 | Monitoring is off by default: `EMBABEL_MONITORING=on` in `.env`, then `embabel up`. If it is on, `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |
+| Nothing on 11047 | Monitoring is off by default: `EMBABEL_MONITORING=on` in `.env`, then `embabel up`. If it is on, `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same release as the assistant |
 | Dashboards load but every panel is empty | Prometheus can't reach the assistant. `curl localhost:11048/api/v1/targets` — the `embabel-assistant` target should be `up` |
 | Port already in use | Change the port variables in `.env` |
 

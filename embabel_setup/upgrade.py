@@ -1,8 +1,9 @@
-"""Onto the latest published build: the checkout as well as the images.
+"""Onto the newest published build of the release this install follows: the checkout
+as well as the images. Or onto another release, which is the same move with a check.
 
 Nothing here builds. The compose files are pull-only by design, so this verb
-lands on what the registry publishes and says so when that turns out to be older
-than a local build it replaced.
+lands on what the registry publishes — and refuses, unless told, when that turns
+out to be OLDER than what is running (see upgrade).
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ import urllib.request
 
 from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
-from .settings import embabel_command, source_ref, source_repo
+from .settings import embabel_command, env_file, source_ref, source_repo
 
 from .dockerlib import _compose, _docker, find_mode_container, images_for, retire_monitoring, retire_sql_sidecar
-from .versions import image_identity, mode_image
+from .release import (DEFAULT_RELEASE, describe_release, followed_release, legacy_pin, older, parse_release,
+                      recorded_release, release_tag, remember_release, use_release)
+from .versions import composed_image, image_facts, image_identity, mode_image, running_image
 from .bolt import ensure_public_host
 from .pins import pin_before_start
 
@@ -125,23 +128,70 @@ def pull_checkout() -> tuple[bool, str]:
             note += "\n    the Me app changed — rebuild it: npm --prefix me-app run build"
         return True, note
     return False, "checkout already current"
-def upgrade(mode: str) -> dict:
-    """Latest checkout, latest published images, containers actually running them.
+
+
+class DowngradeRefused(SetupError):
+    """The build a release resolves to is older than the one running, and nobody said
+    --allow-downgrade. The appliance is left exactly as it was. [current] and [arriving]
+    are versions.image_facts dicts; the message is downgrade_message's."""
+
+    def __init__(self, release: str, current: dict, arriving: dict):
+        super().__init__(f"{release} is older than the running server")
+        self.release, self.current, self.arriving = release, current, arriving
+
+
+def upgrade(mode: str, release: str | None = None, allow_downgrade: bool = False) -> dict:
+    """Latest checkout, the newest build of the release this install follows, and the
+    containers actually running it. [release] moves the install to another release first.
 
     The digests are read on both sides rather than trusting `up -d` to have done
     something: "pulled" and "the container is now on it" are different claims,
     and only the second one is the thing anybody wanted.
+
+    NEVER BACKWARDS WITHOUT BEING TOLD. A release change can land on an OLDER server —
+    canary to stable, a pin to last month's release — and an older server may not read
+    what the newer one wrote: its schema, its stores, the shape of a world it has never
+    seen. So the target is pulled and compared with the running build BEFORE anything is
+    recreated or written to .env, and an older one stops here with both named, unless
+    [allow_downgrade]. Same build or newer goes ahead without a word.
     """
+    # Before anything moves, so a typo costs nothing.
+    target = parse_release(release) if release else followed_release()
+    # The target, for this run only, until it has been checked: compose_env reads it, so
+    # every compose call below — the pull above all — is about the target, while .env
+    # still says what it said.
+    if release:
+        use_release(target)
     notes = []
     _moved, note = pull_checkout()
     notes.append(note)
 
     # Read BEFORE the pull, because the pull is what moves the tag underneath it.
+    current = running_image(mode)
     before = image_identity(mode_image(mode) or "")
     held = _image_ids(images_for(mode))
 
     if _compose(mode, "pull").returncode != 0:
-        raise SetupError("docker compose pull failed — see the output above.")
+        use_release(None)
+        hint = ""
+        if release and target != DEFAULT_RELEASE:
+            # The likeliest reason a release that parses cannot be pulled: it is not published
+            # (yet). Said, because "pull failed" alone reads like a broken appliance.
+            hint = (f"\n  If {target} is not published yet, nothing changed: this appliance still follows "
+                    f"what it did.\n  `{embabel_command('release', DEFAULT_RELEASE)}` follows the release.")
+        raise SetupError("docker compose pull failed — see the output above." + hint)
+    arriving = image_facts(composed_image(mode))
+    stepping_back = bool(current and arriving) and older(arriving, current) is True
+    if stepping_back and not allow_downgrade:
+        use_release(None)
+        _keep_running_tag(current, arriving)
+        raise DowngradeRefused(target, current, arriving)
+
+    if release:
+        changed = remember_release(target)
+        if changed:
+            notes.append(f"now following {target} ({describe_release(target)}) — "
+                         + ", ".join(changed) + f" in {env_file()}")
     # The images are new and nothing has been recreated yet — the moment to pin a row
     # that waits on the image, before the first boot on it (pins.pin_before_start).
     pin_before_start(mode)
@@ -158,15 +208,11 @@ def upgrade(mode: str) -> dict:
     after = image_identity(mode_image(mode) or "")
     if before.get("digest") and after.get("digest") and before["digest"] != after["digest"]:
         notes.append(f"server image {before['digest'][7:19]} → {after['digest'][7:19]}")
-        # A locally-built image can be NEWER than what the registry serves,
-        # because snapshot tags publish on release rather than on every push.
-        # Landing on the published build is exactly what this verb is for, so
-        # this is a NOTE and not a refusal — but a local build vanishing without
-        # a word is the kind of surprise people spend an afternoon on.
-        if before.get("created") and after.get("created") and after["created"] < before["created"]:
-            notes.append("NOTE: the published image is OLDER than the one that was running.\n"
-                         "    If that was your own build, this replaced it — which is what\n"
-                         "    `upgrade` means. Rebuild it if you wanted it back.")
+        if stepping_back:
+            # Asked for, and still worth a line where it will be read afterwards.
+            notes.append(f"NOTE: stepped back onto an OLDER server ({_named(arriving)}), as --allow-downgrade asked.\n"
+                         f"    If it cannot read what the newer one wrote, `{embabel_command('restore')}` "
+                         "puts the backup back.")
         else:
             notes.append("give the server a moment to come back")
     elif after.get("digest"):
@@ -179,7 +225,73 @@ def upgrade(mode: str) -> dict:
     if container and not _same_image(container, mode_image(mode)):
         notes.append(f"WARNING: {container} is NOT running the pulled image.\n"
                      f"    `{embabel_command('down')}` then `{embabel_command('up')}` will land it.")
-    return {"mode": mode, "notes": notes, "digest": after.get("digest")}
+    return {"mode": mode, "release": followed_release(), "notes": notes, "digest": after.get("digest")}
+
+
+def _keep_running_tag(current: dict, arriving: dict) -> None:
+    """Point the tag back at the running build when the refused one arrived under the SAME name.
+
+    A pull moves a tag whether or not anything is recreated on it. When the running server
+    was created from `:latest` and the registry's `:latest` turned out older — a local build,
+    or a release withdrawn — refusing the upgrade left the name on the older image, and the
+    next `embabel up` would have started it after all. Retagging the running image keeps
+    "kept the current one" true past this command.
+    """
+    if current.get("id") and current.get("image") and current.get("image") == arriving.get("image"):
+        _docker("tag", current["id"], current["image"], timeout=30)
+
+
+def _named(facts: dict) -> str:
+    """One build, the way a person compares two: tag, what it calls itself, when it was built."""
+    parts = [facts.get("image") or "?"]
+    if facts.get("version") and facts.get("version") != facts.get("tag"):
+        parts.append(facts["version"])
+    if facts.get("created"):
+        parts.append("built " + facts["created"][:16].replace("T", " "))
+    return ", ".join(parts)
+
+
+def downgrade_message(refused: DowngradeRefused, retry: str) -> str:
+    """What `embabel release` and `embabel upgrade` say when they keep the current server.
+    [retry] is the command that was run, which is the command to run with the flag."""
+    return "\n".join([
+        f"{refused.release} is OLDER than the server this appliance is running:",
+        "",
+        f"    running   {_named(refused.current)}",
+        f"    {refused.release:<9} {_named(refused.arriving)}",
+        "",
+        "  Nothing changed: the running server stays, and .env still follows what it followed.",
+        "  An older server may not read what a newer one wrote. To step back anyway, take a",
+        "  backup first, so there is a way forward again:",
+        "",
+        f"    {embabel_command('backup')}",
+        f"    {retry} --allow-downgrade",
+    ])
+
+
+def release_report(mode: str) -> dict:
+    """What `embabel release` shows: what this install follows, and what is actually running.
+
+    The two can differ, and the difference is the point: the release is a stream, the
+    running build is wherever the last upgrade left it, and a legacy pin can outrank both.
+    """
+    recorded = recorded_release()
+    try:
+        followed, problem = followed_release(), None
+    except SetupError as e:
+        followed, problem = None, str(e)
+    pin = legacy_pin()
+    return {
+        "mode": mode,
+        "release": followed,
+        "recorded": recorded,
+        "about": describe_release(followed) if followed else None,
+        "tag": release_tag(followed) if followed else None,
+        "problem": problem,
+        # A legacy EMBABEL_VERSION that outranks the release, and where it was set.
+        "legacyPin": {"tag": pin[0], "from": pin[1]} if pin else None,
+        "running": running_image(mode),
+    }
 def _same_image(container: str, image: str | None) -> bool:
     """Is this container running THAT image, by local image id rather than by tag?
     A tag is a moving name; two containers can both say `:latest` and be

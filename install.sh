@@ -20,6 +20,16 @@
 #   EMBABEL_MODE   worlds | me              (default: worlds)
 #   EMBABEL_REPO   org/repo of the source   (default: embabel-worlds/appliance)
 #   EMBABEL_TOKEN  GitHub token, private forks only
+#   EMBABEL_RELEASE  stable | beta | nightly | canary | X.Y.Z  (default: stable)
+#
+# EMBABEL_RELEASE is which build of the server the appliance follows. This script
+# does not read it: it passes through to setup, as do any arguments, so these two
+# are the same install —
+#
+#   curl -fsSL …/install.sh | EMBABEL_RELEASE=beta sh
+#   curl -fsSL …/install.sh | sh -s -- --release beta
+#
+# Setup writes it into the appliance's .env, and `embabel release` changes it later.
 
 set -eu
 

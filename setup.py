@@ -97,6 +97,7 @@ from embabel_setup.sandbox import *      # noqa: F403 — a code-mode sandbox of
 from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, if any
 from embabel_setup.trust import *        # noqa: F403 — company certificate authorities
 from embabel_setup.pins import *         # noqa: F403 — what an install runs on, written down
+from embabel_setup.release import *      # noqa: F403 — which build of the server it follows
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
@@ -199,6 +200,12 @@ def main() -> int:
         help="turn the server's SQL door off: no listener on the SQL port",
     )
     parser.add_argument(
+        "--release", metavar="RELEASE",
+        help="which build of the server a NEW appliance follows: stable (the default), beta, "
+             "nightly, canary, or one build — X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx. Also read from "
+             "EMBABEL_RELEASE. Written to .env; `embabel release` changes it afterwards",
+    )
+    parser.add_argument(
         "--ignore-env",
         action="store_true",
         help=f"always ask, even if {' or '.join(PROVIDER_ENV.values())} is set",
@@ -209,14 +216,24 @@ def main() -> int:
     # names a container. The CLI sets it for child processes; a direct ./me.py or
     # ./worlds.py inherits whatever the shell exports, and the default otherwise.
     use_instance(os.environ.get("EMBABEL_INSTANCE") or DEFAULT_INSTANCE)
+    # Checked before anything is written, so a mistyped release costs nothing but a sentence.
+    try:
+        release = requested_release(args.release)
+    except SetupError as e:
+        print(f"\n  {e}\n", file=sys.stderr)
+        return 2
+    release_note, creating = None, False
     # Before compose is invoked for anything: a new instance without a block
     # would fall back to the default base and collide with the first appliance.
     if not args.uninstall:
         # FIRST, while "is there a .env yet" still means "has this instance been
         # created": the line below writes one. A new instance gets the new choices —
         # the Embabel engine among them — and one that exists keeps what it runs on.
+        creating = not install_exists()
         pin_install(creating=True)
         ensure_port_block()
+        # Before anything composes: the release decides which images the first pull fetches.
+        release_note = choose_release(release, creating)
 
     # Line-buffered even when stdout is a pipe. Subprocesses (compose, docker logs)
     # write to the same descriptor unbuffered, so Python's default block buffering
@@ -225,6 +242,12 @@ def main() -> int:
     sys.stdout.reconfigure(line_buffering=True)
 
     print(banner("uninstall" if args.uninstall else "first-run setup"))
+    if release_note:
+        print(f"  {warn('!')} {release_note}\n")
+    elif creating:
+        # Said once, where the install starts: which builds this appliance will keep getting.
+        chosen = followed_release()
+        print("  " + dim(f"Following the {chosen} release: {describe_release(chosen)}.") + "\n")
 
     follower = None
     try:
@@ -287,6 +310,9 @@ def main() -> int:
 
         if args.fresh:
             fresh_wipe()
+            # Nothing left to step back from, so a fresh start can follow any release.
+            if release:
+                remember_release(release)
         started = False
         if args.mode or args.fresh:
             # BEFORE the containers, not alongside them — but only when a LOCAL

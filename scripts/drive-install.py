@@ -348,19 +348,62 @@ def setup_link_opens(text: str) -> str | None:
     return None
 
 
+def release_followed(release: str, env_file: str | None):
+    """The release asked for is the one the install says it follows, and the one .env keeps.
+
+    Both, because each failure is its own: a transcript that names the release while .env does
+    not is an appliance the first upgrade moves back to stable; an .env that has it while the
+    install said nothing is a choice the person never saw confirmed. A re-run of an installed
+    appliance says nothing about its release when it is unchanged, so there .env answers alone
+    — and a saved transcript (--check) has no .env beside it, so there the transcript must.
+    """
+    def check(text: str) -> str | None:
+        clean = ANSI.sub("", text)
+        said = re.search(r"Following the (\S+) release", clean)
+        if said and said.group(1) != release:
+            return f"the install says it follows {said.group(1)}, not the {release} asked for"
+        if not said and not env_file:
+            return f"the transcript never says which release the install follows (asked for {release})"
+        if env_file:
+            recorded = None
+            try:
+                with open(env_file, encoding="utf8") as f:
+                    for line in f:
+                        found = re.match(r"^\s*EMBABEL_RELEASE\s*=\s*(\S*)", line)
+                        if found:
+                            recorded = found.group(1)
+            except OSError:
+                return f"no {env_file} to read the release from"
+            if recorded != release:
+                return f"{os.path.basename(env_file)} records EMBABEL_RELEASE={recorded}, not {release}"
+        return None
+    check.__name__ = "release_followed"
+    return check
+
+
 CHECKS = (transcript_is_readable, no_raw_log_lines, password_not_measured,
           no_stale_org, both_doors_offered, setup_link_opens, finished)
 
 
-def report(text: str) -> int:
-    problems = [problem for check in CHECKS if (problem := check(text))]
+def report(text: str, extra: tuple = ()) -> int:
+    checks = CHECKS + tuple(extra)
+    problems = [problem for check in checks if (problem := check(text))]
     for problem in problems:
         print(f"  ✗ {problem}")
     if problems:
-        print(f"\n  {len(problems)} of {len(CHECKS)} checks failed.")
+        print(f"\n  {len(problems)} of {len(checks)} checks failed.")
         return 1
-    print(f"  ✓ {len(CHECKS)} checks passed — the install reads clean.")
+    print(f"  ✓ {len(checks)} checks passed — the install reads clean.")
     return 0
+
+
+def env_file_for(installer: bool) -> str:
+    """Where the install under test keeps its settings: its instance's file, in EMBABEL_HOME
+    for the installer (it downloads there) or in this checkout for the mode scripts."""
+    home = os.environ.get("EMBABEL_HOME") if installer else None
+    home = home or (os.path.expanduser("~/embabel/worlds") if installer else HERE)
+    instance = os.environ.get("EMBABEL_INSTANCE") or "appliance"
+    return os.path.join(home, ".env" if instance == "appliance" else f".env.{instance}")
 
 
 def main() -> int:
@@ -380,11 +423,25 @@ def main() -> int:
     parser.add_argument("--transcript", default="/tmp/embabel-install.log")
     parser.add_argument("--check", metavar="FILE",
                         help="skip the run; check a transcript captured earlier")
+    parser.add_argument("--release", default=os.environ.get("EMBABEL_RELEASE") or None,
+                        help="the release to install (default: EMBABEL_RELEASE, else the installer's own "
+                             "default); passed through as --release, and checked in the transcript and .env")
     args = parser.parse_args()
+
+    # A release asked for is a release to check: said by the install, and kept in .env. A saved
+    # transcript has no .env beside it to read, so --check holds it to the transcript alone.
+    extra = ()
+    if args.release:
+        # Compared in the form .env keeps — `v0.4.1` is 0.4.1, `edge` is canary — read by the
+        # appliance's own parser, from this checkout, rather than a copy of its rules here.
+        sys.path.insert(0, HERE)
+        from embabel_setup.release import parse_release
+        kept = parse_release(args.release)
+        extra = (release_followed(kept, None if args.check else env_file_for(args.installer)),)
 
     if args.check:
         with open(args.check, encoding="utf8") as f:
-            return report(f.read())
+            return report(f.read(), extra)
 
     # THE REAL ENTRY POINT, when asked for it. `curl | sh` runs install.sh, which
     # downloads the checkout (from EMBABEL_REF) and hands over to the wizard with
@@ -396,12 +453,16 @@ def main() -> int:
     # wrong thing is worse than one that fails: `--installer --fresh` asserted a fresh install
     # and got an idempotent re-run, on a stale image, and said nothing.
     fresh = ["--fresh"] if args.fresh else []
-    command = (["sh", "./install.sh", *fresh] if args.installer
-               else ["python3", f"./{args.mode}.py", *fresh])
+    # As a FLAG, the way the docs spell `sh -s -- --release beta`: install.sh forwards its
+    # arguments, so this proves that hand-off as well as setup's reading of it. EMBABEL_RELEASE
+    # in the environment rides along to setup either way.
+    chosen = ["--release", args.release] if args.release else []
+    command = (["sh", "./install.sh", *fresh, *chosen] if args.installer
+               else ["python3", f"./{args.mode}.py", *fresh, *chosen])
     print(f"  Driving: {' '.join(command)}   (transcript: {args.transcript})\n")
     text = drive(command, vars(args), args.transcript, args.timeout)
     print()
-    return report(text)
+    return report(text, extra)
 
 
 if __name__ == "__main__":
