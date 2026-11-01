@@ -16,14 +16,22 @@ import shutil
 import subprocess
 import sys
 
+from . import realmvalidate
 from .cli import _sample_target, current_mode, run_setup, s
 from .core import SetupError
 from .settings import embabel_command
 from .core import prompt
+from .worlddata import add_data, list_data, sources_beside
 
 def cmd_realms(args) -> int:
     if args.realms_command == "link":
         return run_setup("worlds", "--realms", args.directory)
+    if args.realms_command == "validate":
+        # The image, not the running server: a check that needed the appliance up could not
+        # run in CI, which is the place it is for.
+        image = args.image or realmvalidate.appliance_image(current_mode() or s.configured_mode() or "worlds")
+        return realmvalidate.run_validation(args.directory, args.with_dirs, image,
+                                            as_json=args.json, strict=args.strict)
     # list: what the appliance can actually see, which is the question worth asking.
     realms = os.environ.get("EMBABEL_REALMS_DIR")
     env_path = s.env_path()
@@ -322,6 +330,48 @@ def cmd_scenario(args) -> int:
         return 0
 
     print(f"  {embabel_command('scenario')} list | run | next")
+    return 1
+
+
+def cmd_data(args) -> int:
+    """Files a realm reads, put into the world's data/ folder, and a look at what is there.
+
+    The path printed after an add is the point of the verb: it is the key a realm's
+    producer reads (`kind: jar`, `kind: source`, `kind: tabular`), relative to data/, so
+    the next thing a person types can be a query rather than a guess at a path.
+    """
+    mode = current_mode() or s.configured_mode()
+    container = s.find_mode_container(mode) if mode else None
+    if not container:
+        print(f"  The appliance is not up.  `{embabel_command('up')}` starts it.")
+        return 1
+
+    if args.data_command == "ls":
+        world, entries = list_data(container, args.path or "", args.world)
+        where = f"data/{args.path.strip('/')}" if args.path else "data"
+        print(f"  {s.bold(where)}" + s.dim(f"  in world {world}"))
+        for entry in entries:
+            print(f"    {entry}")
+        if not entries:
+            print("    " + s.dim("empty"))
+        return 0
+
+    if args.data_command == "add":
+        if args.name and len(args.sources) > 1:
+            print("  --as names one file or folder; add the others separately.")
+            return 1
+        for source in args.sources:
+            added = add_data(container, source, args.to or "", args.name, args.world)
+            verb = "Replaced" if added.replaced else "Added"
+            print(f"  {s.TICK} {verb} {s.bold(added.key + ('/' if added.is_dir else ''))}" + s.dim("  under data/"))
+            print("    " + s.dim(f"A realm reads it by the path {added.key}"))
+            beside = sources_beside(source)
+            if beside and beside not in args.sources:
+                print("    " + s.dim(f"Its source is beside it: {embabel_command('data')} add {beside}"
+                                     + (f" --to {args.to}" if args.to else "")))
+        return 0
+
+    print(f"  {embabel_command('data')} add <file|folder> [--to jars] | ls [path]")
     return 1
 
 

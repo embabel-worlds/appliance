@@ -31,6 +31,7 @@ embabel status        # what is running, what is still downloading, where to go
 embabel doctor        # why it is not working
 embabel open          # the console, in your browser
 embabel backup        # everything it knows, copied somewhere safe
+embabel export x.tar.gz  # graph, worlds and setup in one file another appliance imports
 embabel version       # tag, digest, the commit it was built from
 embabel bugreport     # one folder to attach to an issue, with no secrets in it
 embabel sample add …  # fictional records, marked so they can be taken back out
@@ -38,6 +39,8 @@ embabel scenario run … # put the world in a named state, for a demo or a repro
 embabel sandbox build  # a code-mode sandbox with your own toolchain in it
 embabel embeddings use local  # turn document search on
 embabel trust add ca.crt  # trust your company's certificate authority
+embabel data add app.war --to jars  # a file a realm reads, into the world's data/
+embabel realm validate .  # would this realm checkout load? Nothing needs to be running
 ```
 
 ---
@@ -147,6 +150,34 @@ needs nothing; a realm with a build step must be built on the host first.
 ### `embabel realms list`
 
 Which realms the appliance can currently see.
+
+### `embabel realm validate <directory> [--with <dir>]... [--json] [--strict]`
+
+Would this realm checkout load? The same checks `realm_validate` runs over MCP — `realm.yml`,
+types and their parents, joins, producers and the governance their source can honour, views,
+rules, apps, the wasm build — answered with **no appliance running**. It runs the validator
+that ships in this appliance's own server image (`ghcr.io/embabel/assistant` at its
+`EMBABEL_VERSION`) in a throwaway container, so the answer is the one the server you will
+install into would give. `realms validate` is the same command.
+
+```
+embabel realm validate ~/dev/realm-java-source-code \
+    --with ~/dev/realm-code-model --with ~/dev/realm-java-code
+```
+
+- `--with` names a realm installed beside it — a dependency whose types it extends, or whose
+  types and producers its joins go through. Its types and producers count as installed; it is
+  not itself validated. The default world's types are always known, as they are in every
+  world. Repeatable.
+- `--json` prints the report as JSON; `--strict` fails on warnings as well as errors.
+- `--image` validates with another server image, such as a local build.
+
+The checkout and every `--with` directory are mounted read-only; validation builds into a
+copy inside the container. Exit status: `0` passes, `1` does not, `2` could not validate
+(a directory that does not exist, Docker not running, or an image older than the command).
+
+For a realm repository's CI, the same image runs directly — see realm-spec's README,
+"Validating a realm in CI".
 
 ### `embabel version`
 
@@ -488,6 +519,45 @@ whichever key the appliance holds, so it means "embed with the key I gave you" a
 meaning that if you later swap providers. `use openai` still works and sets the same role;
 so does typing a known hosted model name.
 
+### `embabel data`
+
+Files a realm reads by path — a jar or a war for the `jar` kind, a folder of compiled
+classes, a `-sources.jar`, a CSV — put into the world's `data/` folder.
+
+```bash
+embabel data add target/shop-1.0.war --to jars          # data/jars/shop-1.0.war
+embabel data add target/shop-1.0-sources.jar --to jars  # its source, beside it
+embabel data add target/classes --to jars --as shop-classes
+embabel data add ~/code/shop --to src                   # a whole project: sources and target/classes
+embabel data ls jars
+```
+
+| Flag | |
+|---|---|
+| `--to FOLDER` | a folder under `data/`; made if it is not there |
+| `--as NAME` | the name it gets there (one file or folder at a time) |
+| `--world NAME` | which world; `default`, or your only one, unless named |
+
+What it prints after **Added** is the path a realm reads it by — `jars/shop-1.0.war` is
+the key a `jar` producer takes, and `Jar {path: 'jars/shop-1.0.war'}` the node a query
+pins. The world is the appliance owner's, found from the appliance itself; you never
+need to know that its folder is named after your email. `EMBABEL_USER` names another
+account, as it does for `sample`.
+
+**Adding a name that is already there replaces it**, folder and all. That is the point
+for a recompiled `target/classes`: copied over the old one, the class files of classes you
+deleted would stay, and the world would answer for code that no longer exists.
+
+A folder arrives without `.git`, `.hg`, `.svn`, `.idea`, `.gradle`, `node_modules` and
+`__pycache__`, which for a checkout is most of it. Adding a whole project (`--to src`) is
+how a folder of classes gets its source with nothing to configure: the `jar` kind reads
+`src/shop/target/classes`, and finds the source in `src/shop/src/main/java` beside it. A
+war or jar finds its `-sources.jar` beside it the same way, and the command says so when
+there is one next to the file you added.
+
+It is a client of docker, as `backup` is, and asks for no password: whoever can run
+docker on this machine can already reach the appliance's disk.
+
 ### `embabel trust`
 
 Certificate authorities the appliance trusts in addition to the public ones.
@@ -620,6 +690,222 @@ compose has to create them, which means pulling the images.
 | Flag | |
 |---|---|
 | `--yes` | skip the confirmation |
+
+### `embabel graph migrate --to embabel|postgres|oracle`
+
+Move this appliance's knowledge graph to another store, check it, and switch the appliance
+over. Every node, relationship, label, property, vector and index comes across; the store it
+comes from is not changed, and going back is the old `.env` and `embabel up`.
+
+| `--to` | The engine keeps its graph in |
+|---|---|
+| `embabel` | its SQLite file on the data volume, `/data/graph/graph.sqlite` (what a new appliance runs) |
+| `postgres` | a Postgres server: one bundled with the appliance, or yours with `--url` |
+| `oracle` | an Oracle server: Oracle Database 23ai Free bundled with the appliance, or yours with `--url` |
+
+It moves a graph from **Neo4j** (an appliance installed before the Embabel engine was the
+default) into any of them, and between them: SQLite to Postgres, Postgres to Oracle, Oracle
+back to SQLite, and so on.
+
+**The server does the copy, as its engine opens.** The verb stops the app (a source server —
+Neo4j, or the old Postgres or Oracle — stays up), keeps `.env` and `secrets.env` beside the new
+ones as `*.before-graph-migrate-<time>`, readies the target, writes it into `.env`, and starts
+the app once with the import switched on. Before anything else in the server runs:
+
+- **From Neo4j**, it reads every node and relationship over Bolt and writes them into the
+  engine as they were (a vector as the same doubles, a date-time with its zone), copies the
+  constraints and indexes, and compares the engine with what it read.
+- **From another of the engine's stores**, it restores that store exactly as a boot of it would
+  (its rows, then anything it journalled since), writes the whole graph into the empty target in
+  one checkpoint, which keeps every id, and compares the target's rows with the graph, and with the
+  source's own rows when those are the whole graph.
+
+Each comparison is a count and a checksum of every value for each combination of labels and each
+relationship type. It has to happen then: the server's own boot writes into its graph (the store
+identity each world is stamped with, schema markers, reference data), and the user records a
+sign-in checks are themselves in the graph being moved.
+
+Progress prints as it goes. The report is kept on the data volume at
+`/data/graph/neo4j-import.json` or `/data/graph/store-import.json`. When the report is verified,
+and from Neo4j the counts also match the ones the verb took before it began, the app restarts
+without the import and the source server stops cleanly, its volume kept. Anything else (a
+difference, a target that already holds a graph, a server too old to import, an app that stops)
+puts both files back, removes or sets aside what the attempt made, and starts the appliance on
+the store it had. In a server it did not create, the tables it wrote are dropped when their prefix
+held nothing before the attempt; a prefix that held a graph is never touched.
+
+**The bundled servers.** Without `--url`, the target is a server the appliance runs itself:
+`graph-postgres` (Postgres 17) or `graph-oracle` (Oracle Database 23ai Free, a several-GB image
+that wants about 2 GB of memory), each with a volume of its own that `embabel backup` copies with
+the rest. Its password is generated into `secrets.env` (`GRAPH_EMBABEL_POSTGRES_PASSWORD`,
+`GRAPH_EMBABEL_ORACLE_PASSWORD`), never `.env`. With `--url`, the target is your server: the URL
+and `--username` go into `.env`, and the password, asked for or read from
+`EMBABEL_GRAPH_STORE_PASSWORD`, goes into `secrets.env`. The target must be empty.
+
+**Oracle's layout.** On 23ai the engine keeps the graph in its property-graph layout: JSON labels
+and properties under a SQL property graph, which SQL/PGQ can query too.
+`GRAPH_EMBABEL_ORACLE_LAYOUT=rows` in `.env` keeps the engine's own rows instead, for a server
+before 23ai; `auto`, the default, asks the server.
+
+**What stays behind.** The query log (`VcQueryLog` nodes, kept 14 days): the engine holds it only
+while it runs and never writes it to a store, so it is counted, the summary says how many, and it
+stays where it was.
+
+**Going back.** Put the kept `.env.before-graph-migrate-<time>` (and `secrets.env`) back and run
+`embabel up`. From Neo4j, `GRAPH_TYPE=NEO4J` alone does it. The store you left holds the graph as
+it was when you migrated; anything written since went to the new one.
+
+| Flag | |
+|---|---|
+| `--to` | `embabel`, `postgres` or `oracle` |
+| `--url` | a server of your own (a JDBC URL), instead of the bundled one |
+| `--username` | the user on that server (default `embabel`) |
+| `--yes` | skip the confirmation |
+| `--worlds` / `--me` | which door, when it cannot be told from what is running |
+
+### `embabel export <file>` and `embabel import <file>`
+
+One file that holds an appliance — its graph, its worlds and its setup — and that any other
+appliance can take, whatever either keeps its graph in: Neo4j, the engine's SQLite file or
+snapshot journal, Postgres, Oracle.
+
+```bash
+embabel export my-appliance.tar.gz                 # the whole appliance
+embabel import my-appliance.tar.gz --login ann     # on the other one: replace its graph and worlds, verified
+embabel export support.tar.gz --world ann --no-private   # one world, nothing private: a support bundle
+embabel export setup.tar.gz --setup                # realms, apps, lenses, preferences; no data
+embabel import setup.tar.gz                        # add that setup to this appliance's world
+```
+
+**What a bundle holds.** One `.tar.gz` — which Finder, Windows' own `tar` and any Linux open
+without anything installed:
+
+| Entry | |
+|---|---|
+| `manifest.json` | what made it and when, the store it came from, live or cold, the embedding model and the widths of the vectors, counts and checksums for every combination of labels and every relationship type, and what was **left out** and why |
+| `graph/graph.sqlite` | the graph in the Embabel engine's own format, checkpointed — the same file whatever the source was |
+| `graph/graph.json` | the figures the graph is checked against on the way in |
+| `data/users/…` | the worlds: each user's configuration, documents, apps, realms written there |
+| `data/chat-attachments/…` | files attached in chat (not with `--no-private`) |
+| `data/admin/…` | what every world on the appliance shares: which realms' code was admitted, and custom themes (not with `--world`) |
+
+It is written as a stream: the graph is copied once, into the engine's format, and everything
+else goes from the data volume through the compressor into the file without a second copy
+anywhere. The size before and after compression is printed at the end — an appliance holding a
+350,000-node graph with 31,000 vectors makes a 2.3 GB stream and a bundle of about 530 MB.
+
+Why gzip: measured on that bundle, gzip wrote 527 MB in 46 seconds; xz saved a quarter of the size
+and took eight minutes; zstd is as fast and a little smaller, but neither macOS's nor Windows'
+built-in archive tools open it, and the CLI would need a tool most machines do not have.
+
+**Never a secret.** Not the credential file (password hashes, API keys, provider keys, the licence),
+`providers.env`, the setup token, `.env`, any world's `secrets.env`, or any file named like a key
+or a credential. Then every file that *is* selected is scanned for the shapes credentials take — a
+password hash, a provider or GitHub key, a private key, an OAuth token, a password inside a
+connection URL — and one match stops the export, naming the file and the kind of secret, never its
+value. Before anything is written, the export prints what goes in, what was left out, and the
+size, and asks.
+
+**Live or cold.** An appliance on the engine's SQLite file (every new one) exports **live**: SQLite's
+online backup is a consistent copy of the graph as of one instant, so the app keeps running. Neo4j,
+the snapshot journal, Postgres and Oracle are read across many statements, and a write landing
+between two of them would export a graph that never existed — so for those **the app stops while
+the graph is read** (its database stays up) and starts again before the worlds are copied. The
+manifest says which it was and for how long.
+
+**Scoping.**
+
+| Flag | Leaves out |
+|---|---|
+| `--world ann` (or `ann/default`) | every other user's records in the graph and their worlds on disk; records that belong to nobody — reference data, the shared catalogue — stay |
+| `--no-private` | anything labelled `Private`, chat sessions, messages and attachments, memories (propositions and their mentions), email and calendar signals, the server's summaries of email threads, notebooks and tool traces |
+
+The manifest counts what each one removed, by label group.
+
+**Import.** `embabel import` reads the manifest first and refuses a bundle of a format this
+appliance does not read. It unpacks the bundle onto the data volume, checks the graph against the
+manifest's checksums (a damaged or altered file is refused here, before anything changes), shows
+what it holds, and asks. Then:
+
+1. The app stops. `.env` and `secrets.env` are kept beside the new ones.
+2. The graph store is readied, empty: the SQLite file is set aside; on Postgres or Oracle the import
+   writes under a new table prefix, so the tables already there are untouched; a Neo4j appliance
+   moves onto the engine's SQLite file (its Neo4j volume is kept, and `GRAPH_TYPE=NEO4J` goes back).
+3. The worlds, chat attachments and shared setup are set aside as `*.before-import-<time>`, and the
+   bundle's put in their place. They travel together because each world is stamped with the graph
+   it was made with, and the server will not start on a world from another graph.
+4. The app starts once with the server's store import switched on — the same copy `embabel graph
+   migrate` uses — writes the bundle's graph into the store and compares every value with it.
+5. When the report is verified and its counts are the manifest's, the app restarts normally.
+   Anything else puts every file back and starts the appliance as it was. On Postgres or Oracle the
+   tables the attempt wrote under its new prefix are dropped (only when that prefix held nothing
+   before it); if the drop cannot be made, the message names the prefix to drop by hand.
+
+This appliance's settings, keys and credentials are kept. A bundle carries no passwords, so the
+imported users have none here: `--login ann` sets one for `ann` (asked for, or read from
+`EMBABEL_IMPORT_PASSWORD`) through the server's own credential store, or use `embabel reset-password`.
+
+**Embedding drift.** Vectors made by one model and searched with another answer nonsense, even
+when the two models share a width. The server records the model that made the vectors — name,
+provider and width — in the graph beside them, so it travels with the bundle; the manifest carries
+it with the widths. The import compares it with this appliance's model by name, not by width, and
+says when they differ; the server compares it again as it starts and reports a difference under
+`drift.model` in `GET /api/v1/admin/embedding/status`. The repair is to re-embed everything as an
+administrator:
+
+```bash
+curl -u admin -X POST -H 'Content-Type: application/json' -d '{"force": true}' \
+  http://localhost:11042/api/v1/admin/embedding/reindex
+```
+
+— or `embabel embeddings use <model>` to search with the model that made them.
+
+**Setup only (`--setup`).** How somebody set their world up, without anything it learned, read
+through the running app (sign in as yourself: `EMBABEL_USER` / `EMBABEL_PASSWORD`, or asked):
+
+| What | How it travels |
+|---|---|
+| realms | as references: the repository, the ref and the commit; installed again on the other side through the server's own install, so admission runs there. A realm written in the world travels as its files. One linked from a folder on this machine (`embabel realms link`) travels by name only and is reported |
+| apps built here | `data/apps` |
+| lenses, watches | from the graph, through the API; a watch's delivery secret and headers are not carried |
+| views, actions and handlers, skills, agents, schedules, commands, personalities and prompts, tours, focuses, goals, connections | the world's own files under `config/` — what git says changed since the world was cloned from its template |
+| model role assignments, active personality, notification routing, world settings | `config/world.yml` |
+| console preferences: the chosen theme and its rotation, wallpaper, window style and layout, pinned apps and the dock | `config/console.json`, which the server keeps for the console (`/api/v1/profile/console`) |
+| custom themes | `admin/themes/*.css` |
+| embedding model | recorded and compared, never switched |
+
+Never in it: credentials; the persona the server writes from email and calendar; caches. A file
+or lens that holds a credential's shape is **withheld** and named in the manifest — re-create that
+connection on the other side. `embabel import` of a setup bundle *adds* to a world on a running
+appliance (`--world USER/WORLD`, default the signed-in user's): replaced files are kept under
+`.setup-import-<time>`, realms already installed are left alone, the world is rebuilt, and the report
+lists what was installed and what failed.
+
+**What only the browser knows.** The console's view options, sound and tours completed stay in the
+browser's `localStorage`. No appliance has them, so no bundle carries them. A browser that was open
+during an import shows the imported theme, layout and pins once it is reloaded.
+
+| Flag | |
+|---|---|
+| `--world USER[/WORLD]` | export: one world only; import of a setup: the world to add it to |
+| `--no-private` | export: leave private content out |
+| `--setup` | export: the setup only |
+| `--login USER` | import: set a password for this imported user |
+| `--yes` | skip the confirmation (and replace an existing file on export) |
+| `--worlds` / `--me` | which door, when it cannot be told from what is running |
+
+### Sending a support bundle
+
+When support asks to see the problem on your data, send the smallest bundle that shows it:
+
+```bash
+embabel export support.tar.gz --world ann --no-private
+```
+
+That is one world, without chats, memories, email or calendar content or anything marked private,
+and never a credential. Read the summary it prints — it lists what is in the file and what was left
+out — before you send it. `tar -tzf support.tar.gz` lists what is inside.
+`embabel bugreport` is the other half: logs and diagnostics, no data at all.
 
 ### `embabel ps`
 

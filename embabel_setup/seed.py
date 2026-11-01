@@ -77,17 +77,20 @@ SEED_MAX_BYTES = 512 * 1024
 # The mark on every guide the appliance ships. The server holds the same word.
 SEED_TAG = "embabel-docs"
 def remember_provider_key(provider: str, api_key: str) -> None:
-    """Write the provider key setup just collected into .env.
+    """Copy the provider key setup just collected into .env.
 
-    THIS IS WHAT MAKES THE ${VAR:-} FORM SAFE. The compose files hand the server
-    an empty OPENAI_API_KEY when nothing supplies one, because an absent key
-    throws in OpenAiModelsConfig's constructor and crash-loops a server that has
-    not been asked for a key yet. An empty value would then shadow the key
-    first-run setup writes into the data volume — env beats config files in
-    Spring — so the variable has to stop being empty the moment a key is known.
+    NOT how the appliance's models get their key. The server reads provider keys
+    from the credential store in the data volume, which setup has already written
+    by the time this runs, and never from its environment — so this copy neither
+    connects a provider nor can an empty variable shadow the stored one.
 
-    Writing it here means the next boot passes the real key, and every boot
-    after that, without depending on the operator having exported anything.
+    It is for the things that DO read the variable from their environment: Open
+    WebUI beside the Me door takes OPENAI_API_KEY, and the per-user code sandbox
+    is handed ANTHROPIC_API_KEY. Without the copy, a key given only to setup
+    reaches neither.
+
+    The copy is not kept in step with the store: a key rotated later in the
+    console's Models tab leaves this one as it was.
     """
     if not api_key.strip():
         return
@@ -96,13 +99,13 @@ def remember_provider_key(provider: str, api_key: str) -> None:
     if not variable:
         return
     set_env_var(variable, api_key.strip(), (
-        f"# The {provider} key you gave at setup. Kept here so the container is",
-        "# handed a real key rather than an empty one — see the OPENAI_API_KEY",
-        "# note in the compose files for why an empty value is not harmless.",
+        f"# The {provider} key you gave at setup, for Open WebUI and the code sandbox.",
+        "# The appliance's models read theirs from the data volume, not from here —",
+        "# see the provider-key note in the compose files.",
     ))
 
 
-# Provider name as the server calls it -> the variable its config reads.
+# Provider name as the server calls it -> the variable the sidecars read.
 PROVIDER_KEY_VARS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 
 

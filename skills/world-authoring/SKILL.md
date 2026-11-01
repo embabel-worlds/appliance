@@ -69,7 +69,12 @@ the model-made cells are labels and prose, never the numbers.
 - **Lens vs view**: a judgment spanning several queries composed in code is a lens; the
   moment one Virtual Cypher statement can walk the whole fact surface, it is a view — and its
   figures join the reconciled surface. Prefer the view; realm-odoo's deal triage made this
-  exact journey.
+  exact journey. A lens runs by id with its declared params, wherever you are: `lens_open`
+  over MCP (no id lists the lenses and what each takes; `args` is a JSON object of its params),
+  `gateway.lens.open` from code mode, the console's Views window (`#lenses/<id>/run`),
+  `POST /api/v1/lenses/{id}/invoke` over REST, and `embabel.lenses.invoke` from an app. Each
+  answers the same envelope: `status`, `outcome` (EMPTY is a real empty, SOURCE_UNAVAILABLE is
+  not), and `data`.
 
 Deeper Virtual Cypher authoring — doors, anchors, fan-out aggregation, caching — is the
 realm-spec's `VIRTUAL_CYPHER_GUIDE.md`.

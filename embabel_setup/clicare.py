@@ -416,3 +416,32 @@ def cmd_completion(args) -> int:
         for flag in flags_for(verb):
             print(f"complete -c embabel -n '__fish_seen_subcommand_from {verb}' -l {flag[2:]}")
     return 0
+
+
+def cmd_graph(args) -> int:
+    """The knowledge graph's store. `migrate --to embabel|postgres|oracle` moves the graph — from Neo4j,
+    or between the Embabel engine's own stores — and switches the appliance over; see graphmigrate.py."""
+    from .graphmigrate import migrate, plan, summary
+    if args.graph_command != "migrate":
+        print("  embabel graph migrate --to embabel|postgres|oracle   move this appliance's graph to another store")
+        return 0
+    try:
+        move = plan(resolved_mode(args.mode), args.to, args.url, args.username)
+        if not _confirm_migration(args.yes, move):
+            print("  Nothing was changed.")
+            return 1
+        report = migrate(move)
+    except s.SetupError as e:
+        print(f"  {s.warn('!')} {e}")
+        return 1
+    print(summary(report, move))
+    return 0
+
+
+def _confirm_migration(yes: bool, move) -> bool:
+    counts = (f" — {move.counts['nodes']:,} nodes and {move.counts['relationships']:,} relationships —"
+              if move.counts else "")
+    print(f"  Moving this appliance's graph{counts} {move.describe()}.")
+    print("  The app stops while it copies; every value is compared after. The graph it comes from is not")
+    print("  changed, and if anything fails the appliance comes back on it as it was.")
+    return yes or input("  Type 'yes' to migrate: ").strip().lower() == "yes"

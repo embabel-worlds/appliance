@@ -59,7 +59,8 @@ MODE_SERVICE = {"me": "assistant", "worlds": "worlds"}
 # itself (plus the console, which IS the worlds surface). Together about 0.8GB.
 MODE_CORE = {
     "me": ("neo4j", "assistant"),
-    "worlds": ("neo4j", "worlds", "worlds-console"),
+    # No console service: the world runtime serves the console itself (docker-compose-worlds.yml).
+    "worlds": ("neo4j", "worlds"),
 }
 
 # Operator mounts, written by the Me app's "Local files" panel: host folders the
