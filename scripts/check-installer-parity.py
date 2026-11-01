@@ -26,7 +26,6 @@ PS1 = os.path.join(HERE, "install.ps1")
 # appears on one side only is the drift this checker exists to catch, so this
 # list is deliberately short and each entry has to earn its place.
 PLATFORM_ONLY = {
-    "EMBABEL_BIN_DIR": "ps1",  # the sh side's shim location is setup.py's business
     "NO_COLOR": "sh",          # no-color.org applies to ANSI; Write-Host colours differently
     "CLICOLOR_FORCE": "sh",
     "FORCE_COLOR": "sh",
@@ -47,6 +46,8 @@ SHARED_REFUSALS = (
     "Could not unpack the download.",
     "The download did not contain an Embabel appliance.",
     "Embabel needs Python 3.9 or newer",
+    # The way out, reached through the installer: nothing found is said, not failed.
+    "No Embabel install found in",
 )
 
 # An existing install is adopted wherever it is found, and the candidate list is

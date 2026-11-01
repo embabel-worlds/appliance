@@ -99,6 +99,24 @@ asks fails it.
 **Teardown.** `embabel --instance <name> uninstall`, then a check that no container or volume
 of that compose project is left. Leftovers are removed and reported as a failure of uninstall.
 
+**L8 uninstall from a stalled setup.** A second instance, `<name>-stall`, installed through
+`install.sh` and then NEVER onboarded — the setup API must still be open. A git repository is
+put in its realms folder, standing in for a realm somebody cloned. Then the one-liner way out,
+`install.sh --uninstall`, under a PTY so its confirmation is asked and answered on the terminal.
+Afterwards: no container or volume of that project, every image the uninstall said it removed
+is gone (or it said why it kept them — another appliance on the machine), the launcher and any
+PATH block are gone from the test HOME, the install folder is gone except the git repository,
+and that repository is still there and named in the output.
+
+**L8.1 foreign `embabel` on PATH.** A third instance, `<name>-foreign`, installed with a fake
+`embabel` FIRST on PATH — the machine of the user who could not uninstall. The install must name
+the other program, print every command by its full path, and never say "use the 'embabel'
+command". Then the same one-liner uninstall and the same nothing-left checks, and the fake
+`embabel` must be byte-for-byte untouched.
+
+Both run after teardown, so two appliances never boot at once. `--only-uninstall` runs just
+these two; `--no-uninstall-rungs` skips them.
+
 ### KNOWN
 
 A check that fails in a way already accepted for this build is reported `KNOWN` with its

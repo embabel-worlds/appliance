@@ -43,7 +43,7 @@ SKIPPED=0
 # network scenario failed as "Could not reach GitHub" and blamed the installer
 # for the harness. The tools below are the ones install.sh actually calls.
 MIN_PATH="$WORK/stub"
-for tool in curl tar mktemp sed grep cat chmod sleep uname; do
+for tool in curl tar mktemp sed grep cat chmod sleep uname head dirname basename; do
   path=$(command -v "$tool" 2>/dev/null) || continue
   dir=$(dirname "$path")
   case ":$MIN_PATH:" in *":$dir:"*) ;; *) MIN_PATH="$MIN_PATH:$dir" ;; esac
@@ -90,6 +90,11 @@ stub_python() {
     stub "$name" '
 if [ "${1:-}" = "-c" ]; then exit 0; fi   # the >=3.9 probe, and the shim writer
 printf "%s\n" "$*" >> "'"$WORK"'/python.log"
+# What was typed for it, when a scenario asks: an older uninstall is answered on stdin.
+if [ -n "${STUB_READ_STDIN:-}" ]; then
+  IFS= read -r line || line=""
+  printf "stdin:%s\n" "$line" >> "'"$WORK"'/python.log"
+fi
 exit 0'
   done
 }
@@ -101,18 +106,51 @@ reset() { # a clean fake machine between scenarios
   mkdir -p "$WORK/home"
 }
 
-run() { # runs install.sh, captures both streams and the status
+run() { # runs install.sh with any arguments, captures both streams and the status
   set +e
+  # NO_HOME_VAR leaves EMBABEL_HOME unset, which is how an uninstall finds an
+  # install by the launcher's record instead of by being told where it is.
+  if [ -n "${NO_HOME_VAR:-}" ]; then home_var=""; else home_var="EMBABEL_HOME=${EMBABEL_HOME:-$WORK/home/embabel/worlds}"; fi
+  # stdin from /dev/null, not the harness's own: a scenario must never be able to
+  # read the terminal the harness was started from.
   env -i \
     PATH="$MIN_PATH" HOME="$WORK/home" \
-    EMBABEL_HOME="${EMBABEL_HOME:-$WORK/home/embabel/worlds}" \
+    ${home_var:+"$home_var"} \
     EMBABEL_REF="$REF" \
     ${EMBABEL_MODE:+EMBABEL_MODE="$EMBABEL_MODE"} \
     ${STUB_COMPOSE_EXIT:+STUB_COMPOSE_EXIT="$STUB_COMPOSE_EXIT"} \
     ${STUB_INFO_EXIT:+STUB_INFO_EXIT="$STUB_INFO_EXIT"} \
-    sh "$HERE/install.sh" > "$WORK/out" 2>&1
+    ${STUB_READ_STDIN:+STUB_READ_STDIN="$STUB_READ_STDIN"} \
+    sh "$HERE/install.sh" "$@" > "$WORK/out" 2>&1 < /dev/null
   STATUS=$?
   set -e
+}
+
+# A file that must come out of a scenario byte for byte as it went in.
+same() { # scenario, path, expected content
+  if [ "$(cat "$2" 2>/dev/null)" != "$3" ]; then
+    FAILED=$((FAILED + 1))
+    printf '  x  %s — %s was changed or removed\n' "$1" "$2"
+  fi
+}
+
+# An install that already exists, as far as install.sh can tell: a setup.py. NEW
+# carries the flag a current uninstall understands; an older one does not.
+fake_install() { # directory, new|old
+  mkdir -p "$1"
+  if [ "$2" = new ]; then
+    printf '# parser.add_argument("--keep-images")\n' > "$1/setup.py"
+  else
+    printf '# an uninstall from before --yes\n' > "$1/setup.py"
+  fi
+}
+
+# The thing that started all this: an unrelated program called `embabel`,
+# first on PATH. Its body is what proves it was never touched.
+FOREIGN_BODY='#!/bin/sh
+echo "an older, unrelated embabel"'
+foreign_embabel() {
+  stub embabel 'echo "an older, unrelated embabel"'
 }
 
 check() { # scenario, expected status, expected substrings…
@@ -120,7 +158,7 @@ check() { # scenario, expected status, expected substrings…
   bad=""
   [ "$STATUS" = "$want" ] || bad="exited $STATUS, wanted $want"
   for needle in "$@"; do
-    grep -F -q "$needle" "$WORK/out" || bad="$bad${bad:+; }missing: $needle"
+    grep -F -q -e "$needle" "$WORK/out" || bad="$bad${bad:+; }missing: $needle"
   done
   if [ -n "$bad" ]; then
     FAILED=$((FAILED + 1))
@@ -217,7 +255,13 @@ fi
 if wants bad-ref network; then
   reset
   stub_docker
-  REF="no-such-ref-$$" run
+  # Set and put back by hand, not as `REF=… run`: an assignment before a FUNCTION
+  # call outlives it in bash's sh mode (macOS /bin/sh), and every scenario after
+  # this one then downloaded a ref that does not exist.
+  real_ref=$REF
+  REF="no-such-ref-$$"
+  run
+  REF=$real_ref
   check "bad-ref" 1 "check EMBABEL_REF"
 fi
 
@@ -250,6 +294,106 @@ if wants happy network; then
   stub_python
   run
   check "happy-rerun" 0 "Updating" "your .env and data are untouched"
+fi
+
+# ── uninstall from the one-liner ────────────────────────────────────────────
+# `curl … | sh -s -- --uninstall` finds the install that is THERE and runs its
+# own uninstall. It must download nothing — a curl that runs at all fails the
+# scenario — and an unrelated `embabel` on PATH must come out untouched.
+if wants uninstall offline; then
+  reset
+  stub_python
+  foreign_embabel
+  stub curl 'echo downloaded >> "'"$WORK"'/curl.log"; exit 1'
+  rm -f "$WORK/curl.log"
+  fake_install "$WORK/home/embabel/worlds" new
+  run --uninstall --yes
+  check "uninstall" 0 "Found Embabel in"
+  grep -F -q "$WORK/home/embabel/worlds/setup.py --uninstall --yes" "$WORK/python.log" 2>/dev/null || {
+    FAILED=$((FAILED + 1))
+    printf '  x  uninstall — ran %s\n' "$(cat "$WORK/python.log" 2>/dev/null || echo 'nothing')"
+  }
+  [ ! -f "$WORK/curl.log" ] || {
+    FAILED=$((FAILED + 1))
+    printf '  x  uninstall — it downloaded something on the way to removing\n'
+  }
+  same "uninstall" "$WORK/stub/embabel" "$FOREIGN_BODY"
+fi
+
+# Nothing installed is not an error: the person wanted it gone, and it is.
+if wants uninstall-none offline; then
+  reset
+  stub_python
+  run --uninstall --yes
+  check "uninstall-none" 0 "No Embabel install found"
+  [ ! -f "$WORK/python.log" ] || {
+    FAILED=$((FAILED + 1))
+    printf '  x  uninstall-none — ran setup with nothing to uninstall\n'
+  }
+fi
+
+# EMBABEL_HOME not given and nothing in the default place: the launcher records
+# where it forwards to, and that is the install to remove.
+if wants uninstall-recorded offline; then
+  reset
+  stub_python
+  fake_install "$WORK/home/elsewhere" new
+  mkdir -p "$WORK/home/.local/bin"
+  printf '#!/bin/sh\n# Forwards to the Embabel appliance in %s. Written by install.sh.\n' \
+    "$WORK/home/elsewhere" > "$WORK/home/.local/bin/embabel"
+  NO_HOME_VAR=1 run --uninstall --yes
+  check "uninstall-recorded" 0 "Found Embabel in $WORK/home/elsewhere"
+fi
+
+# An install older than --yes is answered on stdin instead — with the "yes" its
+# own question wants, which is what --yes means.
+if wants uninstall-old offline; then
+  reset
+  stub_python
+  fake_install "$WORK/home/embabel/worlds" old
+  STUB_READ_STDIN=1 run --uninstall --yes
+  check "uninstall-old" 0 "Found Embabel in"
+  grep -F -q "stdin:yes" "$WORK/python.log" 2>/dev/null || {
+    FAILED=$((FAILED + 1))
+    printf '  x  uninstall-old — the older uninstall was not answered: %s\n' \
+      "$(cat "$WORK/python.log" 2>/dev/null || echo 'nothing ran')"
+  }
+fi
+
+# No terminal and no --yes: refuse, and say how to answer in advance — never
+# take silence for a yes. Only where there is genuinely no terminal to open.
+if wants uninstall-no-tty offline && ( : < /dev/tty ) 2>/dev/null; then
+  SKIPPED=$((SKIPPED + 1))
+  printf '  -- uninstall-no-tty (skipped: this harness has a terminal)\n'
+elif wants uninstall-no-tty offline; then
+  reset
+  stub_python
+  fake_install "$WORK/home/embabel/worlds" new
+  run --uninstall
+  check "uninstall-no-tty" 1 "No terminal to ask on" "--uninstall --yes"
+  [ ! -f "$WORK/python.log" ] || {
+    FAILED=$((FAILED + 1))
+    printf '  x  uninstall-no-tty — ran the uninstall without anybody saying yes\n'
+  }
+fi
+
+# ── a foreign `embabel` on PATH during install ──────────────────────────────
+# The installer leaves it alone, and then must say so — with this appliance's
+# full path — instead of "use the 'embabel' command", which would run the other.
+if wants foreign network; then
+  reset
+  stub_docker
+  stub_python
+  foreign_embabel
+  run
+  check "foreign-embabel" 0 "Done. Starting setup" \
+    'Another program called "embabel" is on your PATH' \
+    "$WORK/home/embabel/worlds/embabel uninstall"
+  if grep -F -q "after this, use the 'embabel' command" "$WORK/out"; then
+    FAILED=$((FAILED + 1))
+    printf "  x  foreign-embabel — still told them to use the 'embabel' command\n"
+  fi
+  same "foreign-embabel" "$WORK/stub/embabel" "$FOREIGN_BODY"
 fi
 
 printf '\n  %d passed, %d failed' "$PASSED" "$FAILED"

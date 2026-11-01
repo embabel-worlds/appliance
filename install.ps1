@@ -8,10 +8,15 @@
 #   2. download this repo into $HOME\embabel\worlds
 #   3. hand off to worlds.py / me.py, which owns the actual setup
 #
-# It installs nothing globally, needs no admin, and writes only inside that one
-# directory plus a two-line shim in $env:LOCALAPPDATA\Programs\embabel\bin.
-# To undo it: `docker compose down -v` in there, delete the directory, and
-# remove the bin dir from PATH.
+# It needs no admin, and outside that one directory writes only a small shim in
+# $env:LOCALAPPDATA\Programs\embabel\bin and that folder's place on your User
+# PATH. To undo all of it -- from any state, including a setup that never
+# finished:
+#
+#   & ([scriptblock]::Create((irm https://worlds.embabel.com/install.ps1))) --uninstall
+#
+# (the scriptblock form, because `irm | iex` cannot pass an argument), which
+# downloads nothing, finds the install already here, and runs its own uninstall.
 #
 # Environment variables (identical semantics to install.sh):
 #   EMBABEL_HOME     where to install         (default: $HOME\embabel\worlds)
@@ -21,6 +26,7 @@
 #   EMBABEL_TOKEN    GitHub token, private forks only
 #   EMBABEL_BIN_DIR  where to put the shim    (default: $env:LOCALAPPDATA\Programs\embabel\bin)
 #   EMBABEL_RELEASE  stable | beta | nightly | canary | X.Y.Z  (default: stable)
+#   EMBABEL_INSTANCE which appliance to set up or remove  (default: appliance)
 #
 # EMBABEL_RELEASE is which build of the server the appliance follows. Like
 # install.sh, this script does not read it: the variable passes through to setup,
@@ -110,6 +116,84 @@ function Stop-Install {
   if ($MovedIntoHome) { Pop-Location }
   if ($RunAsFile) { exit $Code }
   break
+}
+
+function Find-Python {
+  # Prefer the py launcher's `-3` (newest 3.x it can find). Fall back to raw
+  # binaries in the order install.sh uses.
+  if (Get-Command py -ErrorAction SilentlyContinue) {
+    & py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)" 2>$null
+    if ($LASTEXITCODE -eq 0) { return @('py', '-3') }
+  }
+  foreach ($cand in 'python3.13','python3.12','python3.11','python3.10','python3','python') {
+    if (Get-Command $cand -ErrorAction SilentlyContinue) {
+      & $cand -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)" 2>$null
+      if ($LASTEXITCODE -eq 0) { return @($cand) }
+    }
+  }
+  return $null
+}
+
+# ---- Uninstall ---------------------------------------------------------------
+# The same way out as install.sh's --uninstall, and for the same reason: a user
+# with an older, unrelated `embabel` on PATH had no working `embabel uninstall`,
+# and the one command everybody still has is the one they installed with.
+#
+# NOTHING IS DOWNLOADED -- the install's own uninstall runs, from where it is.
+# The question is asked in this console, which a child process inherits under
+# iex as it does for the wizard; --yes answers it in advance, for scripts.
+#
+# NO Push-Location, unlike the hand-off below: the uninstall deletes the install
+# directory, and Windows refuses to delete a directory a process stands in --
+# this session included.
+if ($args -contains '--uninstall') {
+  Write-Host ""
+  Write-Host "  Embabel " -NoNewline
+  Write-Host "-- uninstall" -ForegroundColor DarkGray
+  Write-Host ""
+  $Found = $null
+  if ($env:EMBABEL_HOME) {
+    if (Test-Path (Join-Path $env:EMBABEL_HOME 'setup.py')) { $Found = $env:EMBABEL_HOME }
+  } else {
+    # The default, the older names, then wherever the shim says it forwards to.
+    $cands = @($DefaultHome, (Join-Path $HOME 'embabel-worlds'), (Join-Path $HOME 'embabel-me'))
+    $binDirs = @($env:EMBABEL_BIN_DIR, (Join-Path $env:LOCALAPPDATA 'Programs\embabel\bin')) | Where-Object { $_ }
+    foreach ($dir in $binDirs) {
+      $cmd = Join-Path $dir 'embabel.cmd'
+      if (Test-Path $cmd) {
+        $m = Select-String -Path $cmd -Pattern 'Forwards to the Embabel appliance in (.+)\. Written by install\.ps1\.' | Select-Object -First 1
+        if ($m) { $cands += $m.Matches[0].Groups[1].Value }
+      }
+    }
+    foreach ($cand in $cands) {
+      if ($cand -and (Test-Path (Join-Path $cand 'setup.py'))) { $Found = $cand; break }
+    }
+  }
+  if (-not $Found) {
+    $where = if ($env:EMBABEL_HOME) { $env:EMBABEL_HOME } else { $DefaultHome }
+    Say "No Embabel install found in $where -- nothing to uninstall."
+    Note "Installed somewhere else? Set `$env:EMBABEL_HOME to that folder and run this again."
+    Write-Host ""
+    Stop-Install 0
+  }
+  Step "Found Embabel in $Found."
+  Write-Host ""
+  $Py = Find-Python
+  if (-not $Py) {
+    Die "Embabel needs Python 3.9 or newer -- install from https://python.org (check 'Add python.exe to PATH')."
+  }
+  $SetupPy = Join-Path $Found 'setup.py'
+  $pyArgs = if ($Py.Length -eq 1) { @() } else { @($Py[1]) }
+  # An older install's uninstall predates --yes: there the answer is typed for it.
+  $current = Select-String -Path $SetupPy -Pattern '--keep-images' -SimpleMatch -Quiet
+  if ((-not $current) -and ($args -contains '--yes')) {
+    "yes`nn`n" | & $Py[0] @pyArgs $SetupPy --uninstall
+  } elseif (-not $current) {
+    & $Py[0] @pyArgs $SetupPy --uninstall
+  } else {
+    & $Py[0] @pyArgs $SetupPy @args
+  }
+  Stop-Install $LASTEXITCODE
 }
 
 # ---- Banner ------------------------------------------------------------------
@@ -370,13 +454,17 @@ exit /b 1
 Set-Content -Path (Join-Path $BinDir 'embabel.cmd') -Value $Shim -Encoding ASCII
 
 # ANOTHER 'embabel' MAY ALREADY WIN -- same warning as install.sh, same reasoning.
+# And from here on every command this prints is the shim by its FULL path when it
+# does: one user typed `embabel uninstall` as told, and ran somebody else's program.
 $existing = (Get-Command embabel -ErrorAction SilentlyContinue | Select-Object -First 1)
 $shimPath = Join-Path $BinDir 'embabel.cmd'
+$Launcher = 'embabel'
 if ($existing -and $existing.Source -ne $shimPath) {
+  $Launcher = $shimPath
   Warn "another 'embabel' already comes first on your PATH:"
   Note "        $($existing.Source)"
-  Note "      To use this one, put $BinDir ahead of it,"
-  Note "      or run it by path: $shimPath"
+  Note "      It is not part of Embabel, and it was left alone. Use this one by its full path:"
+  Note "        $shimPath"
   Write-Host ""
 }
 
@@ -390,35 +478,26 @@ if (($userPath -split ';') -notcontains $BinDir) {
 } else {
   Say "Installed the 'embabel' command to $BinDir."
 }
-# Make it usable in THIS session immediately, regardless of PATH-update path.
-if (($env:Path -split ';') -notcontains $BinDir) { $env:Path = "$BinDir;$env:Path" }
+# Make it usable in THIS session immediately, regardless of PATH-update path --
+# unless another 'embabel' wins. Machine PATH comes before User PATH, so a new
+# terminal will still run the other one, and setup must see the same PATH a new
+# terminal will to know that every command it prints needs the full path.
+if (($Launcher -eq 'embabel') -and (($env:Path -split ';') -notcontains $BinDir)) { $env:Path = "$BinDir;$env:Path" }
 Write-Host ""
 
 # ---- 3. Hand off -------------------------------------------------------------
 # setup.py owns the real flow. Same rule as install.sh: no second
 # implementation of any of it here.
-function Find-Python {
-  # Prefer the py launcher's `-3` (newest 3.x it can find). Fall back to raw
-  # binaries in the order install.sh uses.
-  if (Get-Command py -ErrorAction SilentlyContinue) {
-    & py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)" 2>$null
-    if ($LASTEXITCODE -eq 0) { return @('py', '-3') }
-  }
-  foreach ($cand in 'python3.13','python3.12','python3.11','python3.10','python3','python') {
-    if (Get-Command $cand -ErrorAction SilentlyContinue) {
-      & $cand -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)" 2>$null
-      if ($LASTEXITCODE -eq 0) { return @($cand) }
-    }
-  }
-  return $null
-}
-
 $Py = Find-Python
 if (-not $Py) {
   Die "Embabel needs Python 3.9 or newer -- install from https://python.org (check 'Add python.exe to PATH')."
 }
 
-OK "Done. Starting setup -- after this, use the 'embabel' command."
+if ($Launcher -eq 'embabel') {
+  OK "Done. Starting setup -- after this, use the 'embabel' command."
+} else {
+  OK "Done. Starting setup. To remove Embabel later: & `"$Launcher`" uninstall"
+}
 Write-Host ""
 
 Push-Location $HomeDir
@@ -439,6 +518,6 @@ if ($Py.Length -eq 1) {
 $SetupExit = $LASTEXITCODE
 if ($SetupExit -ne 0) {
   Write-Host ""
-  Warn "Setup did not finish (exit $SetupExit). Read the message above, then resume with: embabel up"
+  Warn "Setup did not finish (exit $SetupExit). Read the message above, then resume with: $Launcher up"
 }
 Stop-Install $SetupExit

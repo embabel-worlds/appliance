@@ -322,7 +322,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--wipe", action="store_true", help="also DELETE all data (asks)")
     p.set_defaults(func=cmd_down)
 
-    p = sub.add_parser("uninstall", help="remove the appliance and this machine's configuration")
+    p = sub.add_parser("uninstall", help="remove Embabel and everything it put on this machine")
+    p.add_argument("--yes", action="store_true", help="skip the confirmation — for scripts")
+    p.add_argument("--keep-images", action="store_true", help="keep the Docker images and the embedding model")
+    p.add_argument("--keep-dir", action="store_true", help="keep the install folder")
     p.set_defaults(func=cmd_uninstall)
 
     p = sub.add_parser("prune", help="remove code-sandbox containers left behind on the host")

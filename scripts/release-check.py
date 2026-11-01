@@ -6,6 +6,7 @@
     python3 scripts/release-check.py --release canary        # every merge to main, as users on canary get it
     python3 scripts/release-check.py --secrets ~/realm-keys.env --battery ~/realms/realm-account-health
     python3 scripts/release-check.py --keep                  # leave the instance up to look at afterwards
+    python3 scripts/release-check.py --only-uninstall        # just L8 and L8.1: the ways out
 
 See docs/RELEASE_CHECK.md for what each rung proves and for the short list of things this
 cannot judge. That list is the point of the whole script: everything a machine CAN check about a
@@ -906,6 +907,169 @@ def rung_battery(inst: Instance, report: Report) -> None:
                (summary[-1] if summary else f"exit {run.returncode}") + f" — full log {log}")
 
 
+# ── the way out ─────────────────────────────────────────────────────────────
+#
+# A user had an older, unrelated program called `embabel` on PATH. The installer rightly left it
+# alone, setup stalled in the console, and `embabel uninstall` ran the other program: there was no
+# way out that the screen admitted to. These two rungs are that machine, on purpose — each its own
+# instance, installed and then NEVER onboarded, removed through the one-liner a stranger would
+# paste, and checked for anything left behind.
+
+FOREIGN_BODY = "#!/bin/sh\necho 'an older, unrelated embabel'\n"
+
+
+def side_instance(args, suffix: str) -> Instance:
+    """A second, throwaway instance with its own scratch, HOME, launcher directory and name."""
+    side = argparse.Namespace(**vars(args))
+    side.instance = f"{args.instance}-{suffix}"
+    side.home = None
+    return Instance(side, tempfile.mkdtemp(prefix=f"embabel-release-check-{side.instance}-"))
+
+
+def drive(inst: Instance, *flags: str, transcript: str, env: dict | None = None) -> tuple[bool, str]:
+    """scripts/drive-install.py with these flags, for this instance; (passed, its ✓/✗ lines)."""
+    command = [sys.executable, os.path.join(HERE, "scripts", "drive-install.py"), *flags,
+               "--timeout", str(inst.args.install_timeout), "--transcript", transcript]
+    run = subprocess.run(command, env=env or inst.env, capture_output=True, text=True)
+    checks = [line.strip() for line in run.stdout.splitlines() if line.strip().startswith(("✓", "✗"))]
+    return run.returncode == 0, "; ".join(checks) or run.stdout[-300:]
+
+
+def install_without_onboarding(inst: Instance, report: Report, *extra: str, env: dict | None = None) -> str | None:
+    transcript = os.path.join(inst.scratch, "install.log")
+    report.progress(f"installing instance '{inst.name}' into {inst.home} — and not onboarding it")
+    ok, checks = drive(inst, "--installer", "--mode", "worlds", "--apikey", "", *extra,
+                       transcript=transcript, env=env)
+    report.add("install", "PASS" if ok else "FAIL", checks)
+    if not inst.port_base:
+        report.add("instance settings", "FAIL", f"no EMBABEL_PORT_BASE in {inst.env_file}")
+        return None
+    # Setup STALLED is the point: the console has the link, nobody followed it. The setup API
+    # answers 410 once setup is complete, and anything else from a serving appliance means open.
+    status, body = http("GET", inst.api + "/api/v1/setup", timeout=30)
+    open_setup = status not in (0, 410)
+    report.add("setup left unfinished", "PASS" if open_setup else "FAIL",
+               f"GET /api/v1/setup → {status}" + ("" if open_setup else f": {body[:120]}"))
+    return transcript
+
+
+def uninstall_one_liner(inst: Instance, report: Report, env: dict | None = None) -> str:
+    """`install.sh --uninstall`, under a PTY so its question is asked and answered on the terminal."""
+    transcript = os.path.join(inst.scratch, "uninstall.log")
+    ok, checks = drive(inst, "--uninstall", transcript=transcript, env=env)
+    report.add("install.sh --uninstall", "PASS" if ok else "FAIL", checks + f" — transcript {transcript}")
+    try:
+        with open(transcript, encoding="utf8") as f:
+            return ANSI.sub("", f.read())
+    except OSError:
+        return ""
+
+
+def assert_nothing_left(inst: Instance, report: Report, text: str, kept: list[str] = ()) -> None:
+    """Everything the installer put on the machine is gone, except [kept] — which must be named."""
+    project = f"embabel-{inst.name}"
+    label = f"label=com.docker.compose.project={project}"
+    left = subprocess.run(["docker", "ps", "-aq", "--filter", label], capture_output=True, text=True).stdout.split()
+    volumes = subprocess.run(["docker", "volume", "ls", "-q", "--filter", label],
+                             capture_output=True, text=True).stdout.split()
+    report.add("no containers or volumes", "PASS" if not (left or volumes) else "FAIL",
+               f"{len(left)} container(s), {len(volumes)} volume(s) labelled {project}")
+    # Images: each one the uninstall said it removed is gone; anything it kept, it said why.
+    listed = re.findall(r"(?m)^\s{8}(\S+:\S+)\s*$", text)
+    present = [ref for ref in listed
+               if subprocess.run(["docker", "image", "inspect", ref], capture_output=True).returncode == 0]
+    if listed:
+        report.add("images removed", "PASS" if not present else "FAIL",
+                   f"{len(listed) - len(present)} of {len(listed)} gone" + (f"; still here: {present}" if present else ""))
+    elif "other Embabel appliances on this machine use them" in text:
+        report.add("images removed", "PASS", "kept, and said why: other appliances on this machine use them")
+    else:
+        report.add("images removed", "FAIL", "the uninstall neither removed images nor said why it kept them")
+    launcher = os.path.join(inst.env["EMBABEL_BIN_DIR"], "embabel")
+    report.add("launcher removed", "PASS" if not os.path.lexists(launcher) else "FAIL", launcher)
+    profiles = [os.path.join(inst.env["HOME"], name) for name in (".zshrc", ".bashrc", ".config/fish/config.fish")]
+    blocks = [p for p in profiles if os.path.exists(p) and "embabel appliance PATH" in open(p, encoding="utf8").read()]
+    report.add("no PATH block", "PASS" if not blocks else "FAIL", ", ".join(blocks) or "none in the test HOME")
+    remaining = []
+    for current, dirs, files in os.walk(inst.home):
+        if any(current == k or current.startswith(k + os.sep) for k in kept):
+            dirs[:] = []
+            continue
+        remaining += [os.path.join(current, f) for f in files]
+    report.add("install folder removed", "PASS" if not remaining else "FAIL",
+               ("gone" if not os.path.exists(inst.home) else f"only {', '.join(kept)} kept")
+               if not remaining else f"{len(remaining)} file(s) left, e.g. {remaining[0]}")
+    for path in kept:
+        named = os.path.basename(path) in text
+        report.add(f"kept {os.path.basename(path)}", "PASS" if os.path.exists(path) and named else "FAIL",
+                   "still there, and named in the uninstall" if os.path.exists(path) and named
+                   else f"exists={os.path.exists(path)}, named={named}")
+    if not re.search(r"(Embabel|This appliance|The '\S+' appliance) is uninstalled\.", text):
+        report.add("closing line", "FAIL", "no 'is uninstalled' at the end")
+
+
+def clean_side(inst: Instance) -> None:
+    """Whatever a failed rung left: by label, never by name, and only this instance's.
+
+    The transcripts are kept first, beside the report: a rung that failed is exactly the one
+    whose screens somebody needs to read, and the scratch folder is about to go."""
+    for log in ("install.log", "uninstall.log"):
+        source = os.path.join(inst.scratch, log)
+        if os.path.exists(source):
+            shutil.copyfile(source, os.path.join(tempfile.gettempdir(), f"embabel-release-check-{inst.name}-{log}"))
+    project = f"embabel-{inst.name}"
+    label = f"label=com.docker.compose.project={project}"
+    left = subprocess.run(["docker", "ps", "-aq", "--filter", label], capture_output=True, text=True).stdout.split()
+    if left:
+        subprocess.run(["docker", "rm", "-f", *left], capture_output=True)
+    volumes = subprocess.run(["docker", "volume", "ls", "-q", "--filter", label],
+                             capture_output=True, text=True).stdout.split()
+    if volumes:
+        subprocess.run(["docker", "volume", "rm", "-f", *volumes], capture_output=True)
+    shutil.rmtree(inst.scratch, ignore_errors=True)
+
+
+def rung_uninstall_stalled(args, report: Report) -> None:
+    report.rung("L8 uninstall from a stalled setup — install, never onboard, remove with the one-liner")
+    inst = side_instance(args, "stall")
+    try:
+        if not install_without_onboarding(inst, report):
+            return
+        # A realm somebody cloned into the realms folder: theirs, so it must survive and be named.
+        mine = os.path.join(inst.home, "realms", "realm-mine")
+        os.makedirs(mine, exist_ok=True)
+        with open(os.path.join(mine, "realm.yml"), "w", encoding="utf8") as f:
+            f.write("name: mine\n")
+        subprocess.run(["git", "init", "-q", mine], capture_output=True)
+        text = uninstall_one_liner(inst, report)
+        assert_nothing_left(inst, report, text, kept=[mine])
+    finally:
+        clean_side(inst)
+
+
+def rung_uninstall_foreign(args, report: Report) -> None:
+    report.rung("L8.1 foreign embabel on PATH — named at install, full paths printed, untouched by uninstall")
+    inst = side_instance(args, "foreign")
+    foreign_dir = os.path.join(inst.scratch, "foreign-bin")
+    os.makedirs(foreign_dir)
+    foreign = os.path.join(foreign_dir, "embabel")
+    with open(foreign, "w", encoding="utf8") as f:
+        f.write(FOREIGN_BODY)
+    os.chmod(foreign, 0o755)
+    # EARLIER on PATH than anything of ours, which is the machine the user had.
+    env = {**inst.env, "PATH": foreign_dir + os.pathsep + inst.env.get("PATH", "")}
+    try:
+        if not install_without_onboarding(inst, report, "--foreign-embabel", foreign, env=env):
+            return
+        text = uninstall_one_liner(inst, report, env=env)
+        assert_nothing_left(inst, report, text)
+        with open(foreign, encoding="utf8") as f:
+            untouched = f.read() == FOREIGN_BODY
+        report.add("foreign embabel untouched", "PASS" if untouched else "FAIL", foreign)
+    finally:
+        clean_side(inst)
+
+
 def teardown(inst: Instance, report: Report) -> None:
     report.rung("teardown")
     if inst.args.keep:
@@ -955,6 +1119,11 @@ def main() -> int:
                         help="reuse an instance already installed in --home (developing this script)")
     parser.add_argument("--install-timeout", type=int, default=1800)
     parser.add_argument("--report", help="JSON report path (default: in the system temp directory)")
+    ways_out = parser.add_mutually_exclusive_group()
+    ways_out.add_argument("--only-uninstall", action="store_true",
+                          help="run only L8 and L8.1, the uninstall rungs — each installs its own instance")
+    ways_out.add_argument("--no-uninstall-rungs", action="store_true",
+                          help="skip L8 and L8.1")
     args = parser.parse_args()
     args.realms = [r.strip() for r in args.realms.split(",") if r.strip()]
     if args.no_install and not args.home:
@@ -976,7 +1145,9 @@ def main() -> int:
     print(f"Release check — instance '{args.instance}', release {args.release} (:{release_tag(args.release)}), "
           f"home {inst.home}")
     try:
-        if rung_install(inst, report):
+        if args.only_uninstall:
+            pass
+        elif rung_install(inst, report):
             rung_image(inst, report)
             rung_setup_link(inst, report)
             if rung_onboarding(inst, report):
@@ -998,7 +1169,19 @@ def main() -> int:
             kept = os.path.join(args.report_dir, f"embabel-release-check-{args.instance}-install.log")
             shutil.copyfile(os.path.join(scratch, "install.log"), kept)
             report.facts["transcript"] = kept
-        teardown(inst, report)
+        if not args.only_uninstall:
+            teardown(inst, report)
+        else:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+    # AFTER the main instance is gone, so two appliances are never booting on one machine's
+    # memory at once. Each rung brings its own instance and leaves nothing of it behind.
+    if not args.no_uninstall_rungs:
+        try:
+            rung_uninstall_stalled(args, report)
+            rung_uninstall_foreign(args, report)
+        except KeyboardInterrupt:
+            report.add("interrupted", "FAIL", "stopped by Ctrl-C")
 
     counts = report.counts()
     report.facts["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")

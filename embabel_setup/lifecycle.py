@@ -28,6 +28,9 @@ from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
 from .bolt import ensure_public_host
+# Re-exported as well as used: check-shim.py and older callers reach these through lifecycle.
+from .launcher import (SHIM_OWNERSHIP_MARKER, WINDOWS_SHIM_MARKER, cli_shim_paths,  # noqa: F401
+                       owns, windows_shim_paths)
 from .pins import pin_before_start
 from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred_services,
                         retire_monitoring, retire_sql_sidecar,
@@ -35,7 +38,7 @@ from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred
                         find_mode_container, refresh_floating_images, running_modes,
                         stray_sandbox_containers, other_running_appliances,
                         take_everything_down)
-from .settings import (embabel_command, compose_project, console_url, env_file, instance, installed_instances,
+from .settings import (embabel_command, compose_project, console_url, env_file, env_path, instance, installed_instances,
                        remember_mode, resume_command)
 from .release import parse_release, version_pin_conflict
 from .status import STATUS
@@ -57,11 +60,6 @@ SETUP_IS_DRIVING = re.compile(r"ACTION REQUIRED|Setup token:|worlds\.py|me\.py|s
 # No single log line should be able to flood a terminal. Wide enough for a real
 # message, short enough that a thirty-model inventory does not arrive twice.
 BOOT_LINE_MAX = 200
-
-# NEVER CHANGE THIS STRING. It is the ownership marker carried by every shim
-# this installer has ever written, including the old install.sh heredoc ones;
-# uninstall must continue to recognise those after the writer moves or changes.
-SHIM_OWNERSHIP_MARKER = "Written by install.sh"
 
 # What the boot warned about, collected by the follower and reported as one line
 # by [report_boot_warnings]. A plain list: appended from the pump thread and read
@@ -391,19 +389,6 @@ def remove_stray_sandboxes() -> None:
         print(f"  Removed {len(strays)} sandbox container(s).")
 
 
-def cli_shim_paths() -> list[str]:
-    """Every place setup could have written the `embabel` launcher.
-
-    `$EMBABEL_BIN_DIR` first because an installer run with it set put the shim there, then the
-    default. Both are checked rather than one, so an uninstall undoes an install that used either.
-    """
-    seen: list[str] = []
-    for directory in (os.environ.get("EMBABEL_BIN_DIR"), os.path.join(os.path.expanduser("~"), ".local", "bin")):
-        if directory and directory not in seen:
-            seen.append(directory)
-    return [os.path.join(d, "embabel") for d in seen]
-
-
 def write_cli_shim() -> str | None:
     """Put this checkout's `embabel` forwarder on PATH without taking that name from anyone else.
 
@@ -498,49 +483,29 @@ exit 1
 
 
 def is_our_shim(path: str) -> bool:
-    """Whether [path] is the forwarder setup wrote for THIS installation.
+    """Whether [path] is the forwarder setup wrote for THIS installation — see launcher.owns.
 
-    NEVER delete an `embabel` on PATH just because it is called `embabel`. It is not a rare name,
-    and setup warns when it finds one already ahead of ours. An uninstall that removed somebody's
-    other tool because the names matched would be a far worse bug than the one this fixes.
-
-    So: it must be a small file, it must carry the installer's ownership line, and it must name the
-    directory this script is running from. Anything else is left alone.
+    APPLIANCE_DIR, not dirname(__file__). The shim points at the CHECKOUT, and this asks "is that
+    us?" — from inside the package the two are different directories, the answer would always be
+    no, and uninstall would quietly stop removing the command it put on PATH.
     """
-    try:
-        if os.path.getsize(path) > 4096:
-            return False
-        # errors="replace" rather than a bare open(): on Windows the default
-        # encoding is the system ANSI codepage (cp1252 for en-US), and any
-        # sibling `embabel` on PATH written by another tool — a compiled .exe,
-        # a UTF-8 script, anything with a non-cp1252 byte — killed uninstall
-        # here with a UnicodeDecodeError. We only look for two ASCII strings
-        # below, so decoding losses on unrelated files are harmless.
-        with open(path, encoding="utf-8", errors="replace") as f:
-            body = f.read()
-    except OSError:
-        return False
-    # APPLIANCE_DIR, not dirname(__file__). The shim points at the CHECKOUT, and
-    # this asks "is that us?" — from inside the package the two are different
-    # directories, the answer would always be no, and uninstall would quietly stop
-    # removing the command it put on PATH.
-    here = os.path.realpath(APPLIANCE_DIR)
-    return SHIM_OWNERSHIP_MARKER in body and here in body
+    return owns(path, APPLIANCE_DIR)
 
 
 def remove_cli_shim() -> None:
     """Take the `embabel` command off PATH — the one this installation put there.
 
-    The checkout stays so `./worlds.py` can set up again, but uninstall promises to remove the
-    machine-wide command along with the machine-local configuration. Leaving it behind would make
-    the checkout look installed after the appliance and its configuration were gone.
+    Uninstall promises to leave nothing the installer put on the machine, and the launcher is
+    the most visible of those things: left behind, `embabel` still answers and the appliance
+    looks installed after it has gone.
     """
     removed = []
-    for path in cli_shim_paths():
-        if not os.path.exists(path):
+    other_appliance = another_appliances_launcher()
+    for path in cli_shim_paths() + windows_shim_paths():
+        if not os.path.lexists(path):
             continue
         if not is_our_shim(path):
-            print(f"  Left {path} alone — it is not the launcher this installation wrote.")
+            print(f"  Left {path} alone — it is not this appliance's launcher.")
             continue
         try:
             os.remove(path)
@@ -554,104 +519,82 @@ def remove_cli_shim() -> None:
     # the kind of residue that makes people distrust an uninstall. Every supported profile
     # is checked rather than the current shell's, because the shell that installs is not
     # always the shell that uninstalls, and only complete appliance-owned blocks are taken.
-    for profile in shell_profiles():
-        if remove_path_entry(profile):
-            print(f"  Removed the appliance PATH line from {profile}.")
+    #
+    # NOT while another appliance's launcher still lives behind that line. Taking the line
+    # away would leave that appliance with no command, which is an uninstall breaking
+    # something it was never asked about.
+    if not other_appliance:
+        for profile in shell_profiles():
+            if remove_path_entry(profile):
+                shown = profile.replace(os.path.expanduser("~"), "~", 1)
+                print(f"  Removed the PATH line setup added to {shown}.")
+        remove_windows_path_entry(removed)
 
     # A DIFFERENT `embabel` may still answer, and saying so is the point: otherwise the next
     # `which embabel` shows a hit and the uninstall looks like it failed again, which is exactly
     # the confusion this function exists to end.
-    if removed:
-        survivor = shutil.which("embabel")
-        if survivor:
-            print(f"  NOTE: another 'embabel' is still on your PATH: {survivor}")
-            print("        That one is not ours, and it has been left alone.")
-
-
-def uninstall() -> None:
-    """--uninstall: back to the state a fresh clone is in.
-
-    Everything --fresh removes, plus the machine-local configuration it leaves
-    behind — which is the whole point. Re-running setup after --fresh never asks
-    for a provider key, a timezone or a realms directory, because .env still has
-    them, so it exercises none of the path a new user walks. That makes --fresh
-    the wrong tool for testing the thing developers most need to test.
-
-    Images and the local embedding model are KEPT, deliberately and always: the
-    embedding artifact alone is over a gigabyte and re-downloading one that has
-    not changed is pure waste. Nothing here offers to remove them.
-
-    Realm checkouts are not touched either. They are their own repositories and
-    somebody's work in progress; this script has no business deleting them.
-
-    The `embabel` COMMAND does go, though — see [remove_cli_shim]. Setup puts a launcher on
-    PATH, so an uninstall that left it there would leave machine-local installation state behind.
-    The installation DIRECTORY stays: this script is running from it, and `./setup.py` sets up
-    again from there.
-    """
-    if len(installed_instances()) > 1:
-        print(f"  --uninstall removes the '{instance()}' appliance. Others here are untouched:")
-        print(f"    {', '.join(n for n in installed_instances() if n != instance())}")
-    else:
-        print("  --uninstall returns this checkout to the state a fresh clone is in.")
-    print("\n  DELETED:")
-    print("    the appliance's entire state — account, world, graph, documents, dashboards")
-    print(f"    {env_file()} — your provider key, timezone, and realms directory")
-    print(f"    {OVERRIDE_FILE} — the folders shared with the assistant")
-    print(f"    the '{MCP_SERVER_NAME}' MCP registration — only where it points at THIS appliance")
-    print("    its marked Codex token block in supported shell profiles — only when registration ownership is verified")
-    print("    its marked PATH block in supported shell profiles — the line setup added to reach the command")
-    for path in cli_shim_paths():
-        if os.path.exists(path) and is_our_shim(path):
-            print(f"    {path} — the 'embabel' command setup put on your PATH")
-            break
-    print("    any stray code-sandbox container (asked separately — a dev JVM may own one)")
-    print("\n  KEPT:")
-    print("    images and the local embedding model — over a gigabyte, and unchanged")
-    print("    realms/ and any realm checkout — your repositories, not ours")
-    print("    this directory itself: `./worlds.py` sets up again from here\n")
-    answer = prompt("  Type 'yes' to uninstall: ").strip().lower()
-    if answer != "yes":
-        raise SetupError("Not uninstalled — nothing was touched.")
-
-    take_everything_down()
-    remove_stray_sandboxes()
-    # Before .env goes: unwiring verifies each registration's URL against this
-    # install's ports, and those ports live in .env.
-    unwire_coding_agents()
-    for name in (env_file(), OVERRIDE_FILE):
-        if os.path.exists(name):
-            os.remove(name)
-            print(f"  Removed {name}.")
+    survivor = shutil.which("embabel")
+    if survivor and not is_our_shim(survivor):
+        try:
+            with open(survivor, encoding="utf-8", errors="replace") as f:
+                another_install = any(m in f.read(4096) for m in (SHIM_OWNERSHIP_MARKER, WINDOWS_SHIM_MARKER))
+        except OSError:
+            another_install = False
+        if another_install:
+            print(f"  The 'embabel' command still on your PATH belongs to another Embabel install: {survivor}")
         else:
-            # Silence here made a re-run look like nothing happened at all.
-            print(f"  No {name} to remove.")
+            print(f"  Another program called 'embabel' is still on your PATH: {survivor}")
+            print("  It is not part of Embabel, and it has been left alone.")
 
-    # The `embabel` command is one per MACHINE, not one per instance. Taking it
-    # away while another appliance is still installed would uninstall one thing
-    # and break a different one — so it goes only with the last of them.
-    elsewhere = other_running_appliances()
-    remaining = [n for n in installed_instances() if n != instance()]
-    if elsewhere:
-        # The command is one per machine and points at whichever checkout wrote
-        # it. Removing it here left a running appliance in another directory with
-        # no way to be driven except by path — an uninstall that broke something
-        # it was never asked about.
-        print(f"\n  Kept the 'embabel' command: an appliance is running from {elsewhere[0]}"
-              + (f" (and {len(elsewhere) - 1} more)" if len(elsewhere) > 1 else "") + ".")
-        print(f"  Done — instance '{instance()}' is gone.\n")
-    elif remaining:
-        print(f"\n  Kept the 'embabel' command: {', '.join(remaining)} still installed here.")
-        print(f"  Done — instance '{instance()}' is gone.\n")
-    else:
-        remove_cli_shim()
-        print("\n  Done — this checkout is back to the state a fresh clone is in.")
-        # NOT `embabel up`: remove_cli_shim() just deleted that command, three
-        # lines above. Naming it here sent people to a command this branch had
-        # personally removed. ./setup.py is what survives in the checkout, and
-        # it is the same entry for either door — which is right, because .env
-        # is gone too, so there is no longer a mode to resume.
-        print("  `./setup.py` sets it up again from here.\n")
+
+def another_appliances_launcher() -> bool:
+    """Whether a launcher where ours would go belongs to a DIFFERENT Embabel install.
+
+    A second install in another folder writes the same marker and names its own folder. It
+    still needs its directory on PATH, so the PATH line setup added has to stay for it.
+    """
+    for path in cli_shim_paths() + windows_shim_paths():
+        if not os.path.lexists(path) or is_our_shim(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                head = f.read(4096)
+        except OSError:
+            continue
+        if SHIM_OWNERSHIP_MARKER in head or WINDOWS_SHIM_MARKER in head:
+            return True
+    return False
+
+
+def remove_windows_path_entry(removed: list[str]) -> None:
+    """install.ps1 adds its bin directory to the User PATH; take it back out once it is empty.
+
+    Only a directory a removed `embabel.cmd` lived in, and only when nothing else is left in it:
+    the directory is ours by default, but EMBABEL_BIN_DIR may have named one somebody shares.
+    """
+    if os.name != "nt":
+        return
+    for shim in removed:
+        if not shim.lower().endswith(".cmd"):
+            continue
+        directory = os.path.dirname(shim)
+        try:
+            if os.listdir(directory):
+                continue
+            os.rmdir(directory)
+        except OSError:
+            continue
+        try:
+            import winreg  # Windows only, and only reached there
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
+                                winreg.KEY_READ | winreg.KEY_WRITE) as key:
+                value, kind = winreg.QueryValueEx(key, "Path")
+                kept = [p for p in value.split(";") if p and os.path.normcase(p.rstrip("\\")) != os.path.normcase(directory.rstrip("\\"))]
+                if len(kept) != len([p for p in value.split(";") if p]):
+                    winreg.SetValueEx(key, "Path", 0, kind, ";".join(kept))
+                    print(f"  Removed {directory} from your User PATH.")
+        except OSError as e:
+            print(f"  Could not take {directory} off your User PATH: {e}")
 
 
 def ensure_mode(mode: str) -> bool:
@@ -812,14 +755,18 @@ def ensure_timezone() -> None:
     (either kind of existing choice wins and is never rewritten)."""
     if os.environ.get("TZ"):
         return  # exported in the shell — compose sees it directly
-    if os.path.exists(".env"):
-        with open(".env") as f:
+    # THIS INSTANCE'S settings, not a literal `.env`. A named instance wrote its zone into
+    # the default instance's file — which compose never read for it, and which then made
+    # the default instance look installed in a folder that had never had one.
+    settings = env_path()
+    if os.path.exists(settings):
+        with open(settings) as f:
             if any(line.strip().startswith("TZ=") for line in f):
                 return
     zone = host_timezone()
     if not zone:
         return  # undetectable: the containers stay on UTC, as before
-    with open(".env", "a") as f:
+    with open(settings, "a") as f:
         f.write(
             "\n# Host timezone, detected by setup.py — without it the containers run UTC\n"
             "# and the assistant's clock is hours off. Edit or remove freely.\n"

@@ -9,11 +9,11 @@ from a constant into a question, and the answers all come from the same place.
 from __future__ import annotations
 import json
 import os
-import shutil
 import re
 import socket
 
 from .core import APPLIANCE_DIR, MODE_COMPOSE, SetupError
+from .launcher import launcher
 
 def default_base() -> str:
     """Where the Me door answers for the instance in play. A function now: the
@@ -667,7 +667,7 @@ def resume_command() -> str:
     launcher on PATH first, and fall back to the checkout's own entry point —
     named for the mode, because ./worlds.py and ./me.py are different doors.
     """
-    if shutil.which("embabel"):
+    if launcher(APPLIANCE_DIR) == "embabel":
         return embabel_command("up")
     entry = "worlds.py" if configured_mode() == "worlds" else "me.py"
     # The installer reads the instance from the environment, so a second
@@ -688,7 +688,11 @@ def embabel_command(*argv: str) -> str:
     suggests would act on the default one. Before the command is on PATH it is
     the checkout's own launcher, which is always there. Hints that need docker
     compose suggest `embabel compose`, so whatever a person pastes runs with the
-    same settings, memory limits and profiles as `embabel up`."""
-    launcher = "embabel" if shutil.which("embabel") else os.path.join(APPLIANCE_DIR, "embabel")
+    same settings, memory limits and profiles as `embabel up`.
+
+    THE BARE NAME ONLY WHEN IT IS OURS. Another program called `embabel` earlier on PATH — one
+    the installer rightly refused to overwrite — turned every command this printed into a
+    command for that program, uninstall included. So the bare name is printed only when PATH
+    resolves it to this appliance's launcher, and the full path otherwise."""
     flag = [] if _instance == DEFAULT_INSTANCE else ["--instance", _instance]
-    return " ".join([launcher, *flag, *argv])
+    return " ".join([launcher(APPLIANCE_DIR), *flag, *argv])

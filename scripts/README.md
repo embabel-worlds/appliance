@@ -16,6 +16,7 @@ unit test can reach:
 |---|---|
 | [`drive-install.py`](drive-install.py) | A real install in a real terminal, asserting on what a person saw |
 | [`release-check.py`](release-check.py) | A fresh appliance from `curl \| sh` up the whole release ladder — onboarding, the MCP doors, realms from git and every view they ship, the planner, authoring, a restart — then torn down. See [`docs/RELEASE_CHECK.md`](../docs/RELEASE_CHECK.md) |
+| [`check-uninstall.py`](check-uninstall.py) | Uninstall from the states a machine gets left in — setup never finished, Docker stopped, Docker gone, a developer's clone — leaving nothing of ours and keeping what the person made; and full-path commands when another `embabel` is first on PATH |
 | [`drive-tour-share.py`](drive-tour-share.py) | Somebody exporting a tour and somebody else importing it — including that it survives a restart |
 | [`check-guides.py`](check-guides.py) | `guides.json` names every guide in the tree, each under a name of its own; `--write` regenerates it |
 | [`check-secret-echo.py`](check-secret-echo.py) | Upgrade's pin line, a bug report and coding-agent wiring, each with a sentinel password and token: neither may appear in anything printed |

@@ -98,6 +98,8 @@ from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, i
 from embabel_setup.trust import *        # noqa: F403 — company certificate authorities
 from embabel_setup.pins import *         # noqa: F403 — what an install runs on, written down
 from embabel_setup.release import *      # noqa: F403 — which build of the server it follows
+# By name, not starred: the module's helpers (docker_state, inside, tilde) are its own business.
+from embabel_setup.uninstall import uninstall
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
@@ -178,10 +180,16 @@ def main() -> int:
     parser.add_argument(
         "--uninstall",
         action="store_true",
-        help="remove the appliance's state AND this machine's configuration (.env, shared "
-             "folders, the MCP registration), returning the checkout to a fresh-clone state. "
-             "Images, the local embedding model and your realm checkouts are kept",
+        help="remove everything the installer put on this machine: the appliance and its data, "
+             "its settings, the MCP registration, the `embabel` command, the Docker images, the "
+             "local embedding model and the install folder. Git repositories you cloned are kept",
     )
+    parser.add_argument("--yes", action="store_true",
+                        help="with --uninstall: do not ask for confirmation — for scripts")
+    parser.add_argument("--keep-images", action="store_true",
+                        help="with --uninstall: keep the Docker images and the embedding model")
+    parser.add_argument("--keep-dir", action="store_true",
+                        help="with --uninstall: keep the install folder")
     parser.add_argument(
         "--realms",
         help="directory your realm checkouts live IN, mounted read-only at /realms so a "
@@ -259,7 +267,7 @@ def main() -> int:
         # Before everything: it ends the run rather than setting anything up, and
         # it must not be preceded by writes to the .env it is about to delete.
         if args.uninstall:
-            uninstall()
+            uninstall(assume_yes=args.yes, keep_images=args.keep_images, keep_dir=args.keep_dir)
             return 0
 
         # BEFORE EVERY VERB, as install.sh originally was. A configured appliance
