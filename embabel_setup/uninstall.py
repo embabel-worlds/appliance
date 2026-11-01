@@ -193,7 +193,11 @@ def others_installed_here() -> list[str]:
     """Other appliances installed from THIS folder: a settings file here, or containers compose
     started from here. Instances elsewhere have their own folder and their own launcher."""
     here = os.path.realpath(APPLIANCE_DIR)
-    names = {n for n in installed_instances() if n != instance() and os.path.exists(env_path(n))}
+    # A settings file with a port block, which every created instance has. A bare `.env` holding
+    # only a timezone is what an older setup wrote for a NAMED instance into the default's file,
+    # and counting it would keep the folder for an appliance that was never installed here.
+    names = {n for n in installed_instances()
+             if n != instance() and env_file_value("EMBABEL_PORT_BASE", n)}
     run = _docker("ps", "-a", "--format",
                   '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}',
                   timeout=20)

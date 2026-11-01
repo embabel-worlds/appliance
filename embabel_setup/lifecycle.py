@@ -38,7 +38,7 @@ from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred
                         find_mode_container, refresh_floating_images, running_modes,
                         stray_sandbox_containers, other_running_appliances,
                         take_everything_down)
-from .settings import (embabel_command, compose_project, console_url, env_file, instance, installed_instances,
+from .settings import (embabel_command, compose_project, console_url, env_file, env_path, instance, installed_instances,
                        remember_mode, resume_command)
 from .release import parse_release, version_pin_conflict
 from .status import STATUS
@@ -755,14 +755,18 @@ def ensure_timezone() -> None:
     (either kind of existing choice wins and is never rewritten)."""
     if os.environ.get("TZ"):
         return  # exported in the shell — compose sees it directly
-    if os.path.exists(".env"):
-        with open(".env") as f:
+    # THIS INSTANCE'S settings, not a literal `.env`. A named instance wrote its zone into
+    # the default instance's file — which compose never read for it, and which then made
+    # the default instance look installed in a folder that had never had one.
+    settings = env_path()
+    if os.path.exists(settings):
+        with open(settings) as f:
             if any(line.strip().startswith("TZ=") for line in f):
                 return
     zone = host_timezone()
     if not zone:
         return  # undetectable: the containers stay on UTC, as before
-    with open(".env", "a") as f:
+    with open(settings, "a") as f:
         f.write(
             "\n# Host timezone, detected by setup.py — without it the containers run UTC\n"
             "# and the assistant's clock is hours off. Edit or remove freely.\n"

@@ -16,7 +16,7 @@ import sys
 
 from .colour import MIDDOT, TICK, bold, dim, url, warn
 from .core import APPLIANCE_DIR, SetupError
-from .settings import env_file_value, set_env_var
+from .settings import env_file_value, env_path, set_env_var
 from .colour import heading
 from .words import say
 
@@ -141,8 +141,10 @@ def ensure_realms_dir(mode: str, explicit: str | None) -> None:
 
     if os.environ.get("EMBABEL_REALMS_DIR"):
         return  # exported in the shell — compose sees it directly
-    if os.path.exists(".env"):
-        with open(".env") as f:
+    # This instance's settings, where set_realms_dir writes the answer — not a literal `.env`,
+    # which for a named instance is somebody else's file.
+    if os.path.exists(env_path()):
+        with open(env_path()) as f:
             if any(line.strip().startswith("EMBABEL_REALMS_DIR=") for line in f):
                 return  # already answered, either way
     if mode != "worlds" or not sys.stdin.isatty():

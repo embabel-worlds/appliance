@@ -255,7 +255,13 @@ fi
 if wants bad-ref network; then
   reset
   stub_docker
-  REF="no-such-ref-$$" run
+  # Set and put back by hand, not as `REF=… run`: an assignment before a FUNCTION
+  # call outlives it in bash's sh mode (macOS /bin/sh), and every scenario after
+  # this one then downloaded a ref that does not exist.
+  real_ref=$REF
+  REF="no-such-ref-$$"
+  run
+  REF=$real_ref
   check "bad-ref" 1 "check EMBABEL_REF"
 fi
 

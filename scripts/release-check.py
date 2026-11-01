@@ -1009,7 +1009,14 @@ def assert_nothing_left(inst: Instance, report: Report, text: str, kept: list[st
 
 
 def clean_side(inst: Instance) -> None:
-    """Whatever a failed rung left: by label, never by name, and only this instance's."""
+    """Whatever a failed rung left: by label, never by name, and only this instance's.
+
+    The transcripts are kept first, beside the report: a rung that failed is exactly the one
+    whose screens somebody needs to read, and the scratch folder is about to go."""
+    for log in ("install.log", "uninstall.log"):
+        source = os.path.join(inst.scratch, log)
+        if os.path.exists(source):
+            shutil.copyfile(source, os.path.join(tempfile.gettempdir(), f"embabel-release-check-{inst.name}-{log}"))
     project = f"embabel-{inst.name}"
     label = f"label=com.docker.compose.project={project}"
     left = subprocess.run(["docker", "ps", "-aq", "--filter", label], capture_output=True, text=True).stdout.split()
