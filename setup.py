@@ -131,8 +131,10 @@ def hand_over_to_console(base: str, token: str, container: str | None) -> int:
     browser never sends to a server and never writes to a proxy log. The console
     takes it off the address bar before it renders anything.
     """
-    where = console_url()
-    link = f"{where}/#setup={token}"
+    # console_url() ends in `/ui/`; joining it with another "/" gave `/ui//`, and the server's
+    # firewall answers a doubled slash with 400 — so the one link this path exists to print
+    # opened an error page.
+    link = f"{console_url().rstrip('/')}/#setup={token}"
 
     print("\n" + heading("Finish in your browser"))
     print(f"  {TICK} Your appliance is running. Finish setting it up at:\n")

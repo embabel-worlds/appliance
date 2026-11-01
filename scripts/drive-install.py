@@ -333,8 +333,23 @@ def transcript_is_readable(text: str) -> str | None:
     return None
 
 
+def setup_link_opens(text: str) -> str | None:
+    """The link printed under "Finish in your browser" has no doubled slash in its path.
+
+    The console's address grew a trailing `/ui/` and the setup link went on adding its own
+    "/", so every fresh install printed `/ui//#setup=…` — which the server refuses with 400.
+    Every other check passed, because none of them reads the one link a new user clicks.
+    """
+    clean = ANSI.sub("", text)
+    for link in re.findall(r"https?://\S+#setup=\S+", clean):
+        path = link.split("://", 1)[1].split("#", 1)[0]
+        if "//" in path:
+            return f"the setup link has a doubled slash, which the server answers with 400: {link}"
+    return None
+
+
 CHECKS = (transcript_is_readable, no_raw_log_lines, password_not_measured,
-          no_stale_org, both_doors_offered, finished)
+          no_stale_org, both_doors_offered, setup_link_opens, finished)
 
 
 def report(text: str) -> int:
