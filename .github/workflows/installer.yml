@@ -118,6 +118,101 @@ jobs:
         shell: pwsh
         run: '& ${{ matrix.host }} -NoProfile -File ./scripts/drive-install-ps1.ps1 -Which $env:LANE'
 
+  # The appliance ITSELF, installed and asserted against — everything above this
+  # stops at the hand-off to setup.py. Here because `gate` can only depend on jobs
+  # in its own workflow, and one required check is worth more than two.
+  #
+  # THE REDUCED STACK IS THE POINT: `worlds` depends only on neo4j, so the metrics
+  # pair stays off (EMBABEL_MONITORING=false is the default) and nothing here waits
+  # on docling. A hosted runner has ~14GB of disk, and the full stack's images are
+  # ~9GB of it, mostly docling at 5.1GB.
+  #
+  # ITS OWN INSTANCE AND PORT BLOCK, so this job never collides with anything else
+  # on the machine — the same mechanism that lets two appliances share a laptop.
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EMBABEL_INSTANCE: ci
+      COMPOSE_PROJECT: embabel-ci
+      APPLIANCE_USER: acceptance
+      EMBABEL_NO_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Disk before
+        run: df -h / | tail -1
+
+      # A PASSWORD GENERATED HERE, not a secret: this account exists for the length
+      # of one job, on an appliance that is deleted with it, so there is nothing to
+      # keep and nothing to leak. By file rather than by variable for the reason
+      # headless.py gives — a variable reaches `docker inspect` and any log that
+      # prints env.
+      - name: Install the appliance, headless
+        env:
+          EMBABEL_SETUP_USER: acceptance
+          EMBABEL_SETUP_FULL_NAME: CI Acceptance
+          # Accepting the free trial terms for this throwaway install, in the
+          # organisation's own CI, on the organisation's own terms. --headless
+          # refuses to imply this, which is why it is written here where a reviewer
+          # can see it.
+          EMBABEL_ACCEPT_TRIAL_TERMS: '1'
+        run: |
+          python3 -c "import secrets, pathlib; pathlib.Path('ci-password').write_text(secrets.token_urlsafe(24))"
+          chmod 600 ci-password
+          EMBABEL_SETUP_PASSWORD_FILE="$PWD/ci-password" python3 setup.py worlds --headless
+
+      # READ, NOT DICTATED. EMBABEL_PORT_BASE is only ever read from the instance's
+      # own .env — a block is allocated at creation and never recomputed, so that
+      # removing a sibling instance cannot move an appliance out from under every
+      # bookmark and registered MCP URL that names it. Setting the variable in this
+      # job's environment did nothing, and the first run proved it by handing the
+      # suite an address where nothing was listening.
+      - name: Which ports it took
+        run: |
+          base=$(sed -n 's/^EMBABEL_PORT_BASE=//p' .env.ci | tail -1)
+          if [ -z "$base" ]; then
+            echo "::error::no EMBABEL_PORT_BASE in .env.ci — the install did not record a block"
+            exit 1
+          fi
+          echo "block $base-$((base + 15)): API $((base + 1)), console $((base + 2)), SQL $((base + 10))"
+          echo "APPLIANCE_BASE=http://localhost:$((base + 1))" >> "$GITHUB_ENV"
+          echo "APPLIANCE_SQL_PORT=$((base + 10))" >> "$GITHUB_ENV"
+
+      - name: Acceptance suite
+        run: |
+          APPLIANCE_PASSWORD="$(cat ci-password)" \
+            python3 -m unittest discover -s acceptance -v
+
+      - name: A second install changes nothing
+        run: |
+          EMBABEL_SETUP_PASSWORD_FILE="$PWD/ci-password" python3 setup.py --headless
+
+      - name: Disk after
+        if: always()
+        run: df -h / | tail -1
+
+      # The appliance's own diagnosis, which is also under test: it must exit 0
+      # against an installation it just looked at.
+      - name: doctor.sh
+        run: sh doctor.sh
+
+      - name: What it looked like, if it failed
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -p embabel-ci logs --no-color --tail 300 || true
+
+      - name: Down, and take the volumes
+        if: always()
+        run: |
+          docker compose -p embabel-ci -f docker-compose.yml -f infra.yml -f docker-compose-worlds.yml \
+            --env-file .env.ci down -v --remove-orphans || true
+          rm -f ci-password .env.ci
+
   # ONE STABLE NAME to require as a status check. The matrix job names carry
   # their parameters — "posix (debian:12, apt-get update -qq && …)" — so
   # requiring them directly means a protection rule that silently orphans itself
@@ -129,13 +224,13 @@ jobs:
   # anything upstream failed, and the merge button would go green on a red
   # matrix. Failing loudly is the whole job.
   gate:
-    needs: [lint, posix, windows]
+    needs: [lint, posix, windows, acceptance]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Every installer job passed
         env:
-          RESULTS: lint=${{ needs.lint.result }} posix=${{ needs.posix.result }} windows=${{ needs.windows.result }}
+          RESULTS: lint=${{ needs.lint.result }} posix=${{ needs.posix.result }} windows=${{ needs.windows.result }} acceptance=${{ needs.acceptance.result }}
         run: |
           echo "$RESULTS"
           case "$RESULTS" in
