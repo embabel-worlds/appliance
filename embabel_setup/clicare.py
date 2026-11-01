@@ -242,11 +242,14 @@ def _upgrade(args, release: str | None, retry: str) -> int:
     except s.SetupError:
         # .env names something that does not parse; choosing a release is how that is fixed.
         following = None
+    # FLUSHED, because the pull below inherits the terminal and writes to it directly: an
+    # unflushed line arrives after the output it was introducing.
     if release and target != following:
         print(f"  Moving the {mode} mode from {s.bold(following or '?')} to {s.bold(target)} "
-              f"({s.describe_release(target)}). Your data is untouched.\n")
+              f"({s.describe_release(target)}). Your data is untouched.\n", flush=True)
     else:
-        print(f"  Upgrading the {mode} mode to the newest {s.bold(target)} build. Your data is untouched.\n")
+        print(f"  Upgrading the {mode} mode to the newest {s.bold(target)} build. "
+              "Your data is untouched.\n", flush=True)
     # Before the images move: an older `use openai` left a model NAME that newer builds
     # cannot resolve here, and the symptom is documents quietly never indexing again.
     if s.migrate_legacy_embedding_choice():
@@ -305,8 +308,10 @@ def cmd_release(args) -> int:
             print(f"              digest    {run['digest']}")
     else:
         print("\n  Running     nothing yet — the first `up` starts the release above")
-    print("\n  " + s.dim("Releases: " + " · ".join(f"{name} — {about}" for name, about in s.ABOUT.items())))
-    print("  " + s.dim("or one build: X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx"))
+    print()
+    for i, (name, about) in enumerate(s.ABOUT.items()):
+        print("  " + ("Releases    " if i == 0 else " " * 12) + s.dim(f"{name:<9} {about}"))
+    print(" " * 14 + s.dim("or one build: X.Y.Z, X.Y.Z-rc.N, sha-xxxxxxx"))
     print(f"\n  {embabel_command('release', '<release>')}   follow another, and upgrade onto it\n")
     return 0
 
