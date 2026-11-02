@@ -981,8 +981,8 @@ def assert_nothing_left(inst: Instance, report: Report, text: str, kept: list[st
     if listed:
         report.add("images removed", "PASS" if not present else "FAIL",
                    f"{len(listed) - len(present)} of {len(listed)} gone" + (f"; still here: {present}" if present else ""))
-    elif "other Embabel appliances on this machine use them" in text:
-        report.add("images removed", "PASS", "kept, and said why: other appliances on this machine use them")
+    elif "other Embabel installations on this machine use them" in text:
+        report.add("images removed", "PASS", "kept, and said why: other installations on this machine use them")
     else:
         report.add("images removed", "FAIL", "the uninstall neither removed images nor said why it kept them")
     launcher = os.path.join(inst.env["EMBABEL_BIN_DIR"], "embabel")
