@@ -33,6 +33,7 @@ most of it model calls and realm fetches.
 | `--instance NAME` | another instance name, if `relcheck` is in use |
 | `--ref BRANCH` | install the appliance from a branch rather than `main` — for checking an installer change before it merges |
 | `--plan-fixture FILE` | replace the planner rung's sample email and expectations (see below) |
+| `--view-timeout SECONDS` | how long one default view may take in L2.5 before it fails (default 90) |
 | `--strict` | a KNOWN issue fails the run too |
 
 The exit code is non-zero when any check FAILED. The JSON report, and a copy of the install
@@ -73,6 +74,18 @@ than listed because the list and the dispatch have been wrong independently.
 **L2 the empty world is honest.** Before any realm, `kg/ask` "Which customers owe us money?"
 returns no rows — `NOT_IN_GRAPH`, never an invented customer. It is the first thing a new user
 sees.
+
+**L2.5 every view a default install lists.** Still before any realm is added: every view
+`GET /api/v1/kg/studio/views` lists — the default world's own and the default realms' — run
+on its defaults through `POST /api/v1/kg/studio/execute`, with the view's body and declared
+params, the way the console's Run button runs it. Rows or no rows both pass: an empty world
+honestly answers nothing. A refusal, an engine error (a work budget exceeded, a label the
+world does not have), an HTTP error — including a param with no default, since a listed view
+a user cannot run as listed is a defect — or no answer within `--view-timeout` seconds (90 by
+default) fails. The list is read until it stops growing, because the default realms arrive
+beside onboarding rather than before it. It is the one rung whose subject is what every new
+user is shown, so a view that only works with data or a realm a fresh install lacks belongs
+with whatever brings that, and this is where that shows.
 
 **L3 realms from git.** Each realm through the MCP `install_realm` tool, then `realm_status`
 active (degraded with only notes passes and the note is shown). Then every view those realms

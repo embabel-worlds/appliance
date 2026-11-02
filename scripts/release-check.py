@@ -559,6 +559,70 @@ def rung_empty_world(inst: Instance, report: Report) -> None:
         report.add("kg/ask on an empty world", "PASS", f"0 rows, reason {reason}")
 
 
+def listed_views(inst: Instance, report: Report) -> list[dict] | None:
+    """The views the console lists, once the list has stopped growing.
+
+    The default realms are cloned at first boot, beside onboarding rather than before it, so a
+    list read the moment setup completes can be missing a realm's views. Two reads a settle
+    interval apart that name the same views are taken as the default install's list."""
+    deadline, previous = time.time() + 300, None
+    while True:
+        status, text = inst.get("/api/v1/kg/studio/views", timeout=120)
+        views = as_json(text) if status == 200 else None
+        if not isinstance(views, list):
+            report.add("list views", "FAIL", f"HTTP {status}: {text[:150]}")
+            return None
+        names = sorted(v.get("name") for v in views)
+        if names == previous or time.time() > deadline:
+            return views
+        previous = names
+        report.progress(f"{len(views)} views listed; reading again to see that the list has settled")
+        time.sleep(15)
+
+
+def rung_default_views(inst: Instance, report: Report) -> None:
+    """Every view a default install lists, run on its defaults through the engine.
+
+    L3 sweeps the views of the realms it installs; this sweeps what EVERYBODY gets — the default
+    world's views and the default realms' — before anything is added. Each runs as the console's
+    Run button runs it, `POST /kg/studio/execute` with the view's own body and declared params,
+    so a view whose param has no default is a failure here: a listed view a user cannot run as
+    listed is a defect, not a view to skip. Rows or none both pass, since an empty world honestly
+    answers nothing. An error, a refusal or no answer within --view-timeout fails."""
+    report.rung("L2.5 every view a default install lists answers on its defaults")
+    views = listed_views(inst, report)
+    if views is None:
+        return
+    timeout = inst.args.view_timeout
+    report.progress(f"{len(views)} views, {timeout}s each at most")
+    answered = 0
+    for view in sorted(views, key=lambda v: (v.get("source") or "", v.get("name") or "")):
+        name = view.get("name")
+        check = f"view {view.get('source') or 'world'}/{name}"
+        if not view.get("cypher"):
+            # A goal view runs the query its plan compiled to, and one never planned has none.
+            report.add(check, "SKIP", "goal view with no compiled plan yet")
+            continue
+        started = time.time()
+        code, body = inst.post("/api/v1/kg/studio/execute",
+                               {"cypher": view["cypher"], "params": view.get("params") or {}}, timeout=timeout)
+        took = time.time() - started
+        answer = as_json(body) or {}
+        if code == 0:
+            report.add(check, "FAIL", f"no answer within {timeout}s ({body[:100]})")
+        elif code != 200:
+            why = answer.get("error") or answer.get("message") or body
+            report.add(check, "FAIL", f"HTTP {code}: {' '.join(str(why).split())[:200]}")
+        elif answer.get("error"):
+            report.add(check, "FAIL", f"{' '.join(str(answer['error']).split())[:200]} ({took:.1f}s)")
+        else:
+            answered += 1
+            rows = answer.get("rowCount", len(answer.get("rows") or []))
+            report.add(check, "PASS", f"{rows} rows in {took:.1f}s" + ("" if rows else " — empty, honestly"))
+    report.facts["defaultViewsListed"] = len(views)
+    report.facts["defaultViewsAnswered"] = answered
+
+
 def realm_name(answer, repo: str) -> str:
     if isinstance(answer, dict):
         for key in ("realm", "name", "installed"):
@@ -1118,6 +1182,8 @@ def main() -> int:
     parser.add_argument("--no-install", action="store_true",
                         help="reuse an instance already installed in --home (developing this script)")
     parser.add_argument("--install-timeout", type=int, default=1800)
+    parser.add_argument("--view-timeout", type=int, default=90,
+                        help="seconds a default view may take before L2.5 fails it (default 90)")
     parser.add_argument("--report", help="JSON report path (default: in the system temp directory)")
     ways_out = parser.add_mutually_exclusive_group()
     ways_out.add_argument("--only-uninstall", action="store_true",
@@ -1153,6 +1219,7 @@ def main() -> int:
             if rung_onboarding(inst, report):
                 rung_mcp(inst, report)
                 rung_empty_world(inst, report)
+                rung_default_views(inst, report)
                 realms = rung_realms(inst, report)
                 rung_planner(inst, report, realms)
                 authored = rung_authoring(inst, report)
