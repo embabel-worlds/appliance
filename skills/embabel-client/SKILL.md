@@ -5,7 +5,7 @@ description: Write an app that CALLS an Embabel appliance over REST — run save
 
 The appliance is a typed API server, and an app that consumes it should be written the way you
 would write against any well-specified API: **from the spec, against the endpoints built for
-callers**. Not by scraping the console, not by talking to Neo4j directly, and not by rebuilding
+callers**. Not by scraping the console, not by talking to the graph directly, and not by rebuilding
 query logic the server already owns.
 
 ## 1. The spec is the contract — fetch it first
@@ -114,7 +114,7 @@ webhook on the server, not a poller in your app.
 
 ## What not to do
 
-- Do not connect to Neo4j/Postgres behind the appliance directly. The REST surface injects
+- Do not connect to the graph or Postgres behind the appliance directly. The REST surface injects
   per-user scope, policy and redaction; the datastore has none of that, and a client wired to it
   breaks on the next internal schema change.
 - Do not scrape or replay console endpoints marked hidden — they are the console's own plumbing,

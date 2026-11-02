@@ -315,11 +315,12 @@ def cmd_open(args) -> int:
         print(f"  Dashboards are off. Set EMBABEL_MONITORING=on in .env, then run `{embabel_command('up')}`.")
         return 1
     if what not in urls:
-        # Only `graph`, which is Neo4j Browser: nothing to open on an engine without Neo4j.
+        # Only `graph`, which is Neo4j Browser and so only on a Neo4j appliance. The answer on any
+        # other engine names that engine and the protocol, never a Neo4j it does not run.
         bolt = urls.get("bolt")
         engine = {"EMBABEL": "the Embabel engine, inside the server", "FALKORDB": "FalkorDB"}.get(s.graph_engine())
-        print(f"  This appliance's graph is {engine or s.graph_engine()}, which has no Neo4j Browser."
-              + (f"\n  Neo4j's tools connect to it over Bolt at {bolt}, on a server image with the Bolt server."
+        print(f"  This appliance's graph is {engine or s.graph_engine()}, which has no browser of its own to open."
+              + (f"\n  Bolt drivers and graph browsers connect to it at {bolt}, on a server image with the Bolt server."
                  if bolt else ""))
         return 1
     url = urls[what]

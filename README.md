@@ -291,15 +291,15 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 | +5 | 11047 | grafana | dashboards over the metrics — off by default, `EMBABEL_MONITORING=on` |
 | +6 | 11048 | prometheus | scrapes and stores them, 15 days by default |
 | +7 | 11049 | open-webui | optional alternative chat front-end, off by default |
-| +8 | 11050 | worlds / assistant | Bolt: Neo4j Browser and the Neo4j drivers against a world, or the engine's graph |
+| +8 | 11050 | worlds / assistant | Bolt: graph browsers and Bolt drivers against a world, or the engine's graph |
 | +9 | 11051 | worlds / assistant | Bolt: persisted mode, your own Cypher database, read and write |
 | +10 | 11052 | worlds / assistant | SQL: the Postgres wire protocol, for psql, JDBC, BI tools, dbt and `postgres_fdw` — on by default, `EMBABEL_SQL=false` turns it off |
 | +11…+15 | 11053–11057 | — | spare, so the next service does not need a new block |
 | — | — | docling | PDF/DOCX/PPTX/XLSX → structured markdown, internal only |
 
 Everything binds to `127.0.0.1` — reachable from your machine, not from the network —
-except the two Bolt ports, 11050 and 11051. They are there to be dialled by Neo4j Browser and
-the drivers from any machine, and every Bolt session signs in with an appliance account or an
+except the two Bolt ports, 11050 and 11051. They are there to be dialled by graph browsers and
+Bolt drivers from any machine, and every Bolt session signs in with an appliance account or an
 API key. `BOLT_BIND=127.0.0.1` in `.env` keeps them on this machine.
 
 **A second appliance takes the next block** (11058–11073), and a third the one
