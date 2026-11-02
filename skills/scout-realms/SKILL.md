@@ -167,7 +167,7 @@ Also collect, as before:
 
 Two false positives will otherwise dominate the database list, so filter both:
 
-**Infrastructure, not domain.** The appliance ships its own Postgres and Neo4j, and every checkout
+**Infrastructure, not domain.** The appliance ships its own Postgres and graph engine, and every checkout
 of it has them in `docker-compose*.yml`. They hold the world's own state and are not candidates.
 Neither is a test fixture or a database whose only tables are migrations. Drop them silently; a
 survey that proposes learning the appliance's own store reads as one that did not look.

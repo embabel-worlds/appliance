@@ -111,8 +111,14 @@ case "$MEM" in ''|*[!0-9]*) MEM=0 ;; esac
 if [ "$MEM" -gt 0 ]; then
   MEMGB=$((MEM / 1024 / 1024 / 1024))
   if [ "$MEMGB" -lt 5 ]; then
+    # The heap line is Neo4j's, so only an install whose .env chose Neo4j is told it; on the
+    # Embabel engine there is no Neo4j to size, and naming one would be false.
+    NEO4J_HINT=""
+    if grep -qs '^GRAPH_TYPE=NEO4J' "$HOME/embabel/worlds/.env" "$HOME/embabel-worlds/.env" "$HOME/embabel-me/.env"; then
+      NEO4J_HINT=" If you cannot spare more: your .env file says GRAPH_TYPE=NEO4J, and adding the line NEO4J_HEAP=1G to it makes the database use half as much."
+    fi
     warn "Docker has about ${MEMGB} GB of memory. Embabel needs about 5 GB to run comfortably." \
-         "Docker Desktop → Settings → Resources → Memory. If you cannot spare more and your .env file says GRAPH_TYPE=NEO4J, adding the line NEO4J_HEAP=1G to it makes the database use half as much."
+         "Docker Desktop → Settings → Resources → Memory.$NEO4J_HINT"
   else
     ok "Docker has about ${MEMGB} GB of memory (about 5 GB is needed)."
   fi
