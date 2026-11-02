@@ -81,8 +81,9 @@ printed = out.getvalue()
 check(written.get("NEO4J_PASSWORD") == SENTINEL and stored == SENTINEL,
       "the stated password was not the one pinned — this check no longer exercises the pin line")
 check(SENTINEL not in printed, "pin_install printed the Neo4j password")
-check("NEO4J_PASSWORD" in printed, "pin_install no longer names the credential it pinned")
-check("NEO4J_VERSION=" in printed, "pin_install stopped showing the values that are not credentials")
+# Pinning is silent now — the .env lines carry the record with their reasons — so nothing it
+# writes can reach a terminal, a pasted transcript or a shared screen.
+check(printed.strip() == "", f"pin_install printed something; it is meant to be silent: {printed!r}")
 
 # ── the pin line: an install that predates the pins (the `embabel upgrade` case) ──
 

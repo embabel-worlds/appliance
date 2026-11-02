@@ -44,7 +44,7 @@ SHARED_REFUSALS = (
     "exists and is not an Embabel install.",
     "Could not reach GitHub.",
     "Could not unpack the download.",
-    "The download did not contain an Embabel appliance.",
+    "The download did not contain Embabel.",
     "Embabel needs Python 3.9 or newer",
     # The way out, reached through the installer: nothing found is said, not failed.
     "No Embabel install found in",

@@ -207,7 +207,7 @@ def banner(subtitle: str) -> str:
     """The first two lines setup prints. A function so the preview script and the
     program cannot drift — the whole reason the colour looked absent once already
     was two copies of the same line, one of them stale."""
-    return ("\n" + banner_art() + "\n\n  " + paint("Embabel appliance", "bold", "accent")
+    return ("\n" + banner_art() + "\n\n  " + paint("Embabel", "bold", "accent")
             + dim(" — ") + subtitle + "\n  " + rule())
 
 
