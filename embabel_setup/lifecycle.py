@@ -654,7 +654,7 @@ def ensure_mode(mode: str) -> bool:
         retire_sql_sidecar()
         print()
         return False
-    print(f"  Starting the {mode} mode — pulling what it needs to answer.\n")
+    print(f"  Starting {mode} mode.\n")
     # AND IT MUST ACTUALLY PULL. `up -d` fetches an image it does not have and
     # stops there, which for `latest` means a machine that pulled it once never
     # sees another build — so a fresh install on a machine with any history runs

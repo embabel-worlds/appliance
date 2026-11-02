@@ -197,7 +197,7 @@ def _write_manifest(dest: str, saved: list[str], volumes: list[str], mode: str) 
         f.write("\n")
     with open(os.path.join(dest, "README.txt"), "w") as f:
         f.write(
-            f"Embabel appliance backup — {time.strftime('%c')}\n\n"
+            f"Embabel backup — {time.strftime('%c')}\n\n"
             "Everything this appliance knew, at rest: the knowledge graph, worlds,\n"
             "documents, and the settings that shaped them. Restore it with:\n\n"
             f"    embabel --instance {instance()} restore {os.path.abspath(dest)}\n\n"

@@ -121,7 +121,7 @@ def bug_report(dest_dir: str, extra: dict, everything: bool = False) -> str:
               _container_log(container["name"], everything))
 
     write("README.txt",
-          "Embabel appliance bug report — " + time.strftime("%c") + "\n\n"
+          "Embabel bug report — " + time.strftime("%c") + "\n\n"
           "Attach the .zip beside this folder to your issue. Read it first if you\n"
           "like — that is why it is left unpacked.\n\n"
           "WHAT IS NOT HERE: no .env VALUES (env-keys.txt lists the keys and whether\n"

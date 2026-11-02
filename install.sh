@@ -465,7 +465,7 @@ tar xzf "$TARBALL" -C "$HOME_DIR" --strip-components=1 || die "Could not unpack 
 
 # Post-condition, because a download that returns the wrong thing is worse than
 # one that fails: prove the install is actually here before promising setup.
-[ -f "$HOME_DIR/setup.py" ] || die "The download did not contain an Embabel appliance. Nothing was installed."
+[ -f "$HOME_DIR/setup.py" ] || die "The download did not contain Embabel. Nothing was installed."
 
 chmod +x "$HOME_DIR/me.py" "$HOME_DIR/worlds.py" "$HOME_DIR/setup.py" "$HOME_DIR/embabel" 2>/dev/null || true
 

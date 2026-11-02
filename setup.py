@@ -159,7 +159,7 @@ def hand_over_to_console(base: str, token: str, container: str | None) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Set up the Embabel appliance.")
+    parser = argparse.ArgumentParser(description="Set up Embabel.")
     parser.add_argument("mode", nargs="?", choices=tuple(MODE_COMPOSE),
                         help="which mode to set up — starts it if nothing is running "
                              "(default: whichever mode is already up)")

@@ -213,12 +213,10 @@ def pin_install(creating: bool) -> dict[str, str]:
             continue
         set_env_var(pin.key, value, (f"# {pin.key}: {note} — {pin.why}.",))
         written[pin.key] = value
-    if written:
-        # stderr: the Me app reads a verb's stdout as JSON, and this can come before any verb.
-        # NAMED, NOT ECHOED, for a credential: NEO4J_PASSWORD is one of these rows, and an
-        # upgrade's output is exactly what gets pasted into an issue or shown on a call.
-        print(f"  Pinned in {env_file()}: " + ", ".join(shown_setting(k, v) for k, v in written.items()),
-              file=sys.stderr)
+    # SILENT. Each pinned line is written with a comment saying what it is and why it is pinned,
+    # so the .env is the record; printing the list as well put engine names, journal paths and
+    # model ids in front of someone installing for the first time, none of which they chose or
+    # need to know. `embabel version` and the .env answer the question when somebody asks it.
     return written
 
 

@@ -255,8 +255,8 @@ def codex_agents_block() -> str:
     checkout = os.path.abspath(APPLIANCE_DIR)
     return (
         f"{AGENTS_BLOCK_BEGIN}\n"
-        f"## Embabel appliance\n"
-        f"The MCP server named '{MCP_SERVER_NAME}' is an Embabel appliance — the user's world\n"
+        f"## Embabel\n"
+        f"The MCP server named '{MCP_SERVER_NAME}' is Embabel — the user's world\n"
         f"runtime (data, realms, saved views, apps). Before working with it, read\n"
         f"`{checkout}/AGENT_GUIDE.md` — the first-calls list there saves failed guesses, and it\n"
         f"routes to full runbooks under `{checkout}/skills/` for realm prospecting,\n"

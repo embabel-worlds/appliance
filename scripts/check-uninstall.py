@@ -249,7 +249,7 @@ def other_appliance_keeps_shared_downloads():
         assert run.returncode == 0, out
         calls = docker_calls(env)
         assert "image rm" not in calls and "model rm" not in calls, "removed downloads another appliance runs on"
-        assert "other Embabel appliances on this machine use them: other" in out, out
+        assert "other Embabel installations on this machine use them: other" in out, out
         assert "This appliance is uninstalled." in out and "Embabel is uninstalled." not in out, out
 
 

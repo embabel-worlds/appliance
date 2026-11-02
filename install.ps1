@@ -410,7 +410,7 @@ try {
   # Post-condition: a download that returns the wrong thing is worse than one
   # that fails, so prove the install is actually here before promising setup.
   if (-not (Test-Path (Join-Path $HomeDir 'setup.py'))) {
-    Die "The download did not contain an Embabel appliance. Nothing was installed."
+    Die "The download did not contain Embabel. Nothing was installed."
   }
 } finally {
   Remove-Item $Tarball -ErrorAction SilentlyContinue

@@ -118,7 +118,7 @@ class Plan:
                 # stopped or mid-upgrade has no container to say so. While another is installed
                 # anywhere on this machine, they are its as much as this one's.
                 self.kept.append(("the Docker images and the embedding model",
-                                  "other Embabel appliances on this machine use them: "
+                                  "other Embabel installations on this machine use them: "
                                   + ", ".join(self.others_anywhere)))
             else:
                 self.images, in_use = removable_images()
@@ -458,7 +458,7 @@ def uninstall(assume_yes: bool = False, keep_images: bool = False, keep_dir: boo
     if plan.others_here or plan.others_anywhere:
         which = "This appliance" if instance() == DEFAULT_INSTANCE else f"The '{instance()}' appliance"
         print("  " + bold(f"{which} is uninstalled.") + " "
-              + dim(f"Other Embabel appliances here: {', '.join(plan.others_anywhere or plan.others_here)}."))
+              + dim(f"Other Embabel installations here: {', '.join(plan.others_anywhere or plan.others_here)}."))
     else:
         print("  " + bold("Embabel is uninstalled."))
     if remained:

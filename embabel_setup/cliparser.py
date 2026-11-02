@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     several = len(s.installed_instances()) > 1
     parser = argparse.ArgumentParser(
         prog="embabel",
-        description="The Embabel appliance: a knowledge graph, an agent runtime, and the realms you install into it.",
+        description="Embabel: a knowledge graph, an agent runtime, and the realms you install into it.",
         epilog="Full reference: https://worlds.embabel.com/cli/",
     )
     # NOT required: `embabel` on its own is what someone types when they want to
