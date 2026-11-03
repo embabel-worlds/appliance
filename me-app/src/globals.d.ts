@@ -36,13 +36,6 @@ declare global {
     me: MeBridge
     meTheme: MeTheme
     markdown: MeMarkdown
-    /* The Query Studio's own modules, each an IIFE publishing one object. Their
-       shapes are internal to that window and change together with their callers,
-       so they are typed as their implementations infer rather than restated. */
-    queryAsk: unknown
-    queryComposer: unknown
-    queryViews: unknown
-    querySchemaPanel: unknown
   }
 
   /* NOTHING THIRD-PARTY IS DECLARED HERE ANY MORE, and that is the point.

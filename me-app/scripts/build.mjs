@@ -83,7 +83,7 @@ const styles = [
 /** One bundle per window, named for the page that loads it. */
 const browser = [
   { entryPoints: ['src/renderer.ts'], outfile: 'dist/renderer.js' },
-  { entryPoints: ['src/query-studio.ts'], outfile: 'dist/query-studio.js' },
+  { entryPoints: ['src/query-studio.tsx'], outfile: 'dist/query-studio.js' },
   { entryPoints: ['src/handler-studio.tsx'], outfile: 'dist/handler-studio.js' },
   { entryPoints: ['src/logview.ts'], outfile: 'dist/logview.js' },
   { entryPoints: ['src/agents-window.tsx'], outfile: 'dist/agents-window.js' },

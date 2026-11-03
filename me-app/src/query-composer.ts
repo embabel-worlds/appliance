@@ -1,12 +1,25 @@
-// Query Studio — the COMPOSER: targets, modes, the narrowing controls, the
-// tag universe, and the Tips that follow the chosen target. Plain script,
-// one global; compose() writes through the orchestrator's editor.
+/*
+ * Query Studio — the COMPOSER: targets, modes, the narrowing controls, the tag universe, and the
+ * Tips that follow the chosen target.
+ *
+ * The one part of the window that is this app's rather than the kit's: the kit's QueryStudioSurface
+ * has no composer. The Cypher-shaping is the kit's all the same (`compose` in its vc package), so
+ * what lands in the editor is the query the Worlds console would write from the same controls.
+ * It lands through the surface's handoff, like any query arriving from outside the editor.
+ */
 
 import { $ } from './dom'
 import type { Settings } from './types'
-import type { StudioDeps } from './studio-deps'
 import { TARGETS, TIPS, type AnchorId, type ComposeSpec, type Mode, type TargetId, compose as composeCypher } from '@embabel/appliance-kit/vc'
-import { setStatus } from '@embabel/appliance-kit/studio-kit'
+
+/** What the composer is handed: the connection, and the two things it asks of the editor. */
+export interface ComposerDeps {
+  settings: Settings
+  /** Put composed Cypher in the studio's editor. */
+  land(cypher: string): void
+  /** Whether the editor holds something other than what was last composed — the user's own work. */
+  isHandEdited(): boolean
+}
 
 export const queryComposer = (() => {
 const els = {
@@ -16,12 +29,11 @@ const els = {
   dateRow: $('date-row'), dateField: $('date-field'), dateFrom: $('date-from'), dateTo: $('date-to'),
   minScore: $('min-score'), limit: $('limit'), steerPanel: $('steer-panel'),
   aiHint: $('ai-hint'), aiModel: $('ai-model'), aiTemperature: $('ai-temperature'),
-  aiConfidence: $('ai-confidence'), aiFresh: $('ai-fresh'), compose: $('compose'),
+  aiConfidence: $('ai-confidence'), aiFresh: $('ai-fresh'), compose: $('compose-run'),
   seekPanel: $('seek-panel'), narrowPanel: $('narrow-panel'),
 }
-let setEditorText: StudioDeps['setEditorText'] = () => {}
+let land: ComposerDeps['land'] = () => {}
 let isHandEdited: () => boolean = () => false
-let scheduleValidation: (() => void) | undefined
 
 // ---------------------------------------------------------------------------
 // The targets and their modes. Costs are the spec's own guidance, shown at the
@@ -77,8 +89,7 @@ function composeSpec(): ComposeSpec {
 }
 
 function compose() {
-  setEditorText(composeCypher(composeSpec()))
-  scheduleValidation?.()
+  land(composeCypher(composeSpec()))
 }
 
 // ---------------------------------------------------------------------------
@@ -236,13 +247,16 @@ async function loadTagUniverse() {
 }
 
 return {
-  init(deps: StudioDeps) {
+  /*
+   * Nothing is composed at init: an empty editor is where the studio offers its examples, and a
+   * composed query would cover them before anyone had touched a control.
+   */
+  init(deps: ComposerDeps) {
     settings = deps.settings
-    setEditorText = deps.setEditorText
+    land = deps.land
     isHandEdited = deps.isHandEdited
     renderTargets()
     applyTarget()
-    compose()
     void loadTagUniverse()
   },
 }

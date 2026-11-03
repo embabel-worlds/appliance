@@ -62,10 +62,12 @@ three reasons: their own `.d.ts` files apply, `npm update` is the upgrade rather
 than a copy script somebody has to remember to run, and the packaged app's
 `files` list stops carrying a second copy of code npm already installed.
 
-The Agents window, the Approvals window and the Routine Studio are React pages
-that mount the kit's `AgentsSurface`, `ApprovalsSurface` and
-`HandlerStudioSurface`, so the Me app and the Worlds console show agents and
-edit routines through the same components. Their requests are the kit clients'
+The Agents window, the Approvals window, the Routine Studio and Query Studio are
+React pages that mount the kit's `AgentsSurface`, `ApprovalsSurface`,
+`HandlerStudioSurface` and `QueryStudioSurface`, so the Me app and the Worlds
+console show agents, edit routines and write queries through the same
+components. Query Studio keeps two things of the app's own beside the surface:
+the composer and the plan panel (the kit's `PlanPanel`). Their requests are the kit clients'
 `RequestSpec`s, carried by `src/kit-transport.ts` over one IPC channel and sent
 by the kit's `HttpTransport` in the main process, behind the per-method route
 allow-list in `src/api.ts`: a route not on it does not exist for these pages.

@@ -20,8 +20,21 @@ const api = {
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   askDocuments: (settings: Settings, request: unknown) => ipcRenderer.invoke('docs:ask', settings, request),
   vcExecute: (settings: Settings, cypher: string) => ipcRenderer.invoke('vc:execute', settings, cypher),
-  vcSchema: (settings: Settings) => ipcRenderer.invoke('vc:schema', settings),
-  vcValidate: (settings: Settings, cypher: string) => ipcRenderer.invoke('vc:validate', settings, cypher),
+  /*
+   * The engine's live trace, for Query Studio's progress and Stop. Main holds the stream and sends
+   * each event on `vc:event` tagged with this subscription's id, because one window can hold more
+   * than one. Returns the unsubscribe, which closes the stream in main.
+   */
+  vcEvents: (settings: Settings, callback: (event: unknown) => void) => {
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const listener = (_e: unknown, from: string, event: unknown) => { if (from === id) callback(event) }
+    ipcRenderer.on('vc:event', listener)
+    void ipcRenderer.invoke('vc:events', settings, id)
+    return () => {
+      ipcRenderer.removeListener('vc:event', listener)
+      void ipcRenderer.invoke('vc:events-stop', id)
+    }
+  },
   hintRandom: (settings: Settings, exclude: string[]) => ipcRenderer.invoke('hints:random', settings, exclude),
   toursList: (settings: Settings) => ipcRenderer.invoke('tours:list', settings),
   tourStepStatus: (settings: Settings, id: string, index: number, params: object) =>
@@ -30,11 +43,6 @@ const api = {
   tourImport: (settings: Settings, yaml: string) => ipcRenderer.invoke('tours:import', settings, yaml),
   tourDelete: (settings: Settings, id: string) => ipcRenderer.invoke('tours:delete', settings, id),
   tourAsset: (settings: Settings, path: string) => ipcRenderer.invoke('tours:asset', settings, path),
-  vcGenerate: (settings: Settings, question: string) => ipcRenderer.invoke('vc:generate', settings, question),
-  vcRefine: (settings: Settings, cypher: string, instruction: string) => ipcRenderer.invoke('vc:refine', settings, cypher, instruction),
-  vcViews: (settings: Settings) => ipcRenderer.invoke('vc:views', settings),
-  vcSaveView: (settings: Settings, spec: unknown) => ipcRenderer.invoke('vc:save-view', settings, spec),
-  vcDeleteView: (settings: Settings, name: string) => ipcRenderer.invoke('vc:delete-view', settings, name),
   vcViewInvocation: (settings: Settings, name: string, args: unknown) => ipcRenderer.invoke('vc:view-invocation', settings, name, args),
   vcLensModel: (settings: Settings) => ipcRenderer.invoke('vc:lens-model', settings),
   vcSetLensModel: (settings: Settings, model: string) => ipcRenderer.invoke('vc:set-lens-model', settings, model),

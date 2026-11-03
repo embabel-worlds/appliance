@@ -65,38 +65,6 @@ export interface AskStep {
   [key: string]: unknown
 }
 
-/*
- * THE SCHEMA SNAPSHOT IS THE KIT'S, NOT OURS.
- *
- * These were hand-written here and had quietly drifted from the server: this file
- * had `properties` optional on a label and `type` optional on a property, while
- * `KgSchemaLabel` and `KgSchemaProperty` mark both REQUIRED in the surface
- * `OpenApiClientContractTest` guards. Nothing caught it, because the studio
- * reached the semantics through an untyped global.
- *
- * Re-exported rather than restated so there is one reading of the snapshot, and
- * so the callers below keep the names they already use.
- */
-export type {
-  GraphSchema as SchemaSnapshot,
-  SchemaLabel,
-  SchemaRelationship as SchemaRel,
-} from '@embabel/appliance-kit/vc'
-
-/** A saved view, with whatever parameters it declares. */
-export interface ViewSpec {
-  name: string
-  description?: string
-  cypher?: string
-  group?: string
-  /** Where it came from: 'saved' is the user's own, anything else the world's. */
-  source?: string
-  /** A materialized view is cached; ttl says for how long. */
-  materialized?: boolean
-  ttl?: string | number
-  params?: Record<string, { type?: string; default?: unknown; description?: string }>
-}
-
 /** The privacy projection: which models are answering, and where they run. */
 export interface ModelsInUse {
   models: ModelInfo[]
