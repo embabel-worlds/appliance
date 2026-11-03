@@ -671,7 +671,8 @@ handle('query:popout', () => {
     return
   }
   studioWindow = new BrowserWindow({
-    width: 1180,
+    // Wider than the other studios: the kit's surface, with its schema rail, sits beside the composer.
+    width: 1440,
     height: 840,
     title: 'Embabel Me — Query Studio',
     backgroundColor: '#000000',
@@ -856,8 +857,6 @@ handle('docs:upload', (settings: Settings, filename: string, bytes: ArrayBuffer,
   return api.uploadDocument(settings, filename, bytes, tags.split(',').filter(Boolean))
 })
 
-handle('vc:schema', (settings: Settings) => api.kgSchema(settings))
-handle('vc:validate', (settings: Settings, cypher: string) => api.kgValidate(settings, cypher))
 handle('hints:random', (settings: Settings, exclude: string[]) => api.hintRandom(settings, exclude))
 handle('tours:list', (settings: Settings) => api.toursList(settings))
 handle('tours:step-status', (settings: Settings, id: string, index: number, params: object) =>
@@ -869,20 +868,6 @@ handle('tours:import', (settings: Settings, yaml: string) => {
 })
 handle('tours:delete', (settings: Settings, id: string) => api.tourDelete(settings, id))
 handle('tours:asset', (settings: Settings, path: string) => api.tourAsset(settings, path))
-handle('vc:generate', (settings: Settings, question: string) => {
-  log(`[me-app] text-to-cypher: ${JSON.stringify(question).slice(0, 120)}`)
-  return api.kgGenerate(settings, question)
-})
-handle('vc:refine', (settings: Settings, cypher: string, instruction: string) => {
-  log(`[me-app] cypher refine: ${JSON.stringify(instruction).slice(0, 120)}`)
-  return api.kgRefine(settings, cypher, instruction)
-})
-handle('vc:views', (settings: Settings) => api.listViews(settings))
-handle('vc:save-view', (settings: Settings, spec: { name?: string }) => {
-  log(`[me-app] saving view ${spec.name}`)
-  return api.saveView(settings, spec)
-})
-handle('vc:delete-view', (settings: Settings, name: string) => api.deleteView(settings, name))
 handle('vc:view-invocation', (settings: Settings, name: string, args: Record<string, unknown>) => api.viewInvocation(settings, name, args))
 handle('vc:lens-model', (settings: Settings) => api.lensModel(settings))
 handle('vc:set-lens-model', (settings: Settings, model: string) => {
@@ -894,6 +879,30 @@ handle('vc:set-lens-model', (settings: Settings, model: string) => {
 handle('vc:execute', (settings: Settings, cypher: string) => {
   log(`[me-app] virtual cypher: ${JSON.stringify(cypher).slice(0, 160)}`)
   return api.kgExecute(settings, cypher)
+})
+
+/*
+ * The engine's live trace, held open here for a window that asked and forwarded to it event by
+ * event. Keyed by the window's own subscription id; closed when it unsubscribes or goes away, so a
+ * closed studio does not leave a stream open on the appliance.
+ */
+const vcStreams = new Map<string, AbortController>()
+handle('vc:events', (settings: Settings, id: string, event: Electron.IpcMainInvokeEvent) => {
+  const controller = new AbortController()
+  vcStreams.set(id, controller)
+  const sender = event.sender
+  const gone = () => controller.abort()
+  sender.once('destroyed', gone)
+  void api.vcEvents(settings, (payload) => {
+    if (!sender.isDestroyed()) sender.send('vc:event', id, payload)
+  }, controller.signal).finally(() => {
+    vcStreams.delete(id)
+    if (!sender.isDestroyed()) sender.removeListener('destroyed', gone)
+  })
+})
+handle('vc:events-stop', (id: string) => {
+  vcStreams.get(id)?.abort()
+  vcStreams.delete(id)
 })
 
 handle('docs:ask', (settings: Settings, request: AskRequest, event: Electron.IpcMainInvokeEvent) => {

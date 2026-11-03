@@ -9,7 +9,7 @@
 // (DICE propositions), coarser receipts.
 
 import { diagnose } from './appliance'
-import { HttpTransport, type Outcome, type RequestSpec } from '@embabel/appliance-kit'
+import { HttpTransport, createSseParser, type Outcome, type RequestSpec } from '@embabel/appliance-kit'
 import type { ConnectionResult, Fact, FocusSample, SendResult, Settings } from './types'
 
 const SOURCE = 'me-app'
@@ -256,66 +256,6 @@ async function uploadDocument(settings: Settings, filename: string, bytes: Array
   return { ok: true, message: body?.title ?? 'ingested', uri: body?.uri ?? null }
 }
 
-/*
- * Saved views — named Cypher bodies living in the user's world, optionally with
- * declared parameters. Four calls: list, save, delete, and "what would this view
- * run", which returns the invocation's Cypher so the studio can show (and let the
- * user edit) it before running through the ordinary execute path.
- */
-
-/** @param {Settings} settings */
-async function listViews(settings: Settings) {
-  try {
-    const res = await fetch(`${settings.baseUrl}/api/v1/admin/kg/views`, {
-      headers: { Authorization: auth(settings) },
-      signal: AbortSignal.timeout(30000),
-    })
-    if (res.status === 404) return { ok: false, message: 'no views endpoint — older appliance', views: [] }
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, views: [] }
-    return { ok: true, message: '', views: (await readJson(res)) ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e), views: [] }
-  }
-}
-
-/**
- * Save a query as a named view. The appliance validates before persisting — an
- * unrunnable body or a name a shipped view already owns comes back as a refusal
- * with the reason, never a silently broken view.
- * @param {Settings} settings
- * @param {{name: string, cypher: string, description?: string, params?: object}} spec
- */
-async function saveView(settings: Settings, spec: { name?: string }) {
-  try {
-    const res = await post(settings, '/api/v1/admin/kg/views', spec, 60000)
-    if (res.status === 404) return { ok: false, message: 'this appliance cannot save views — it needs a newer image' }
-    const body = await readJson(res)
-    if (!res.ok) {
-      const violations = body?.violations?.length ? ` — ${body.violations.join('; ')}` : ''
-      return { ok: false, message: (body?.error ?? `HTTP ${res.status}`) + violations }
-    }
-    return { ok: true, message: `saved “${body?.name ?? spec?.name}”` }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/** @param {Settings} settings @param {string} name */
-async function deleteView(settings: Settings, name: string) {
-  try {
-    const res = await fetch(`${settings.baseUrl}/api/v1/admin/kg/views/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-      headers: { Authorization: auth(settings) },
-      signal: AbortSignal.timeout(30000),
-    })
-    if (res.status === 404) return { ok: false, message: `no saved view named ${name}` }
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-    return { ok: true, message: `deleted ${name}` }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
 /**
  * The runnable Cypher for a view invoked with [args] — args merged over the
  * declared defaults, coerced and substituted server-side. A bad argument comes
@@ -331,28 +271,6 @@ async function viewInvocation(settings: Settings, name: string, args: object) {
     return { ok: true, cypher: body?.cypher ?? '' }
   } catch (e) {
     return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/**
- * The acting user's graph schema — labels with typed properties, relationship
- * triples, virtual labels included. The same snapshot the engine's preflight
- * validates against, which is what makes it fit to drive completion: what the
- * editor offers and what validation accepts cannot disagree.
- * @param {Settings} settings
- */
-async function kgSchema(settings: Settings) {
-  try {
-    const res = await fetch(`${settings.baseUrl}/api/v1/admin/kg/schema`, {
-      headers: { Authorization: auth(settings) },
-      signal: AbortSignal.timeout(30000),
-    })
-    if (res.status === 404) return { ok: false, message: 'no schema endpoint — older appliance', labels: [], relationships: [] }
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}`, labels: [], relationships: [] }
-    const body = await readJson(res)
-    return { ok: true, message: '', labels: body?.labels ?? [], relationships: body?.relationships ?? [] }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e), labels: [], relationships: [] }
   }
 }
 
@@ -386,63 +304,6 @@ async function setLensModel(settings: Settings, model: string) {
     return { ok: false, message: errorMessage(e) }
   }
 }
-
-/**
- * Text-to-Cypher, generation ONLY — the appliance writes the query for a plain-
- * English question and explains what executing it will do, without running it.
- * The two-phase console pattern: generate → display (editable) → execute.
- * An LLM call, so patient; a local model can take half a minute.
- * @param {Settings} settings
- * @param {string} question
- */
-async function kgGenerate(settings: Settings, question: string) {
-  try {
-    const res = await post(settings, '/api/v1/admin/kg/generate', { question }, 120_000)
-    if (res.status === 404) return { ok: false, message: 'no generate endpoint — older appliance' }
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return {
-      ok: true,
-      cypher: body?.cypher ?? '',
-      explain: body?.explain ?? null,
-      durationMs: body?.durationMs ?? null,
-      // Server-validated before it was handed over; an older appliance sends
-      // neither field and the caller falls back to validating client-side.
-      valid: typeof body?.valid === 'boolean' ? body.valid : null,
-      violations: body?.violations ?? [],
-      attempts: body?.attempts ?? null,
-    }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/**
- * ROUND-TRIP generation: the CURRENT (possibly hand-edited) cypher travels with
- * an instruction saying what to change; the revision returns with its verdict,
- * shaped exactly like generate.
- * @param {Settings} settings @param {string} cypher @param {string} instruction
- */
-async function kgRefine(settings: Settings, cypher: string, instruction: string) {
-  try {
-    const res = await post(settings, '/api/v1/admin/kg/refine', { cypher, instruction }, 120_000)
-    if (res.status === 404) return { ok: false, message: 'no refine endpoint — older appliance' }
-    const body = await readJson(res)
-    if (!res.ok) return { ok: false, message: body?.error ?? `HTTP ${res.status}` }
-    return {
-      ok: true,
-      cypher: body?.cypher ?? '',
-      explain: body?.explain ?? null,
-      durationMs: body?.durationMs ?? null,
-      valid: typeof body?.valid === 'boolean' ? body.valid : null,
-      violations: body?.violations ?? [],
-      attempts: body?.attempts ?? null,
-    }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
 
 /**
  * One tip for the chat window — the appliance resolves the acting user's set (installation
@@ -598,23 +459,6 @@ async function tourDelete(settings: Settings, id: string) {
 }
 
 /**
- * The engine's strict preflight WITHOUT execution — the editor's validator.
- * @param {Settings} settings
- * @param {string} cypher
- */
-async function kgValidate(settings: Settings, cypher: string) {
-  try {
-    const res = await post(settings, '/api/v1/admin/kg/validate', { cypher }, 30000)
-    if (res.status === 404) return { ok: false, message: 'no validate endpoint — older appliance' }
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-    const body = await readJson(res)
-    return { ok: true, valid: body?.ok === true, violations: body?.violations ?? [], detail: body?.message ?? null }
-  } catch (e) {
-    return { ok: false, message: errorMessage(e) }
-  }
-}
-
-/**
  * Run virtual Cypher verbatim through the appliance's engine — the advanced
  * documents surface. Same executor the appliance's own ask path uses: per-user
  * scope rewrite, preflight, live producer joins. An admin endpoint, which the
@@ -674,7 +518,8 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   /*
    * Virtual Cypher, for what a world holds about itself: its realms, the APIs it skipped, the signal
    * types it has seen, its skills, which agent holds a routine. Each is a row the kit's RealmCatalog
-   * and WorldLists query, so these lists answer from the same rows chat and Query Studio do.
+   * and WorldLists query, so these lists answer from the same rows chat and Query Studio do. Query
+   * Studio's own runs go out here too.
    */
   { method: 'POST', path: /^\/api\/v1\/admin\/kg\/execute$/ },
   /*
@@ -686,6 +531,20 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
   { method: 'POST', path: /^\/api\/v1\/admin\/kg\/fills$/ },
   { method: 'DELETE', path: /^\/api\/v1\/admin\/kg\/fills\/(?!\.\.?(?:\/|$))[^/?#]+$/ },
   { method: 'POST', path: /^\/api\/v1\/cron\/compile-schedule$/ },
+  /*
+   * Query Studio, the kit's surface: preflight, Ask and Refine, the runs in flight and stopping one,
+   * the session's scopes (listed, kept, dropped), and the starter examples with their dismissal,
+   * which are the person's own and so live under the studio's non-admin path. A run id and a scope
+   * name are single segments and never dot segments, as above.
+   */
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/(validate|generate|refine)$/ },
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/runs$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/kill\/(?!\.\.?(?:\/|$))[^/?#]+$/ },
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/scopes$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/scopes\/(?!\.\.?(?:\/|$))[^/?#]+\/pin$/ },
+  { method: 'DELETE', path: /^\/api\/v1\/admin\/kg\/scopes\/(?!\.\.?(?:\/|$))[^/?#]+$/ },
+  { method: 'GET', path: /^\/api\/v1\/kg\/studio\/examples$/ },
+  { method: 'PUT', path: /^\/api\/v1\/kg\/studio\/examples\/dismissed$/ },
   /*
    * Query Studio's plan panel. Planning and running are separate routes on the appliance, so the one
    * the panel calls as the author types cannot run anything; the run is its own button. The views
@@ -707,6 +566,36 @@ async function kitSend(settings: Settings, spec: RequestSpec): Promise<Outcome<u
   })
   // The deadline travels too: compiling a schedule is a model call and gets longer than a read.
   return transport.send({ method: spec.method, path: spec.path, query: spec.query, body: spec.body, timeoutMs: spec.timeoutMs })
+}
+
+/**
+ * The engine's live trace for this user, read until [signal] aborts or the appliance closes it, each
+ * event handed to [onEvent] as the JSON it arrived as. Query Studio reads it for a slow run's current
+ * step and the id Stop cancels by. Best-effort: a stream that cannot open changes nothing about the
+ * query, which reports its own outcome.
+ */
+async function vcEvents(settings: Settings, onEvent: (event: unknown) => void, signal: AbortSignal): Promise<void> {
+  try {
+    const res = await fetch(`${settings.baseUrl}/api/v1/virtual-cypher/events`, {
+      headers: { Authorization: auth(settings), Accept: 'text/event-stream' },
+      signal,
+    })
+    if (!res.ok || !res.body) return
+    const decoder = new TextDecoder()
+    const parser = createSseParser()
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      for (const frame of parser.push(decoder.decode(chunk, { stream: true }))) {
+        if (frame.event === 'connected') continue
+        try {
+          onEvent(JSON.parse(frame.data))
+        } catch {
+          // A frame that is not JSON is not an event the studio reads.
+        }
+      }
+    }
+  } catch {
+    // Aborted by the studio, or the appliance went away; the query reports what happened.
+  }
 }
 
 /**
@@ -954,8 +843,8 @@ export {
   listModels,
   getRoles,
   setRole, testConnection, sendFacts, sendFocus, listDocuments, ingestDocumentUrl, kgExecute, realmUpdates,
-  kgSchema, kgValidate, kgGenerate, kgRefine, lensModel, setLensModel,
-  listViews, saveView, deleteView, viewInvocation, hintRandom,
+  vcEvents, lensModel, setLensModel,
+  viewInvocation, hintRandom,
   toursList, tourStepStatus, tourExport, tourImport, tourDelete, tourAsset,
   kitSend, gatewaySurface,
   uploadDocument, installRealm, updateRealm, updateAllRealms, listApps, icon, mcpMode, setMcpMode, mcpProbe }

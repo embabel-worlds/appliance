@@ -11,40 +11,33 @@
   <style id="theme"></style>
   <style>
     .dragbar {
-      -webkit-app-region: drag; height: 40px; flex: none; z-index: 10;
+      -webkit-app-region: drag; height: 40px; flex: none;
       display: flex; align-items: center; padding: 0 16px 0 84px;
       font-family: var(--mono); font-size: 11px; text-transform: uppercase;
       letter-spacing: 0.14em; color: var(--mid);
     }
-    /* THE STUDIO'S OWN WINDOW LAYOUT, not a duplicate of the shared ground.
-       This window is a fixed-height two-column workbench — a drag strip, then a
-       composer beside an editor, each scrolling independently — where the main
-       window is an ordinary scrolling document. `main { flex: 1 }` below needs
-       both of these: without them it has no flex parent and no height to take a
-       share of, so it collapses and the studio renders fully populated and
-       entirely invisible. */
-    html, body { height: 100%; }
-    body { display: flex; flex-direction: column; font-size: 13px; }
-
+    body { font-size: 13px; }
+    /* The kit's studio on the right, the composer beside it. Each column scrolls on its own: the
+       composer is a set of controls you return to, and the studio's results can run long. */
     main {
-      /* An explicit height rather than `flex: 1`. The shared ground gives body
-         `min-height: 100vh` for an ordinary scrolling document, and a flex child
-         sizing itself from a parent whose height is a MINIMUM collapses — the
-         studio then renders fully populated and entirely invisible. Subtracting
-         the drag strip is deterministic and does not care what the ground does. */
-      position: relative; z-index: 1; height: calc(100vh - 40px); min-height: 0;
-      display: grid; grid-template-columns: 350px 1fr; gap: 14px;
-      padding: 0 16px 16px;
+      display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px;
+      padding: 0 16px 16px; height: calc(100vh - 40px); box-sizing: border-box;
     }
-    .col { min-height: 0; overflow-y: auto; }
+    main > .col { min-height: 0; overflow-y: auto; }
+    #plan { margin-top: 14px; }
+
+    /* THE COMPOSER — this app's own, and the only part of this window that is not the kit's. */
     label.field input, label.field select { width: 100%; min-width: 110px; }
     .grow { flex: 1; min-width: 0; }
-    input[type=text], input[type=date], input[type=number], select, textarea {
+    /* A narrow column: the mode's price tag goes under its select rather than squeezing it. */
+    #compose .row { flex-wrap: wrap; }
+    #compose .row .cost { flex-basis: 100%; }
+    #compose input[type=text], #compose input[type=date], #compose input[type=number], #compose select {
       font: inherit; font-size: 13px; padding: 7px 9px;
       border-radius: 3px; border: 1px solid var(--rule); background: #0b1220;
       color: var(--ink); text-transform: none; letter-spacing: normal;
     }
-    input:focus, select:focus, textarea:focus {
+    #compose input:focus, #compose select:focus {
       outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 40%, transparent);
     }
     /* The target picker: one card per thing virtual Cypher can reach. */
@@ -60,141 +53,13 @@
     .cost { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; }
     .cost.cheap { color: #3ecf8e; }
     .cost.dear { color: #f5a97f; }
-    /* CodeMirror, reskinned to this surface. The default theme is a white page;
-       every color here is the app's own palette, not a borrowed theme. */
-    .CodeMirror {
-      height: auto; min-height: 240px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
-      border: 1px solid var(--rule); border-radius: 3px; background: #0b1220; color: var(--ink);
-    }
-    .CodeMirror-focused { border-color: var(--signal); box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 40%, transparent); }
-    .CodeMirror-gutters { background: #0b1220; border-right: 1px solid var(--rule); }
-    .CodeMirror-linenumber { color: var(--faint); }
-    .CodeMirror-cursor { border-left-color: var(--ink); }
-    .CodeMirror-selected, .CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--signal) 25%, transparent); }
-    .cm-s-default .cm-keyword { color: #a778ff; }
-    .cm-s-default .cm-atom { color: #3ecf8e; }
-    /* The alias re-used later (`e` in `e.marginBand`) tokenizes as BUILTIN, which
-       the stock stylesheet paints #30a — invisible on this ground. Same green as
-       the atom it was bound from: the alias IS that node, and now reads as it. */
-    .cm-s-default .cm-builtin { color: #3ecf8e; }
-    .cm-s-default .cm-number { color: #f5a97f; }
-    .cm-s-default .cm-string { color: #8fd3a7; }
-    .cm-s-default .cm-comment { color: var(--faint); font-style: italic; }
-    .cm-s-default .cm-variable, .cm-s-default .cm-variable-2, .cm-s-default .cm-def { color: var(--signal-ink); }
-    .cm-s-default .cm-operator, .cm-s-default .cm-punctuation { color: var(--mid); }
-    /* A status that is also the way to see more — text, not a button: it is a status first, and
-       chrome around it would make a quiet signal loud again, which is the thing being fixed. */
-    #validity.revealable { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-    .CodeMirror-hints {
-      background: #0b1220; border: 1px solid var(--rule); border-radius: 4px;
-      font-family: var(--mono); font-size: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); z-index: 20;
-    }
-    .CodeMirror-hint { color: var(--ink); }
-    li.CodeMirror-hint-active { background: var(--signal); color: var(--on-signal); }
-    .hint-kind { color: var(--faint); font-size: 10px; margin-left: 8px; }
-    /* Saving a query as a view, and running saved ones. */
-    #save-form { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); }
-    .param-row { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 6px; flex-wrap: wrap; }
-    .param-row .pname {
-      font-family: var(--mono); font-size: 12px; color: var(--signal-ink); min-width: 8em;
-    }
-    .view-group { border: 1px solid var(--rule); border-radius: 3px; margin-bottom: 6px; }
-    .view-group > summary {
-      cursor: pointer; padding: 6px 10px; display: flex; align-items: baseline; gap: 8px;
-      background: rgba(0,0,0,0.35); user-select: none;
-    }
-    .view-group[open] > summary { border-bottom: 1px solid var(--rule); }
-    .view-group > summary .gname {
-      font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
-      color: var(--ink);
-    }
-    .view-group > summary .gcount { font-size: 10.5px; color: var(--faint); }
-    .view-group > .view-row { border: 0; border-radius: 0; margin: 0; background: none; }
-    .view-group > .view-row + .view-row { border-top: 1px solid var(--rule); }
-    .view-row { border: 1px solid var(--rule); border-radius: 3px; padding: 8px 10px; margin-bottom: 6px; background: rgba(0,0,0,0.35); }
-    .view-row .vhead { display: flex; align-items: baseline; gap: 8px; }
-    .view-row .vname { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
-    .view-row .vsrc {
-      font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
-      color: var(--faint); border: 1px solid var(--rule); border-radius: 2px; padding: 0 4px;
-    }
-    .view-row .vdesc { font-size: 11.5px; color: var(--mid); margin: 3px 0 6px; }
-    .view-row button { font-size: 11px; padding: 2px 9px; }
-    .view-row .vactions { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
-    .view-row .vparams { font-family: var(--mono); font-size: 11px; color: var(--faint); margin: 2px 0 4px; }
-    /* Running a parameterized view: its arguments are asked for in a modal. */
-    .param-dialog {
-      background: #0b0d1a; color: var(--ink); border: 1px solid var(--rule);
-      border-radius: 4px; padding: 16px 18px; min-width: 22em; max-width: 34em;
-    }
-    .param-dialog::backdrop { background: rgba(0,0,0,0.6); }
-    .param-dialog h3 { font-family: var(--mono); font-size: 13px; margin: 0 0 6px; }
-    .param-dialog .vdesc { font-size: 11.5px; color: var(--mid); margin: 0 0 10px; }
-    .param-dialog .vactions { display: flex; gap: 6px; margin-top: 12px; }
-    .param-dialog input[type=text], .param-dialog input[type=number] {
-      font-size: 12px; padding: 3px 6px; min-width: 10em;
-    }
-    .param-dialog input:invalid { border-color: #ff6b6b; }
-    /* Validation verdicts, under the editor. */
-    #verdict { margin-top: 8px; }
-    #verdict .violation { color: #ff6b6b; font-family: var(--mono); font-size: 12px; margin: 2px 0; }
-    /* The definition tooltip — OURS, not the OS's: native `title` tips proved
-       unreliable in this frameless window, and the registry's multi-line text
-       deserves real width, wrapping and immediacy anyway. */
-    #deftip {
-      position: fixed; z-index: 50; max-width: 460px; padding: 10px 12px;
-      background: #0b1220; border: 1px solid var(--signal); border-radius: 4px;
-      font-size: 12px; line-height: 1.55; color: var(--mid);
-      white-space: pre-wrap; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65);
-      pointer-events: none;
-    }
-    #deftip .t-label {
-      font-family: var(--mono); font-size: 11px; text-transform: uppercase;
-      letter-spacing: 0.08em; color: var(--signal-ink); margin-bottom: 5px;
-    }
-    /* Copy lives ON the query box, where the thing being copied is. */
-    .editor-wrap { position: relative; }
-    .editor-wrap #copy {
-      position: absolute; top: 6px; right: 6px; z-index: 5;
-      font-size: 10.5px; padding: 2px 8px; opacity: 0.7;
-    }
-    .editor-wrap #copy:hover { opacity: 1; }
-    /* Tips — the teaching that used to trail composed queries as comments. */
+    /* Tips — what the chosen target can do that the controls do not show. */
     #tips-panel {
       margin-top: 8px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 3px;
       background: rgba(0,0,0,0.35); font-size: 12px; color: var(--mid);
     }
     #tips-panel .tip { margin: 3px 0; }
     #tips-panel .tip::before { content: '· '; color: var(--faint); }
-    #tips-panel code { font-family: var(--mono); color: #8fd3a7; }
-    /* The schema browser: every node type this world can reach. */
-    #schema-filter { width: 100%; margin-bottom: 8px; }
-    .schema-label { margin-bottom: 2px; }
-    .schema-label summary {
-      cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--ink);
-      display: flex; align-items: baseline; gap: 8px;
-    }
-    .schema-label summary .count { color: var(--faint); font-size: 10.5px; }
-    .schema-label .props { margin: 4px 0 8px 16px; font-family: var(--mono); font-size: 11px; color: var(--mid); }
-    .schema-label .prop-type { color: var(--faint); }
-    .schema-label .edges { margin: 0 0 8px 16px; font-family: var(--mono); font-size: 11px; color: #8fd3a7; }
-    .schema-label button.use {
-      font-size: 10.5px; padding: 1px 8px; margin-left: auto;
-    }
-    .results-table { border-collapse: collapse; font-size: 12.5px; display: block; overflow-x: auto; margin-top: 8px; max-height: 320px; overflow-y: auto; }
-    .results-table th, .results-table td { border: 1px solid var(--rule); padding: 5px 9px; text-align: left; vertical-align: top; }
-    .results-table th {
-      font-family: var(--mono); font-size: 10.5px; font-weight: 500; position: sticky; top: 0;
-      background: #0b1220; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mid);
-    }
-    .history-item {
-      display: block; width: 100%; text-align: left; margin-bottom: 6px;
-      font-family: var(--mono); font-size: 11px; padding: 6px 9px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      background: rgba(0, 0, 0, 0.35); color: var(--mid);
-    }
-    .history-item:hover { color: var(--ink); }
-    .history-meta { color: var(--faint); }
     details.steering summary {
       cursor: pointer; font-family: var(--mono); font-size: 11px;
       text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 8px;
@@ -202,18 +67,15 @@
   </style>
 </head>
 <body>
-  <canvas id="graphbg" class="embabel-backdrop" aria-hidden="true"></canvas>
-  <div id="deftip" hidden></div>
   <div class="dragbar">Query Studio — virtual Cypher</div>
   <main>
-    <div class="col">
+    <div class="col" id="compose">
       <section class="panel">
-        <h2>Target</h2>
+        <h2>Compose</h2>
         <div class="panel-body">
           <p class="hint">
-            Or compose by hand: virtual Cypher reaches more than documents. Pick
-            what to search; the composer writes the query, and everything it — or
-            the Ask box — writes is yours to edit.
+            Virtual Cypher reaches more than documents. Pick what to search and the
+            composer writes the query into the editor, where it is yours to change.
           </p>
           <div class="targets" id="targets"></div>
         </div>
@@ -313,123 +175,37 @@
       </section>
 
       <section class="panel">
-        <h2>Saved views</h2>
         <div class="panel-body">
-          <p class="hint">
-            Queries saved into your world by name — yours to run, and the assistant's
-            to use. A view can declare parameters; fill them in and Run.
-          </p>
-          <div id="views"><p class="hint">Loading views…</p></div>
-          <div class="row"><span id="views-status" class="status"></span></div>
+          <div class="row">
+            <button id="compose-run" class="primary">Compose into the editor</button>
+            <button id="tips">Tips</button>
+          </div>
+          <div id="tips-panel" hidden></div>
         </div>
       </section>
 
       <section class="panel">
-        <h2>Schema — every node type here</h2>
+        <h2>Written by</h2>
         <div class="panel-body">
-          <p class="hint">
-            The world's reachable shape, virtual labels included — the same snapshot
-            validation and completion read. Open a label for its properties and
-            edges; <em>use</em> starts a query on it.
-          </p>
-          <input type="text" id="schema-filter" placeholder="filter labels…" />
-          <div id="schema"><p class="hint">Loading schema…</p></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>History</h2>
-        <div class="panel-body">
-          <div id="history"><p class="hint">Queries you run land here.</p></div>
+          <p class="hint">The model the studio's Ask writes Cypher with.</p>
+          <div class="row">
+            <select id="lens-model" class="grow"></select>
+          </div>
+          <div class="row"><span id="lens-status" class="status"></span></div>
         </div>
       </section>
     </div>
 
     <div class="col">
-      <section class="panel">
-        <h2>Ask — English in, Cypher out</h2>
-        <div class="panel-body">
-          <div class="row">
-            <input type="text" id="ask-question" class="grow"
-                   placeholder="which documents mention the renewal? · files about trip logistics · threads relevant to Ada…" />
-            <button id="generate" class="primary">Write the query</button>
-          </div>
-          <div class="row">
-            <input type="text" id="refine-instruction" class="grow"
-                   placeholder="refine what's in the editor: also show the margin · sort by state · drop the limit…" />
-            <button id="refine">Refine the query</button>
-          </div>
-          <div class="row">
-            <label class="field">Written by
-              <select id="lens-model"></select>
-            </label>
-            <span id="ask-status" class="status"></span>
-          </div>
-          <p class="hint" id="explain" hidden></p>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Query</h2>
-        <div class="panel-body">
-          <div class="editor-wrap">
-            <textarea id="editor" spellcheck="false"></textarea>
-            <button id="copy" title="Copy the query">Copy</button>
-          </div>
-          <div class="row" style="margin-top:10px">
-            <button id="run" class="primary">Run ⌘⏎</button>
-            <button id="compose">Compose from controls</button>
-            <button id="save-view">Save as view…</button>
-            <button id="tips">Tips</button>
-            <span id="validity" class="status"></span>
-          </div>
-          <div id="verdict"></div>
-          <div id="tips-panel" hidden></div>
-
-          <div id="save-form" hidden>
-            <div class="row">
-              <label class="field">Name
-                <input type="text" id="save-name" placeholder="recent_contracts" />
-              </label>
-              <label class="field grow">Description
-                <input type="text" id="save-description" placeholder="what this view answers" />
-              </label>
-            </div>
-            <div id="save-params"></div>
-            <div class="row">
-              <button id="save-confirm" class="primary">Save to my world</button>
-              <button id="save-cancel">Cancel</button>
-              <span id="save-status" class="status"></span>
-            </div>
-          </div>
-        </div>
-      </section>
-      <!-- What the planner makes of the query as it is written: the facts it reads, the views and
+      <div id="studio"></div>
+      <!-- What the planner makes of the query in the editor: the facts it reads, the views and
            rules that make them, and what each costs. Planning never runs anything. -->
-      <section class="panel">
+      <section class="panel" id="plan-panel">
         <h2>Plan</h2>
-        <div class="panel-body">
-          <div id="plan"></div>
-        </div>
-      </section>
-      <section class="panel">
-        <h2>Results</h2>
-        <div class="panel-body">
-          <div id="results"><p class="hint">Nothing run yet.</p></div>
-          <!-- The run's own account — row count, duration, warnings, emptiness
-               hints — reads AFTER the rows it describes, where the eye lands. -->
-          <div class="row" style="margin-top:8px">
-            <button id="copy-md" hidden>Copy as Markdown</button>
-            <button id="copy-csv" hidden>Copy as CSV</button>
-            <span id="run-status" class="status"></span>
-          </div>
-        </div>
+        <div class="panel-body"><div id="plan"></div></div>
       </section>
     </div>
   </main>
-  <!-- One bundle per window: esbuild output, an IIFE and therefore a CLASSIC
-       script — ES modules are refused over file://, and everything it needs,
-       third-party libraries included, is inside it. -->
   <script src="dist/query-studio.js"></script>
 </body>
 </html>
