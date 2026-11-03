@@ -426,10 +426,12 @@ def ensure_port_block() -> int:
 # The graph engine, as the server spells it. Which one an install runs is decided once
 # and written into .env — see pins.py; these only read the answer.
 GRAPH_TYPE_VAR = "GRAPH_TYPE"
-# What compose falls back to when .env says nothing, and so what every install ran
-# before the engine was written down. It stays NEO4J for good: an upgrade runs the
-# installed CLI against the new compose files, and that run must not move anybody.
-UNPINNED_ENGINE = "NEO4J"
+# What compose falls back to when .env says nothing, matching the compose files. Our
+# own graph, and no longer NEO4J: a fallback naming Neo4j meant an install nobody had
+# stated got Neo4j, which is the one thing it must not get by default. An old install
+# is not left to this — pins._legacy_engine READS which graph its volumes hold and
+# pins that, so Neo4j is something an install has rather than something it is given.
+UNPINNED_ENGINE = "EMBABEL"
 # The Embabel engine was called MEMORY before it had a name of its own. The server still
 # accepts that spelling, and so does every reader here, so no .env has to be edited.
 ENGINE_ALIASES = {"MEMORY": "EMBABEL"}

@@ -83,29 +83,40 @@ EXISTING = "EMBABEL_PORT_BASE=11042\n"
 
 # ── the pin ──────────────────────────────────────────────────────────────────
 
-# An existing install — a .env from before the pin — gets what it has been running.
-written, engine, after = pinned(EXISTING, creating=False)
+# An existing install — a .env from before the pin — gets what it has been running, which
+# is now READ from the volume holding its graph rather than assumed to be Neo4j.
+written, engine, after = pinned(EXISTING, creating=False, volumes=("embabel_appliance_neo4j_data",))
 check(written.get("GRAPH_TYPE") == "NEO4J" and engine == "NEO4J", f"existing install: {written}")
 for key in ("NEO4J_VERSION", "NEO4J_PASSWORD", "ASSISTANT_EMBEDDING_MODEL", "ASSISTANT_DOC_CONVERTER",
             "OLLAMA_BASE_URL", "LMSTUDIO_BASE_URL", "DOCKER_MODELS_BASE_URL", "EMBABEL_MONITORING"):
     check(key in env_of(after), f"existing install: {key} was not pinned")
 check(not any(k.startswith(("VC_EMBABEL", "GRAPH_EMBABEL")) for k in written),
       f"a Neo4j install was given the Embabel engine's settings: {written}")
-written, _engine, _after = pinned(EXISTING, creating=True)
+written, _engine, _after = pinned(EXISTING, creating=True, volumes=("embabel_appliance_neo4j_data",))
 check(written.get("GRAPH_TYPE") == "NEO4J", f"existing install, setup re-run: {written}")
 # ...whatever the shell exports: that still wins per run, and is not a decision about the data.
-written, engine, after = pinned(EXISTING, creating=True, environ={"GRAPH_TYPE": "EMBABEL"})
+written, engine, after = pinned(EXISTING, creating=True, environ={"GRAPH_TYPE": "EMBABEL"},
+                                volumes=("embabel_appliance_neo4j_data",))
 check(written.get("GRAPH_TYPE") == "NEO4J", f"existing install with GRAPH_TYPE exported: {written}")
 check(engine == "EMBABEL", f"an exported GRAPH_TYPE no longer wins for its run: {engine!r}")
 check("VC_EMBABEL_STORE" not in written, "an exported GRAPH_TYPE gave a Neo4j install the Embabel rows")
 # The Neo4j that made the container, not the one the checkout would make it with.
-written, _engine, _after = pinned(EXISTING, creating=False, neo4j_image="neo4j:2026.04-community")
+written, _engine, _after = pinned(EXISTING, creating=False, neo4j_image="neo4j:2026.04-community",
+                                  volumes=("embabel_appliance_neo4j_data",))
 check(written.get("NEO4J_VERSION") == "2026.04-community", f"running Neo4j not pinned: {written}")
 
-# An install whose .env is gone but whose volumes are not is still an existing install.
-for volume in pins.INSTALL_VOLUMES:
-    written, _engine, _after = pinned(None, creating=True, volumes=(volume,))
-    check(written.get("GRAPH_TYPE") == "NEO4J", f"no .env but {volume}: {written}")
+# An install whose .env is gone but whose volumes are not is still an existing install —
+# and WHICH graph it gets is read off those volumes, never defaulted to Neo4j.
+written, _engine, _after = pinned(None, creating=True, volumes=("embabel_appliance_neo4j_data",))
+check(written.get("GRAPH_TYPE") == "NEO4J", f"no .env, Neo4j volume: {written}")
+# The data volume alone says nothing: both engines have one. An Embabel graph inside it does.
+written, _engine, _after = pinned(None, creating=True, volumes=("embabel_assistant_data",),
+                                  graph_files="memory.journal")
+check(written.get("GRAPH_TYPE") == "EMBABEL", f"no .env, Embabel journal: {written}")
+# Both volumes, an Embabel graph present: the graph that exists wins over Neo4j's empty volume.
+written, _engine, _after = pinned(None, creating=True, volumes=pins.INSTALL_VOLUMES,
+                                  graph_files="graph.sqlite")
+check(written.get("GRAPH_TYPE") == "EMBABEL", f"both volumes, Embabel graph: {written}")
 # ...but only setup writes a .env. A status or a doctor must not create one.
 written, _engine, after = pinned(None, creating=False, volumes=pins.INSTALL_VOLUMES)
 check(not written and after is None, f"a CLI verb created a .env: {written}")

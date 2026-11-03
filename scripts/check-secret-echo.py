@@ -87,7 +87,7 @@ check(printed.strip() == "", f"pin_install printed something; it is meant to be 
 
 # ── the pin line: an install that predates the pins (the `embabel upgrade` case) ──
 
-with checkout("EMBABEL_PORT_BASE=11042\n") as root, captured() as out:
+with checkout("EMBABEL_PORT_BASE=11042\nGRAPH_TYPE=NEO4J\n") as root, captured() as out:
     written = pins.pin_install(creating=False)
 legacy = written.get("NEO4J_PASSWORD")
 check(legacy, f"an existing Neo4j install did not pin its password: {written}")

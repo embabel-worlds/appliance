@@ -148,7 +148,7 @@ def neo4j_memory(limit: int, heap: int | None = None) -> tuple[int, int]:
     return heap, max(limit - heap - NEO4J_OVERHEAD, NEO4J_PAGECACHE_MIN)
 
 
-def plan(docker_memory: int, engine: str = "NEO4J", monitoring: bool = False) -> dict[str, int]:
+def plan(docker_memory: int, engine: str = "EMBABEL", monitoring: bool = False) -> dict[str, int]:
     """Every limit, in bytes, keyed by the variable the compose files read."""
     held = MONITORING_LIMITS if monitoring else {}
     budget = docker_memory - RESERVE_BYTES - sum(held.values())

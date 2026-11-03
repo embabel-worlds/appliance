@@ -12,11 +12,22 @@ ONE TABLE, PINNED. Each row is a key, when it means anything for this install, t
 value an install that predates the row has been running on, the value a new install
 gets, and why it is pinned. A later migration is a new `new` value, or a new row.
 
-THE `legacy` VALUE NEVER CHANGES, and neither does the compose fallback that matches
-it. `embabel upgrade` runs the CLI that was installed against the compose files it has
-just pulled, so for that one run an install that was never pinned is composed from the
-fallbacks — they have to keep meaning what those installs run on. A new choice goes in
-`new`, which only setup writes, for an install it is creating.
+A `legacy` VALUE IS READ, NOT ASSUMED, and the compose fallback matches what a new
+install gets. `embabel upgrade` runs the CLI that was installed against the compose
+files it has just pulled, so for that one run an install that was never pinned is
+composed from the fallbacks. That used to mean every fallback had to go on naming what
+old installs ran on — which made NEO4J the graph fallback for good, and so made Neo4j
+the thing an unstated install silently got.
+
+NO DEFAULT NAMES NEO4J ANY MORE. An install runs Neo4j only by holding a Neo4j graph,
+which [_legacy_engine] reads off the volumes rather than assuming, so the pin is right
+for an old install without the fallback having to carry it. The residual case is an
+install old enough to predate the GRAPH_TYPE row itself: its own CLI pins nothing, so
+that one upgrade run composes `GRAPH_TYPE=EMBABEL` over a Neo4j graph and comes up
+empty until it is pinned. Stopping that for good wants the SERVER to refuse an empty
+Embabel graph while a Neo4j volume is attached, which is not this file's to do.
+
+A new choice goes in `new`, which only setup writes, for an install it is creating.
 scripts/check-graph-engine.py holds each fallback to its row.
 
 WHEN. pin_install runs at the top of every CLI verb and every setup run (see
@@ -83,6 +94,26 @@ def _constant(value: str) -> Callable[[], str]:
     return lambda: value
 
 
+def _legacy_engine() -> str | None:
+    """Which graph an install that predates GRAPH_TYPE is actually holding — READ, never
+    assumed. Nothing defaults to Neo4j any more: an install gets it only by holding a
+    Neo4j graph, and the engines do not share data, so assuming the wrong one hands
+    somebody an empty world.
+
+    The data volume answers first. Both engines have one, so its presence says nothing
+    on its own; an Embabel journal or SQLite file inside it does. Only when that volume
+    holds no Embabel graph does the Neo4j volume get to answer, and an instance with
+    neither is new, which is Embabel. None: the helper could not look this run — write
+    nothing and ask again, which is why pin_before_start asks after the pull.
+    """
+    on_disk = _embabel_store_on_disk()
+    if on_disk is None:
+        return None
+    if on_disk is not False:
+        return "EMBABEL"
+    return "NEO4J" if volume_exists("embabel_appliance_neo4j_data") else "EMBABEL"
+
+
 def _embabel_store() -> str | None:
     """Which store this install's Embabel graph is in, or should start in. None: not yet known.
 
@@ -97,20 +128,33 @@ def _embabel_store() -> str | None:
     journal) if it does not, and None while the image is not here to ask — which is why
     pin_before_start asks again, after the pull and before the first boot.
     """
-    if volume_exists("embabel_assistant_data"):
-        # Late: backup imports this module, for restore. alpine, because backup already pins it.
-        from .backup import BACKUP_HELPER_IMAGE
-        from .dockerlib import _docker
-        run = _docker("run", "--rm", "-v", f"{volume_name('embabel_assistant_data')}:/data:ro", BACKUP_HELPER_IMAGE,
-                      "sh", "-c", f"ls -a {os.path.dirname(EMBABEL_JOURNAL)} 2>/dev/null; true", timeout=120)
-        if run is None or run.returncode != 0:
-            return None
-        found = set(run.stdout.split())
-        if os.path.basename(EMBABEL_SQLITE) in found:
-            return "sqlite"
-        if any(name.startswith(os.path.basename(EMBABEL_JOURNAL)) for name in found):
-            return "snapshot"
-    return _store_the_server_has()
+    on_disk = _embabel_store_on_disk()
+    if on_disk is None:
+        return None
+    return on_disk if on_disk is not False else _store_the_server_has()
+
+
+def _embabel_store_on_disk() -> str | bool | None:
+    """The Embabel store this install's data volume already holds: "sqlite", "snapshot",
+    False for neither, None when the helper could not look. Separate from [_embabel_store]
+    because "which store" and "is there a graph here at all" are different questions, and
+    _legacy_engine asks the second one to avoid assuming an engine.
+    """
+    if not volume_exists("embabel_assistant_data"):
+        return False
+    # Late: backup imports this module, for restore. alpine, because backup already pins it.
+    from .backup import BACKUP_HELPER_IMAGE
+    from .dockerlib import _docker
+    run = _docker("run", "--rm", "-v", f"{volume_name('embabel_assistant_data')}:/data:ro", BACKUP_HELPER_IMAGE,
+                  "sh", "-c", f"ls -a {os.path.dirname(EMBABEL_JOURNAL)} 2>/dev/null; true", timeout=120)
+    if run is None or run.returncode != 0:
+        return None
+    found = set(run.stdout.split())
+    if os.path.basename(EMBABEL_SQLITE) in found:
+        return "sqlite"
+    if any(name.startswith(os.path.basename(EMBABEL_JOURNAL)) for name in found):
+        return "snapshot"
+    return False
 
 
 # What tells a server that can keep its graph in SQLite: the SQLite driver, which arrived
@@ -143,7 +187,7 @@ def _neo4j_version() -> str:
 
 
 PINS = (
-    Pin(GRAPH_TYPE_VAR, _always, _constant(UNPINNED_ENGINE), "EMBABEL",
+    Pin(GRAPH_TYPE_VAR, _always, _legacy_engine, "EMBABEL",
         "which graph holds the world; the engines do not share data, so moving is an empty world"),
     Pin("VC_EMBABEL_STORE", _on("EMBABEL"), _embabel_store, _embabel_store,
         "the Embabel engine's store; the default moved once already, with no migration between them"),

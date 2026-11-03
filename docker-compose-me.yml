@@ -137,7 +137,7 @@ services:
       # does not say yet, which ran Neo4j by default, and it stays NEO4J for good: an
       # upgrade runs the installed CLI against these files, and that run must not
       # move anybody's graph (embabel_setup/pins.py).
-      - GRAPH_TYPE=${GRAPH_TYPE:-NEO4J}
+      - GRAPH_TYPE=${GRAPH_TYPE:-EMBABEL}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687
       - NEO4J_USERNAME=neo4j

@@ -61,7 +61,7 @@ check(all(tight[s.var] == s.minimum for s in SIZED), f"below the minimums: {tigh
 # and its ceiling are the app's. MEMORY is its old name and sizes the same.
 for engine in ("EMBABEL", "MEMORY"):
     check("NEO4J_MEM_LIMIT" not in memory.plan(small, engine), f"{engine} engine was given a neo4j limit")
-    check(memory.plan(small, engine)["APP_MEM_LIMIT"] > memory.plan(small)["APP_MEM_LIMIT"],
+    check(memory.plan(small, engine)["APP_MEM_LIMIT"] > memory.plan(small, "NEO4J")["APP_MEM_LIMIT"],
           f"{engine} engine: the app did not absorb the graph's share")
     check(memory.plan(64 * GIB, engine)["APP_MEM_LIMIT"] > memory.APP.maximum,
           f"{engine} engine on a large machine: the app is capped as if the graph were elsewhere")
@@ -75,23 +75,26 @@ check(heap + pagecache + memory.NEO4J_OVERHEAD == 4 * GIB, f"neo4j 4GB: heap {he
 # allowance below that is how it was OOM-killed inside its limit at 384.
 check(memory.NEO4J_OVERHEAD >= 512 * memory.MIB, f"NEO4J_OVERHEAD {memory.NEO4J_OVERHEAD} is below the measured need")
 for monitoring in (False, True):
-    sized = memory.plan(small, monitoring=monitoring)
+    sized = memory.plan(small, "NEO4J", monitoring=monitoring)
     check(sized["NEO4J_HEAP"] + sized["NEO4J_PAGECACHE"] + memory.NEO4J_OVERHEAD <= sized["NEO4J_MEM_LIMIT"],
           f"7.65GB, monitoring={monitoring}: neo4j heap + page cache + overhead exceed its limit: {sized}")
     check(sized["NEO4J_PAGECACHE"] >= memory.NEO4J_PAGECACHE_MIN, f"7.65GB: page cache below its minimum: {sized}")
 
 # Monitoring is opt-in (#112): off, nothing is held back for it and the services
 # that do the work get that memory; on, both are capped.
-off, on = memory.plan(small), memory.plan(small, monitoring=True)
+off, on = memory.plan(small, "NEO4J"), memory.plan(small, "NEO4J", monitoring=True)
 check(not any(var in off for var in memory.MONITORING_LIMITS), f"monitoring off still reserves memory: {off}")
 check(all(var in on for var in memory.MONITORING_LIMITS), f"monitoring on does not cap it: {on}")
 check(sum(off[s.var] for s in SIZED) - sum(on[s.var] for s in SIZED) >= sum(memory.MONITORING_LIMITS.values()) - len(SIZED),
       "turning monitoring off did not pass its memory to the sized services")
 
 
-def resolved_with(settings: dict[str, str], docker_memory: int = small) -> dict[str, str]:
+def resolved_with(settings: dict[str, str], docker_memory: int = small,
+                  engine: str = "NEO4J") -> dict[str, str]:
+    """`engine` defaults to NEO4J because the callers below assert on Neo4j's own rows;
+    a bare plan() is an Embabel plan now and has none."""
     with patch.object(memory, "chosen", side_effect=settings.get):
-        return memory.resolve(memory.plan(docker_memory))
+        return memory.resolve(memory.plan(docker_memory, engine))
 
 
 # The troubleshooting guide's advice, NEO4J_HEAP=1G, is kept, and the page cache is
@@ -144,8 +147,11 @@ def capacity():
     return {"memory": small, "cpus": 4, "disk": 0, "disk_where": ""}
 
 
+# NEO4J, because this asserts NEO4J_MEM_LIMIT reaches compose: a bare plan is an
+# Embabel plan now, and an Embabel install has no graph container to limit.
 with patch("embabel_setup.capacity.docker_capacity", side_effect=capacity), \
         patch.object(memory, "chosen", return_value=None), \
+        patch.object(dockerlib, "graph_engine", return_value="NEO4J"), \
         patch.object(dockerlib, "monitoring_enabled", return_value=False), \
         patch.object(dockerlib, "github_token", return_value=None):
     env = dockerlib.compose_env()
@@ -175,7 +181,7 @@ memory.memory_env.cache_clear()
 # limit that silently does not apply.
 compose_text = "".join(open(os.path.join(ROOT, f)).read()
                        for f in ("infra.yml", "docker-compose-worlds.yml", "docker-compose-me.yml"))
-for var in memory.plan(small, monitoring=True):
+for var in {**memory.plan(small, "NEO4J", monitoring=True), **memory.plan(small, "EMBABEL", monitoring=True)}:
     check(f"${{{var}:-" in compose_text, f"no compose file reads {var}")
 
 # Docling runs the workers, and the app caps its requests at the same number: both read
