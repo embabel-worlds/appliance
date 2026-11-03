@@ -100,8 +100,16 @@ const host: QueryStudioHost = {
   interactive: { session: featureState('embabel-me-studio-session', isSession) },
 }
 
-const STARTER_QUERY = `MATCH (n)
-RETURN n LIMIT 25`
+/*
+ * What the editor holds when the example cards are not offered (an appliance without them, or a
+ * person who has retired them). Read from the world's own config, which every world has from its
+ * first boot, so it answers on any appliance; `MATCH (n)` was refused on the world surface.
+ */
+const STARTER_QUERY = `// The saved views in this world — each one is a question you can ask by name
+MATCH (me:AssistantUser)-[:HAS_CONFIG]->(v:ConfigView)
+RETURN v.name AS view, v.description AS answers
+ORDER BY view
+LIMIT 25`
 
 function QueryStudio() {
   /* What the composer last put in the editor, and a counter so composing the same text lands it again. */
