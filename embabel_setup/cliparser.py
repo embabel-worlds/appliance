@@ -66,6 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("up", help="start the appliance and finish setup (safe to re-run)")
     mode_flags(p)
     p.add_argument("--fresh", action="store_true", help="DELETE all data first, then start over")
+    p.add_argument("--allow-downgrade", action="store_true",
+                   help="start even when the build is OLDER than the one that last ran (take `embabel backup` first)")
     p.set_defaults(func=cmd_up)
 
     p = sub.add_parser("status", help="what is running, what is still downloading, where to go")

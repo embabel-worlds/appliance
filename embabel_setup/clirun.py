@@ -30,6 +30,9 @@ def cmd_up(args) -> int:
     # and the repair is a no-op on anything already correct.
     if s.migrate_legacy_embedding_choice():
         print(f"  {s.TICK} Embedding model recorded as the `hosted` role, which newer builds resolve")
+    if getattr(args, "allow_downgrade", False):
+        # setup.py is a child process; refuse_stepping_back reads this there.
+        os.environ["EMBABEL_ALLOW_DOWNGRADE"] = "1"
     return run_setup(resolved_mode(args.mode), *(["--fresh"] if args.fresh else []))
 
 
