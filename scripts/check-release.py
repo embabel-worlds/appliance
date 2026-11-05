@@ -216,6 +216,40 @@ args = parser.parse_args(["upgrade"])
 check(args.release is None and not args.allow_downgrade, "plain `upgrade` should follow the saved release")
 with open(os.path.join(ROOT, "setup.py")) as f:
     check('"--release"' in f.read(), "setup.py (./worlds.py, ./me.py, install.sh) takes no --release")
+args = parser.parse_args(["up", "--allow-downgrade"])
+check(args.allow_downgrade, "`up --allow-downgrade` lost the flag")
+check(not parser.parse_args(["up"]).allow_downgrade, "plain `up` should refuse a step back")
+
+
+# ── `up` does not step back either ───────────────────────────────────────────
+# `release` and `upgrade` check before they move the server; `up` starts whatever .env and the
+# compose defaults resolve to, so it makes the same check before it recreates anything.
+from embabel_setup import lifecycle  # noqa: E402
+
+newer = facts("sha-bbbbbbb", "sha-bbbbbbb", "2026-11-04T11:00:00Z", "sha256:new")
+stable = facts("latest", "0.4.3", "2026-11-02T08:00:00Z", "sha256:old")
+
+
+def stepping(current, arriving, environ=None):
+    """What refuse_stepping_back does with these builds: None to go ahead, else its message."""
+    with appliance("EMBABEL_RELEASE=stable\n", environ), \
+            patch.object(lifecycle, "composed_image", return_value="ghcr.io/embabel/assistant:latest"), \
+            patch.object(lifecycle, "image_facts", return_value=arriving):
+        try:
+            lifecycle.refuse_stepping_back("worlds", current)
+            return None
+        except SetupError as e:
+            return str(e)
+
+
+said = stepping(newer, stable)
+check(said and "OLDER" in said and "--allow-downgrade" in said and "backup" in said,
+      f"`up` started stable over data a newer build wrote, or did not say how to go on: {said}")
+check(stepping(stable, newer) is None, "`up` refused a NEWER build")
+check(stepping(newer, newer) is None, "`up` refused the build already running")
+check(stepping({}, stable) is None, "a first boot has nothing to step back from, and was refused")
+check(stepping(newer, {}) is None, "a build nothing on this machine dates was refused rather than let through")
+check(stepping(newer, stable, {"EMBABEL_ALLOW_DOWNGRADE": "1"}) is None, "`up --allow-downgrade` still refused")
 
 if failures:
     print("\n".join("FAIL " + f for f in failures))

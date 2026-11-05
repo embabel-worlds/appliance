@@ -40,7 +40,9 @@ from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred
                         take_everything_down)
 from .settings import (embabel_command, compose_project, console_url, env_file, env_path, instance, installed_instances,
                        remember_mode, resume_command)
-from .release import parse_release, version_pin_conflict
+from .release import followed_release, older, parse_release, version_pin_conflict
+from .upgrade import DowngradeRefused, downgrade_message
+from .versions import composed_image, image_facts, running_image
 from .status import STATUS
 from .steps import probe
 
@@ -616,6 +618,8 @@ def ensure_mode(mode: str) -> bool:
     remember_mode(mode)
     announce_github_token()
     announce_version_pin(mode)
+    # Read before anything is pulled or recreated: the build that last ran this data.
+    current = running_image(mode)
     modes = running_modes()
     other = next(((svc, name) for svc, name in modes.items() if svc != MODE_SERVICE[mode]), None)
     if other:
@@ -642,6 +646,7 @@ def ensure_mode(mode: str) -> bool:
         # the appliance were up. The run ended minutes later asking for a setup token
         # that no process had printed, with the real reason long scrolled away.
         ensure_public_host(mode)
+        refuse_stepping_back(mode, current)
         run = _compose(mode, "up", "-d")
         if run.returncode != 0:
             raise SetupError(
@@ -661,6 +666,7 @@ def ensure_mode(mode: str) -> bool:
     # whatever was published the first time. The line above has been claiming
     # otherwise for as long as it has existed.
     refresh_floating_images(mode, core_services(mode))
+    refuse_stepping_back(mode, current)
     # After the pull, before the containers exist: a new Embabel install's store is
     # pinned from the image that is about to run it (see pins.pin_before_start).
     pin_before_start(mode)
@@ -683,6 +689,32 @@ def ensure_mode(mode: str) -> bool:
     print()
     start_deferred(mode)
     return True
+
+
+# Set by `embabel up --allow-downgrade`: setup runs as a child process, so the flag crosses as this.
+ALLOW_DOWNGRADE_VAR = "EMBABEL_ALLOW_DOWNGRADE"
+
+
+def refuse_stepping_back(mode: str, current: dict) -> None:
+    """Stop `up` from starting an OLDER server than the one that last ran this data.
+
+    `embabel release` and `upgrade` make this check; `up` did not, and it is the command that
+    runs whatever .env and the compose defaults resolve to now. An install pinned with
+    EMBABEL_VERSION in the shell, which nothing writes down, came back on stable at the next
+    plain `up`: an older server over a graph a newer one had written, with every realm on it
+    broken and no word said. The same build or a newer one goes ahead; so does a first boot,
+    which has nothing to step back from, and a build whose age nothing on this machine says.
+    """
+    if os.environ.get(ALLOW_DOWNGRADE_VAR):
+        return
+    arriving = image_facts(composed_image(mode))
+    if not (current and arriving) or older(arriving, current) is not True:
+        return
+    try:
+        release = followed_release()
+    except SetupError:
+        release = arriving.get("tag") or "the build .env names"
+    raise SetupError(downgrade_message(DowngradeRefused(release, current, arriving), embabel_command("up")))
 
 
 def reset_credentials(container: str, base: str) -> None:
