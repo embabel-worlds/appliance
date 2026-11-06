@@ -346,6 +346,9 @@ services:
       # bare jar — and this mode from the worlds mode. It is a constant, not information
       # about you — see PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose
+      # Which product the image boots. Me is also what an image boots with no mode at all;
+      # it is named so the two compose files say the same thing about themselves.
+      - EMBABEL_MODE=me
       # USAGE REPORTING IS OFF UNLESS THIS APPLIANCE TURNS IT ON. The image defaults
       # this to Embabel's collector; naming it here with an empty default overrides
       # that, and an empty endpoint means the server assembles reports and transmits
