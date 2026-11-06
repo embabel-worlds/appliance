@@ -6,11 +6,12 @@
 #                                # that holds the console's state keeps it. 11043 is the same
 #                                # server; both answer /ui/, and / redirects there.
 #
-# THE SAME IMAGE, THE SAME DATA as the Me mode (docker-compose-me.yml) — this is
-# the superset design: the world runtime is always in the product, and this mode
-# frames it as a headless-leaning team server (MCP, automations, webhooks, the
-# data plane) on the 43xx block. There is no stripped-down build and no special
-# Spring profile; what differs is the port, the name, and the packaging label.
+# THE SAME IMAGE, THE SAME DATA as the Me mode (docker-compose-me.yml), and no
+# stripped-down build: the image holds both products, and EMBABEL_MODE below picks
+# the one it boots. Worlds is the world server — a headless-leaning team server (MCP,
+# automations, webhooks, the data plane, and the console) on the 43xx block — and Me
+# is that server with the personal assistant on top. Beyond the product, what
+# differs is the port, the name, and the packaging label.
 #
 # RUN ONE MODE AT A TIME against the shared store. Both modes up simultaneously
 # means two identical JVMs each running the singleton background work — cron
@@ -329,6 +330,10 @@ services:
       # Distinguishes this mode from the Me mode in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose-worlds
+      # Which product the image boots: Worlds is the world server without Me's personal
+      # assistant on top (no email, calendar, catch-up or sensor). The image reads this; one
+      # too old to know it ignores it and boots Me, as every image did before.
+      - EMBABEL_MODE=worlds
       # USAGE REPORTING IS OFF UNLESS THIS APPLIANCE TURNS IT ON. The image defaults
       # this to Embabel's collector; naming it here with an empty default overrides
       # that, and an empty endpoint means the server assembles reports and transmits
