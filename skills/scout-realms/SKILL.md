@@ -40,9 +40,9 @@ WHERE c.notes_last_contacted < '2026-05-01' RETURN c.email
 That example is a ME appliance's shape — `Person` is the user's own contacts, `HubSpotContact` a
 CRM nobody had joined to them. On a Worlds appliance the same move uses whatever anchors ITS
 realms declare; step 2 discovers them before any of this applies. The mechanism either way is a
-**virtual join** — `anchorLabel`, `relationship`, `keyField`, `recordKeyField`, in a captured
-`realm.ts` producer's `joins` or a type file's `virtualJoins` — and it is the single
-highest-value thing you are hunting for.
+**virtual join** — in `realm.ts`, a captured producer's `joins`; in a legacy type file,
+`virtualJoins` naming `anchorLabel`, `relationship`, `keyField`,
+`recordKeyField`, `producer` — and it is the single highest-value thing you are hunting for.
 
 This is not a theory. Across the realms that already exist, `Person` and `Organization` are the
 most-used anchor labels after each realm's own internals: github, hubspot, google, research and
@@ -256,7 +256,7 @@ only the live ones):
    from the wrong join (realm-fr-streets, 2026-10-06).
 3. **Identity or record?** For each entity two systems share, ask: *if each system holds one,
    are those two things or one?* Two tickets are two things — a shared parent label
-   (`parents: ["SupportCase"]` on a `realm.ts` type) lets one question cover both. A CRM customer and a billing customer
+   (`parents: [SupportCase]`) lets one question cover both. A CRM customer and a billing customer
    for the same company are ONE thing — that needs a spine, and a parent label there silently
    produces one node per system with nothing joining them. The realm spec's Virtual Cypher §5.4
    has the rules; say which of the two each proposed bridge is.
