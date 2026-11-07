@@ -51,7 +51,9 @@ The full contract is `skills/VOICE.md`; a connected world's persona layers on to
 - **REST is contract-first.** `GET /v3/api-docs` on the server is the spec; apps call saved
   views via `POST /api/v1/views/{name}/invoke` and keep query logic server-side.
 - **Local realm checkouts** live under the mounted realms dir and install by reference
-  (`install_realm_from_path`); after editing, `realm_refresh` — and note the gateway namespace
-  derives from the DIRECTORY name, not `realm.yml`.
+  (`install_realm_from_path`); after editing, `realm_refresh`. A `realm.ts` is the whole
+  declaration when present — a `realm.yml` or YAML folders beside it are ignored, so edit
+  `realm.ts`. Its handlers declare their own `namespace`; on a legacy `realm.yml` realm the
+  gateway namespace derives from the DIRECTORY name, not `realm.yml`.
 - Credentials go to the encrypted wallet via the tools that ask for them — never into YAML,
   code, or git.

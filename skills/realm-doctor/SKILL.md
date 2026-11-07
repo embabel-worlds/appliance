@@ -12,13 +12,29 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 
 ## First, always: the ground truth pass
 
+0. **Which file is the realm?** A `realm.ts` at the root makes it the whole declaration: a
+   `realm.yml`, `types/`, `producers/`, `apis/apis.yml` or handler manifest beside it is
+   ignored — reported, never merged, never a fallback. An edit there does nothing, and looks
+   exactly like a change the appliance failed to pick up. Files `realm.ts` itself references
+   (handler source, SQL, a vendored API document, an icon) are still read. The rules are
+   realm-spec's `TYPESCRIPT_REALMS.md`; `realm_brief` serves the same.
 1. `realm_status` — note `status`, `verbs`, `types`, `producers`, and READ `problems` fully.
    `problems` is the server telling you the answer; do not skim past it to go spelunking.
-2. Compare `verbs` against what `wasm/handlers.ts` (or `handlers/`) actually exports. A mismatch
-   IS the finding — name it before theorizing about causes.
+2. Compare `verbs` against the realm's `handlers` record in `realm.ts` and what its `entry`
+   (`wasm/handlers.ts` unless it says otherwise) exports — or, on a legacy realm, against
+   `handlers/`. A mismatch IS the finding — name it before theorizing about causes.
 3. If you have host access, the container logs are the build's own voice:
    `docker logs embabel-<instance>-worlds-1 2>&1 | grep -E "RealmBundleBuilder|<realm-name>"`,
    where `<instance>` is `appliance` for the default one (`embabel instances` lists them).
+
+## Symptom: the realm loads but none of its functions run
+
+- **The world reports `Realm '<dir>' could not be installed (<CODE>): …`** — the appliance
+  evaluates `realm.ts` and builds its handlers when it installs the realm, and refused it. The
+  detail names the file or operation and why: an unsupported import, a file read or clock call
+  during evaluation, a result that is not plain data, a handler entry that does not build.
+  Nothing falls back to a `realm.yml` beside it. Fix what it names; `realm_validate_path` on
+  the checkout says whether the fix holds before you `realm_refresh`.
 
 ## Symptom: installed and active, but `verbs: []` (or a handler is missing)
 
@@ -30,16 +46,20 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
   green with no verbs. The logs still say so
   (`wasm build failed (could not atomically publish …)`). Verdict: upgrade the image, or build on
   the host (`tooling/wasm-realm/build-handlers-wasm.mjs`) and `realm_refresh`.
-- **Both `handlers.js` and `handlers.ts` exist** — the builder refuses to choose ("ship one
-  source file"). Delete one.
-- **The handler declares `host: docker`** — wasm source is deliberately left alone; that realm's
-  handlers dispatch through the docker path or not at all.
+- **Both `handlers.js` and `handlers.ts` exist** — on a legacy realm the builder refuses to
+  choose ("ship one source file"); delete one. A `realm.ts` realm builds its `entry` and never
+  picks another file, so the other one is simply dead.
+- **The handler declares `host: docker`** (in `realm.ts`, the realm's `host: "docker"`) — wasm
+  source is deliberately left alone; that realm's handlers dispatch through the docker path or
+  not at all.
 
 ## Symptom: I renamed/added a verb and the surface still shows the old one
 
-- The verb set comes from `dist/manifest.json`, not from the source. On current images a rebuild
-  replaces a generated manifest; before the fix, every in-place rebuild threw
-  `FileAlreadyExistsException` and the verb set froze at first build. Check the manifest's
+- On a `realm.ts` realm the verb set is its `handlers` record — there is no manifest. Rename
+  the verb there and in the entry's exports together; refresh.
+- On a legacy realm the verb set comes from `dist/manifest.json`, not from the source. On
+  current images a rebuild replaces a generated manifest; before the fix, every in-place rebuild
+  threw `FileAlreadyExistsException` and the verb set froze at first build. Check the manifest's
   `entries` against the source's exports; if they disagree and the manifest has no
   `generator: embabel-wasm-build` marker, it is HAND-AUTHORED and the author must update it —
   that is the single-file contract, not a bug.
@@ -55,10 +75,13 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 
 ## Symptom: the gateway namespace is not what I named the realm
 
-- The namespace derives from the realm DIRECTORY name, not `realm.yml`'s `name:` —
-  `realm-scout-probe/` becomes `gateway.realmScoutProbe` even when the realm calls itself
-  `scout-probe`. Not a defect to fix from your side; name the directory what you want the
-  namespace to be.
+- In `realm.ts` each handler declares its own `namespace`, and the rest of the realm names it
+  `namespace.verb`; an API entry's `name` is its gateway namespace. The realm's `name` is
+  neither. Check those fields before the directory.
+- On a legacy realm the namespace derives from the realm DIRECTORY name, not `realm.yml`'s
+  `name:` — `realm-scout-probe/` becomes `gateway.realmScoutProbe` even when the realm calls
+  itself `scout-probe`. Not a defect to fix from your side; name the directory what you want
+  the namespace to be.
 
 ## Symptom: install_realm_from_path fails or the realm is invisible
 
@@ -79,10 +102,12 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 
 ## Symptom: a schedule never fires
 
-- `defineSchedule` needs SIX cron fields (`0 0 8 * * *`); the build refuses fewer, and a
+- A schedule needs SIX cron fields (`0 0 8 * * *`) — a handler's `schedule` in `realm.ts`, or
+  `defineSchedule` in the entry, never both for one verb. The build refuses fewer, and a
   schedule naming no exported handler is refused at build time. Both land in `problems` — read
   them. A verb with `onType` or required input fields cannot be scheduled: the schedule is
-  ignored (recorded in `problems`), the verb stays callable.
+  ignored (recorded in `problems`), the verb stays callable. `TYPESCRIPT_REALMS.md` does not
+  allow either combination in a `realm.ts` `handlers` record, so expect a refusal there.
 
 ## Symptom: a producer "succeeds" and its edge returns nothing
 
@@ -97,8 +122,9 @@ that settle most producer mysteries:
 - **"returned 0 record(s)" against a source that demonstrably has the data** — look at the
   logged `args`. Join keys are STRINGS throughout the engine, and an integer-typed source
   parameter can match nothing on `["9"]` and say nothing about it (Odoo's ORM domains do
-  exactly this). Declare `keyType: int` on the producer. Prove the theory first with one direct
-  call to the source using string keys, then int keys.
+  exactly this). Declare `keyType: int` on the producer (a conventional producer setting with no
+  `realm.ts` form yet; `TYPESCRIPT_REALMS.md` lists what has one). Prove the theory first with
+  one direct call to the source using string keys, then int keys.
 - **A sentinel non-key in the batch** — some sources spell "no relation" as `false`, not null,
   and a falsy key inside an integer IN-list is a 500 (or worse, silence). Filter them in the
   producer's domain and say so in a comment.
@@ -106,7 +132,9 @@ that settle most producer mysteries:
   restart the container when re-testing a producer change, or wait out the TTL.
 - **"virtual label not reached via a registered relationship" listing a strange self-door**
   (`(:X)-[:R]->(X)`) — the joins are declared on the wrong side. A type declares the joins that
-  REACH it: `virtualJoins` live on the TARGET type, naming their `anchorLabel`.
+  REACH it: `virtualJoins` live on the TARGET type, naming their `anchorLabel`. A `realm.ts`
+  producer carries its `joins` itself, each naming `targetLabel` and `anchorLabel` — check
+  those two are not swapped.
 
 ## Symptom: a key in secrets.env unlocks nothing
 
@@ -114,7 +142,9 @@ that settle most producer mysteries:
 driven only by REST or MCP may never activate, so the key sits unread and the gaps endpoint
 keeps reporting the API inert after a restart. Look for "Activating world resources" in the
 log; absent, the env-var route (the variable named by `unlockedBy`, set on the server process)
-unlocks without depending on activation.
+unlocks without depending on activation. A captured `realm.ts` realm's `credentials` are not
+read from `secrets.env` at all: the owner binds each one when approving the realm, and anything
+that needs an unbound credential stays unstarted.
 
 ## Symptom: learn_* finds nothing
 
