@@ -55,6 +55,12 @@ failure taught: **dedupe by IDENTITY, never by name or by (name, amount)** — r
 distinct records with identical names and identical amounts, and a display-side dedupe that
 merges them silently loses money. Views must RETURN the ids; apps must key on them.
 
+When the realm's type parents onto a shared label, one more equality: the rows read through
+`:Label` equal the rows read through `:ChildLabel` for the same anchor, and the
+`<label>_bakeoff` view, where the label has one, shows this realm's rows under its `system`
+value with `status` populated. For `Memory` only, promote one row (`gateway.memory.promote`)
+and check that it leaves the plain `:Memory` read and appears under `status: 'PROMOTED'`.
+
 ## L5 — Apps: replay their calls, then drive the page
 
 Assets serve. Every call the app's scripts make is replayed with the script's OWN arguments —
