@@ -79,6 +79,16 @@ parents live in a vocabulary realm that sorts after it). The server rolls back a
 references do not resolve, so the harness offers the refused ones again, pass after pass, until a
 pass installs nothing new; `install.attempt` says which pass took, and `install.firstRefusal`
 keeps the first answer. A realm still refused after the last pass is refused on its own merits.
+The server rolls an install back for ANY problem whose source is the realm's root, a WARNING
+included (a view reading a label no installed realm declares, an API name another realm already
+holds), and answers only the generic `REALM_INSTALL_REFUSED`. The cause is in the server's log as
+`warning in realms/<name>: …` / `error in realms/<name>: …`; for an in-process target, grep it
+and put it in the report, because the JSON cannot carry what the server did not say.
+
+**It is slow, and that is the server's cost, not the harness's.** Every install rebuilds the whole
+world, so the n-th install costs more than the first: seventy realms on a laptop took around three
+hours to install, and the sweep comes after. Use `--only` while iterating on the harness; run the
+full set for the comparison that counts, and start it before anything else.
 
 The default world installs some realms from git on first boot, at whatever their branch says that
 day. The harness removes those first and installs the pinned checkout instead, and records what it

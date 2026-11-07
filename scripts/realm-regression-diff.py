@@ -32,7 +32,7 @@ import re
 import sys
 
 # Not facts: they move on every run, or describe the run rather than the realm.
-IGNORED_TOP = {"timings", "startedAt", "server", "label", "serverSha"}
+IGNORED_TOP = {"timings", "startedAt", "server", "label", "serverSha", "note"}
 # Format-only fields, dropped when comparing a realm with its twin.
 FORMAT_ONLY = {"format", "sha", "repo", "twinOf", "defaultWorld"}
 

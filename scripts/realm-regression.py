@@ -352,7 +352,7 @@ def invoke(client: Client, view: dict, timeout: int) -> dict:
     needs = sorted(p for p, spec in (view.get("params") or {}).items()
                    if isinstance(spec, dict) and spec.get("default") is None and spec.get("required") is not False)
     if needs:
-        return {"outcome": "SKIPPED_NEEDS_PARAMS", "params": needs}
+        return {"outcome": "SKIPPED_NEEDS_PARAMS", "needs": needs}
     if not view.get("cypher") and view.get("goal"):
         return {"outcome": "SKIPPED_UNPLANNED_GOAL"}
 
