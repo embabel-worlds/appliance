@@ -25,10 +25,12 @@ and query.
 
 ## Realm
 
-**A realm is how your world learns about a system you already run.** A folder of
-declarative YAML in git. Drop one in and the runtime wires up what it declares:
-types, actions, goals, APIs, MCP servers, scheduled work, saved queries, whole
-dashboards. Nothing to compile, and nothing you cannot read before you trust it.
+**A realm is how your world learns about a system you already run.** A folder in
+git with a `realm.ts` that declares what the realm brings. Drop one in and the
+appliance evaluates it and wires up what it declares: types, actions, goals, APIs,
+MCP servers, scheduled work, saved queries, whole dashboards. Nothing for you to
+build, and nothing you cannot read before you trust it. Older realms declare the same
+things in YAML around a `realm.yml`; they still load.
 
 The word to hold onto is **join**. A realm that brings in data nothing else can
 connect to is a second database you now maintain. A realm sharing an identifier

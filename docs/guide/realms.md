@@ -11,8 +11,15 @@ existing thing more useful the moment it lands.
 
 ## What a realm actually is
 
-A directory with a `realm.yml` in it, and some files it names. Nothing is compiled;
-most realms are declarations rather than code.
+A directory with a `realm.ts` in it, and the files that definition names. `realm.ts`
+exports one object saying what the realm declares, and the appliance evaluates it
+directly — there is nothing for you to build and no generated file to commit. Most realms are
+declarations rather than code; where a realm does carry handler code, the appliance
+builds it when it installs the realm.
+
+Older realms are a `realm.yml` with folders of YAML beside it. Those still load, but
+they are the legacy format and get no new features. A directory with both is read as
+`realm.ts` only: the YAML beside it is ignored, not merged.
 
 | | |
 |---|---|
@@ -78,10 +85,15 @@ gives an agent the same thing without you pasting it.
 a limitation to work around — it is what keeps your realm yours, in your git remote,
 edited with your own tools.
 
-**A build step only runs on clone.** If a realm declares an npm or wasm build, that
-build happens when the appliance *clones* it — so it never fires for a realm you are
-editing locally. Declarative realms need nothing. A realm with a build step must be
-built on the host first, and forgetting this looks exactly like the realm being broken.
+**Edit `realm.ts`, not the YAML beside it.** Once a realm has a `realm.ts`, a
+`realm.yml` or a `types/` folder left next to it is ignored. An edit there changes
+nothing, and it looks exactly like the realm being broken.
+
+**A legacy build step only runs on clone.** A `realm.ts` realm's handlers are built by
+the appliance when it installs the realm, cloned or linked by path. An older YAML realm
+that declares an npm build is different: that build happens only when the appliance
+*clones* it, so it never fires for a realm you are editing locally, and it must be
+built on the host first.
 
 ## Knowing whether it worked
 

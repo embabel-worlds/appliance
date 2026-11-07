@@ -16,17 +16,17 @@ only by provenance stamped at load time.
 Ask, or infer and confirm. The decision has two forks:
 
 1. **Does it need a new type, producer, virtual join, API, or seed data?** Then it is a realm
-   — those capabilities only exist as realm files. Load `realm-authoring` (ships with the
-   realm-spec realm) and work there.
+   — those capabilities only exist in realms. Load `realm-authoring` (ships with the
+   realm-spec realm) and work there. A new realm is a `realm.ts`; YAML realms are legacy.
 2. **Does it read and act on what the world already holds?** Then either target works, and
    the default is the world: for one user's own question, automation, or page, a repository
    is ceremony. Reach for a realm when someone else will install it, when it should survive
    as a reviewable artifact, or when it has grown a battery worth shipping.
 
 The lanes are not rivals — the natural life of a capability is to prove out in the world and
-be promoted to a realm. Promotion is mechanical: a world view's spec becomes `views/*.yml`
-verbatim; an action's body becomes a realm handler; the questions it answered well become the
-battery.
+be promoted to a realm. Promotion is mechanical: a world view's spec becomes an entry in the
+realm's `views` in `realm.ts` (`views/*.yml` verbatim on a legacy realm); an action's body
+becomes a realm handler; the questions it answered well become the battery.
 
 If you do not know what the world already holds, run `world-atlas` first.
 
@@ -35,7 +35,8 @@ If you do not know what the world already holds, run `world-atlas` first.
 World lane: `POST /api/v1/admin/kg/views` saves a user-authored view — name, cypher,
 description, params (with defaults), optional `materialized` + `ttl` + `outputLabel`. The
 save validates: an unrunnable body is a 400, not a saved landmine. Realm lane: the same
-fields as a `views/*.yml` entry.
+fields in the realm's `views` — realm-spec's `TYPESCRIPT_REALMS.md` says which `realm.ts`
+fields are settled — or a `views/*.yml` entry on a legacy realm.
 
 Rules that hold in both lanes:
 
@@ -110,9 +111,12 @@ typed surface behind the same tsc gate, dry-runs it against a real recent signal
 the schedule and the autonomous toggle. Tell the user that is where their handler lives —
 a handler they can inspect and change is theirs; one they can't is yours.
 
-Realm lane: `handlers/` YAML binds a cron or signal to a verb; the verbs are `src/api/*.ts`
-with Vitest specs (`mockGateway`, hermetic in Node); scheduled KG enrichment is
-`decorations/`. `realm-authoring` has the format.
+Realm lane: `realm.ts` declares each verb in its `handlers` record — a `schedule` there is the
+cron binding, and in a captured realm `triggers` bind a source of events to a consumer — and
+the code is the exported functions of its `entry`, `wasm/handlers.ts` by default. A legacy realm does the same
+with `handlers/` YAML over `src/api/*.ts` with Vitest specs (`mockGateway`, hermetic in Node);
+scheduled KG enrichment is `decorations/`, which has no `realm.ts` form yet. `realm-authoring`
+and `realm_brief` have the format.
 
 ## Apps
 
