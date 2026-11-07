@@ -79,7 +79,8 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
 
 ## Symptom: a query names a shared label (`:Memory`, `:Todo`) and your realm's rows are missing from it
 
-- The type declares `parents: [Memory]`. The right properties alone make nothing a Memory.
+- The type declares `parents: ["Memory"]` in `realm.ts` (`parents: [Memory]` in a legacy type
+  file). The right properties alone make nothing a Memory.
 - It restates `visibility`, `userAnchor`, `description` and an identity property — none is
   inherited, and a virtual child without identity never materialises and nothing errors.
 - Its producer stamps `source` and `status` where the parent's contract has them.

@@ -257,10 +257,10 @@ only the live ones):
    from the wrong join (realm-fr-streets, 2026-10-06).
 3. **Identity or record?** For each entity two systems share, ask: *if each system holds one,
    are those two things or one?* Two tickets are two things — a shared parent label
-   (`parents: [SupportCase]`) lets one question cover both. Reach for a label that exists
-   before coining one — `realm_brief` names this world's (`Memory`, `Todo`, `LogEvent`,
-   realm-code-model's code and artifact families) — and say in the proposal which label a
-   candidate realm would stand behind. That is where its value compounds: it answers every
+   (`parents: ["SupportCase"]` on a `realm.ts` type) lets one question cover both. Reach for a
+   label that exists before coining one — `realm_brief` names this world's (`Memory`, `Todo`,
+   `LogEvent`, realm-code-model's code and artifact families) — and say in the proposal which
+   label a candidate realm would stand behind. That is where its value compounds: it answers every
    question, view and agent already written against the label, and it gets the ladder for
    free — Mirror, Compare, Promote, Retire; default-world's
    [`config/types/README.md`](https://github.com/embabel-worlds/default-world/blob/main/config/types/README.md#shared-labels)
