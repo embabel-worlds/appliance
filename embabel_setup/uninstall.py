@@ -11,6 +11,14 @@ a git repository they cloned into the realms folder, backups, and the install fo
 when it is a git working tree — a developer's clone, which the installer did not create and has
 no business deleting.
 
+THOSE GIT REPOSITORIES ARE THE PERSON'S TO GIVE UP, AND ONLY THEIRS. After the uninstall is
+confirmed it names them and asks once more, defaulting to no, whether they go too — so a clean
+uninstall does not end with somebody hunting down realm clones by hand. Only a repository with
+nothing to lose is deleted: no uncommitted, stashed or ignored files, an upstream, every commit on
+the remote as it is now, no other worktree or submodule history depending on it. Anything else is named and kept whatever the answer.
+`--yes` never deletes one, because nobody was asked; and a realms folder outside the install
+folder is never walked, let alone offered.
+
 THE PLAN IS COMPUTED FIRST AND PRINTED BEFORE THE QUESTION, and then it is what runs. A list of
 what will go that differs from what goes is worse than no list, so the two are one data
 structure rather than a paragraph of prose beside a sequence of calls.
@@ -23,8 +31,11 @@ image pull failed halfway has no server to talk to, and it still has to be remov
 from __future__ import annotations
 import os
 import shutil
+import stat
 import subprocess
 import sys
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from .agents import (MCP_SERVER_NAME, PATH_BLOCK_BEGIN, codex_token_profiles, shell_profiles,
                      unwire_coding_agents)
@@ -69,6 +80,8 @@ class Plan:
                           if os.path.lexists(p) and is_our_shim(p)]
         self.directory: str | None = None
         self.kept_repos: list[str] = []
+        # The git repositories the person may choose to delete after confirming -> how each is shown.
+        self.repos: dict[str, str] = {}
 
         if self.docker == "stopped":
             # BEFORE ANYTHING IS TOUCHED. Removing the settings while the data is still in
@@ -139,6 +152,11 @@ class Plan:
             self.kept.append((self.shown, "you asked to keep it (--keep-dir)"))
         elif os.path.exists(os.path.join(self.here, ".git")):
             self.kept.append((self.shown, "it is a git repository, not something the installer created"))
+            # Only a folder that is recognisably an appliance is offered: never home, never a root.
+            if looks_like_an_install(self.here):
+                self.repos[self.here] = self.shown
+                for repo in git_repositories_inside(self.here):
+                    self.repos[repo] = self.shown + repo[len(self.here):]
         elif not looks_like_an_install(self.here):
             self.kept.append((self.shown, "it does not look like a folder the installer created"))
         else:
@@ -154,6 +172,7 @@ class Plan:
             for repo in self.kept_repos:
                 # Named under the path the person installed to, not the one symlinks resolve to.
                 shown = self.shown + repo[len(self.here):]
+                self.repos[repo] = shown
                 self.kept.append((shown, "a git repository you put there; yours, not the installer's"))
 
         backups = os.path.abspath(DEFAULT_BACKUP_DIR)
@@ -309,6 +328,142 @@ def git_repositories_inside(root: str) -> list[str]:
     return sorted(found)
 
 
+def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
+    """Why deleting [repo] would lose something, or None when git vouches that it would not.
+
+    Every doubt keeps it: git missing, a command failing, a remote that cannot be reached, a
+    detached head with no upstream. Untracked AND ignored files count as work — an ignored file
+    is often exactly the local secret or data nobody committed — except Python's caches and what
+    [spare] names: the nested repositories offered on their own, and the settings files this
+    uninstall removes anyway. Pushed means on the remote NOW, asked with ls-remote: a local
+    remote-tracking ref outlives the branch it tracks, and a squash-merged branch deleted on the
+    server would read as pushed while its commits exist nowhere else.
+
+    GIT_* variables are dropped so that a GIT_DIR in the environment cannot make git answer for
+    some other repository, and git may not prompt: a question nobody sees would stall the uninstall.
+    A repository nested inside this one goes with it, so it is checked too — unless [spare] names
+    it and its history is its own: a submodule's lives in the parent's .git, so it is checked
+    with the parent whatever happens to the submodule's folder.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_TERMINAL_PROMPT"] = "0"
+
+    def git(*args: str, stdin: str = "") -> str | None:
+        try:
+            run = subprocess.run(["git", "-C", repo, *args], input=stdin, capture_output=True, text=True,
+                                 env=env, timeout=60, encoding="utf-8", errors="replace")
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return run.stdout if run.returncode == 0 else None
+
+    # A broken .git makes git search upward and answer for the repository AROUND this one — the
+    # appliance clone, whose ignore rules hide the realms. Only an answer about [repo] counts.
+    top = git("rev-parse", "--show-toplevel")
+    if top is None or os.path.realpath(top.strip()) != os.path.realpath(repo):
+        return "git could not check it for unsaved work"
+    status = git("status", "--porcelain", "-z", "--ignored", "--untracked-files=normal", "--ignore-submodules=none")
+    flags = git("ls-files", "-v")
+    if status is None or flags is None:
+        return "git could not check it for unsaved work"
+    entries = [e for e in status.split("\0") if e]
+    if any(not e.startswith("!! ") for e in entries):
+        return "it has uncommitted changes"
+    for entry in entries:
+        path = os.path.join(repo, entry[3:].rstrip("/"))
+        name = os.path.basename(path)
+        if not (os.path.realpath(path) in spare or name in ("__pycache__", ".DS_Store") or name.endswith(".pyc")):
+            return f"it holds files git ignores, such as {entry[3:]}"
+    # Lower case is assume-unchanged, S is skip-worktree: changes git status was told not to show.
+    if any(line[:1].islower() or line[:1] == "S" for line in flags.splitlines()):
+        return "git is told to overlook changes to some of its files"
+    stash = git("stash", "list")
+    if stash is None or stash.strip():
+        return "it has stashed changes"
+    if git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}") is None:
+        return "its branch has no upstream, so whether it is pushed cannot be checked"
+    worktrees = git("worktree", "list", "--porcelain")
+    if worktrees is None or worktrees.count("worktree ") > 1:
+        return "other git worktrees share its history"
+    # A deinitialised submodule leaves its history in .git/modules with no folder to check it by.
+    modules = git("rev-parse", "--git-path", "modules")
+    if modules is None or (os.path.isdir(os.path.join(repo, modules.strip()))
+                           and os.listdir(os.path.join(repo, modules.strip()))):
+        return "it holds submodule history that cannot be checked"
+    remotes = (git("remote") or "").split()
+    published = []
+    for remote in remotes:
+        # A remote that is a folder inside the install is deleted with it: no backup at all.
+        url = (git("remote", "get-url", remote) or "").strip()
+        local = os.path.join(repo, url2pathname(urlparse(url).path) if url.startswith("file:") else url)
+        if not url or (os.path.exists(local) and inside(local, APPLIANCE_DIR)):
+            return f"its remote '{remote}' is inside the folder being uninstalled"
+        listing = git("ls-remote", "--heads", "--tags", remote)
+        if listing is None:
+            return f"its remote '{remote}' could not be reached to confirm everything is pushed"
+        published += ["^" + line.split()[0] for line in listing.splitlines() if line.strip()]
+    # A remote commit not fetched here is ignored, which can only make more look unpushed.
+    unpushed = git("rev-list", "--ignore-missing", "HEAD", "--branches", "--tags", "--stdin",
+                   stdin="".join(f"{rev}\n" for rev in published))
+    if not remotes or unpushed is None or unpushed.strip():
+        return "it has commits that are not pushed"
+    for nested in git_repositories_inside(repo):
+        if nested in spare and os.path.isdir(os.path.join(nested, ".git")):
+            continue
+        why = unsaved_work(nested)
+        if why:
+            return f"{tilde(nested)} inside it: {why}"
+    return None
+
+
+def accounted_for(plan: Plan) -> set[str]:
+    """What unsaved_work may find inside a repository without that counting as work to lose."""
+    return set(plan.repos) | {os.path.realpath(p) for p in (env_path(), os.path.join(APPLIANCE_DIR, OVERRIDE_FILE))}
+
+
+def choose_repos(plan: Plan, assume_yes: bool) -> tuple[list[str], list[tuple[str, str]]]:
+    """Ask, once, whether the git repositories the uninstall keeps go too. Default: no.
+
+    Returns what the person agreed to delete and, only when they agreed, the rest with why
+    each stays. A refusal, --yes, or no terminal to ask on all mean the same: nothing of
+    theirs is deleted and the plan's KEPT list stands as printed.
+    """
+    if not plan.repos:
+        return [], []
+    if assume_yes:
+        print("  " + dim("Your git repositories stay: --yes never deletes them. Run without it to be asked."))
+        return [], []
+    why = {repo: unsaved_work(repo, accounted_for(plan)) for repo in plan.repos}
+    safe = [repo for repo in plan.repos if not why[repo]]
+    unsafe = [(repo, why[repo]) for repo in plan.repos if why[repo]]
+    if unsafe:
+        print("  These git repositories stay whatever you answer — deleting them would lose work:")
+        for repo, reason in unsafe:
+            print(f"    {plan.repos[repo]} — {reason}")
+    if not safe:
+        print()
+        return [], []
+    print("  These git repositories would be kept, and everything in them is committed and pushed:")
+    for repo in safe:
+        print(f"    {plan.repos[repo]}" + (" — the install folder" if repo == plan.here else ""))
+    try:
+        answer = prompt("  Delete these too? [y/N] ").strip().lower()
+    except SetupError:
+        answer = ""
+    print()
+    if answer not in ("y", "yes"):
+        return [], []
+    return safe, unsafe
+
+
+def _rmtree(path: str) -> None:
+    """shutil.rmtree that also takes read-only files, which Windows refuses to delete and git
+    makes every object it stores."""
+    def writable_then_retry(func, failed, _):
+        os.chmod(failed, stat.S_IWRITE)
+        func(failed)
+    shutil.rmtree(path, onerror=writable_then_retry)
+
+
 def remove_tree(root: str, keep: list[str]) -> list[tuple[str, str]]:
     """Delete [root], except the paths in [keep] and the folders that lead to them.
 
@@ -339,7 +494,7 @@ def remove_tree(root: str, keep: list[str]) -> list[tuple[str, str]]:
                 elif holds_kept(entry.path):
                     visit(entry.path)
                 else:
-                    shutil.rmtree(entry.path)
+                    _rmtree(entry.path)
             except OSError as e:
                 failures.append((entry.path, e.strerror or str(e)))
         if not holds_kept(path):
@@ -386,6 +541,7 @@ def uninstall(assume_yes: bool = False, keep_images: bool = False, keep_dir: boo
         if answer != "yes":
             raise SetupError("Not uninstalled — nothing was touched.")
     print()
+    delete, stays = choose_repos(plan, assume_yes)
 
     remained: list[tuple[str, str]] = [] + plan.kept
     if plan.docker == "ok":
@@ -424,6 +580,29 @@ def uninstall(assume_yes: bool = False, keep_images: bool = False, keep_dir: boo
             print(f"  Removed the embedding model {EMBEDDING_MODEL}.")
         else:
             remained.append((EMBEDDING_MODEL, "Docker Model Runner would not remove it"))
+
+    # The person's repositories, when they said so. One at a time, each checked again just before
+    # it goes: the answer may be minutes old, a sibling's remote may take a minute to answer, and
+    # a commit made meanwhile is exactly what must not be lost. The install folder itself goes
+    # last, below, with the installer's own files; its check is the last thing before that.
+    if delete:
+        os.chdir(os.path.expanduser("~"))
+        remained = [k for k in remained if k[0] not in plan.repos.values()]
+        remained += [(plan.repos[repo], f"not deleted: {why}") for repo, why in stays]
+        for repo in sorted(delete, key=lambda r: r == plan.here):
+            why = unsaved_work(repo, accounted_for(plan))
+            if why:
+                remained.append((plan.repos[repo], f"not deleted: {why}"))
+            elif repo == plan.here:
+                plan.directory = plan.here
+            else:
+                try:
+                    _rmtree(repo)
+                    print(f"  Removed {plan.repos[repo]}.")
+                except OSError as e:
+                    remained.append((plan.repos[repo], f"could not be removed: {e.strerror or e}"))
+        if plan.directory:
+            plan.kept_repos = [r for r in git_repositories_inside(plan.here) if os.path.lexists(r)]
 
     # LAST, because it is the folder this program is running from. Everything above has been
     # imported and run; from here on only what is already loaded is used, and the working

@@ -45,6 +45,8 @@ ANSWERS = [
     # Asked of the PERSON on /dev/tty when `install.sh --uninstall` runs, which is the
     # hand-off this answers through: the same pty the wizard reads.
     (r"Type 'yes' to uninstall:", "yes"),
+    # The person's own git repositories: the default keeps them, which is what a scripted run takes.
+    (r"Delete these too\? \[y/N\]", ""),
     # MATCHED ON THE STEM, up to the colon. Both of these labels have been reworded once
     # already — "Your name" became "Your full name", then "Username" grew a parenthetical —
     # and each time this script stopped answering and the run died at the 900s timeout with
