@@ -381,6 +381,7 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
         return "it holds submodule history that cannot be checked"
     remotes = (git("remote") or "").split()
     published = []
+    published_tags: dict[str, set[str]] = {}
     for remote in remotes:
         # A remote that is a folder inside the install is deleted with it: no backup at all.
         url = (git("remote", "get-url", remote) or "").strip()
@@ -390,7 +391,11 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
         listing = git("ls-remote", "--refs", remote)
         if listing is None:
             return f"its remote '{remote}' could not be reached to confirm everything is pushed"
-        published += ["^" + line.split()[0] for line in listing.splitlines() if line.strip()]
+        for line in listing.splitlines():
+            object_name, ref = line.split()
+            published.append("^" + object_name)
+            if ref.startswith("refs/tags/"):
+                published_tags.setdefault(ref, set()).add(object_name)
     for nested in git_repositories_inside(repo):
         if nested in spare and os.path.isdir(os.path.join(nested, ".git")):
             continue
@@ -400,6 +405,13 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
 
     # Remote and nested-repository checks can take minutes. Re-read local history, the stash,
     # index and finally the worktree only after they finish, so newly saved work cannot pass as clean.
+    tags = git("for-each-ref", "--format=%(objectname) %(refname)", "refs/tags")
+    if tags is None:
+        return "git could not check it for unsaved work"
+    for line in tags.splitlines():
+        object_name, ref = line.split(" ", 1)
+        if object_name not in published_tags.get(ref, set()):
+            return "it has tags that are not pushed"
     unpushed = git("rev-list", "--ignore-missing", "--all", "--reflog", "--stdin",
                    stdin="".join(f"{rev}\n" for rev in published))
     if not remotes or unpushed is None or unpushed.strip():
@@ -416,10 +428,16 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
     stash = git("stash", "list")
     if stash is None or stash.strip():
         return "it has stashed changes"
-    status = git("status", "--porcelain", "-z", "--ignored", "--untracked-files=normal", "--ignore-submodules=none")
-    if status is None:
+    try:
+        status = subprocess.run(["git", "-C", repo, "status", "--porcelain", "-z", "--ignored",
+                                 "--untracked-files=normal", "--ignore-submodules=none"],
+                                capture_output=True, text=True, env=env, timeout=60,
+                                encoding="utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError):
         return "git could not check it for unsaved work"
-    entries = [e for e in status.split("\0") if e]
+    if status.returncode != 0 or status.stderr:
+        return "git could not check it for unsaved work"
+    entries = [e for e in status.stdout.split("\0") if e]
     if any(not e.startswith("!! ") for e in entries):
         return "it has uncommitted changes"
     for entry in entries:
@@ -457,7 +475,7 @@ def choose_repos(plan: Plan, assume_yes: bool) -> tuple[list[str], list[tuple[st
     if not safe:
         print()
         return [], []
-    print("  These git repositories would be kept, and everything in them is committed and pushed:")
+    print("  These git repositories passed checks for commits, branches, tags, stashes, and uncommitted or untracked files:")
     for repo in safe:
         print(f"    {plan.repos[repo]}" + (" — the install folder" if repo == plan.here else ""))
     try:
@@ -473,8 +491,10 @@ def choose_repos(plan: Plan, assume_yes: bool) -> tuple[list[str], list[tuple[st
 def _rmtree(path: str) -> None:
     """shutil.rmtree that also takes read-only files, which Windows refuses to delete and git
     makes every object it stores."""
-    def writable_then_retry(func, failed, _):
-        os.chmod(failed, stat.S_IWRITE)
+    def writable_then_retry(func, failed, exc_info):
+        if os.name != "nt" or func not in (os.unlink, os.rmdir) or os.path.islink(failed):
+            raise exc_info[1]
+        os.chmod(failed, os.lstat(failed).st_mode | stat.S_IWRITE)
         func(failed)
     shutil.rmtree(path, onerror=writable_then_retry)
 

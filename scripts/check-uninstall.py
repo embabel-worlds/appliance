@@ -380,6 +380,148 @@ def unsaved_repos_kept():
                                               "realm-stale", "realm-submodule", "realm-unpushed"], os.listdir(realms)
 
 
+@case("an unreadable directory in the install tree is reported without crashing")
+def unreadable_tree_directory_is_reported():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        blocked = os.path.join(root, "blocked")
+        os.mkdir(blocked)
+        os.chmod(blocked, 0)
+        try:
+            failures = uninstall_module.remove_tree(root, [])
+        finally:
+            if os.path.exists(blocked):
+                os.chmod(blocked, 0o700)
+        assert any(path == blocked for path, _ in failures), failures
+        assert os.path.isdir(blocked), "removed a directory it could not inspect"
+
+
+@case("a symlink in a read-only directory cannot change its target mode")
+def readonly_tree_symlink_preserves_target_mode():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        tree = os.path.join(root, "tree")
+        readonly = os.path.join(tree, "readonly")
+        target = os.path.join(root, "target")
+        os.makedirs(readonly)
+        with open(target, "w", encoding="utf-8") as f:
+            f.write("precious\n")
+        os.chmod(target, 0o640)
+        link = os.path.join(readonly, "link")
+        os.symlink(target, link)
+        os.chmod(readonly, 0o555)
+        try:
+            uninstall_module.remove_tree(tree, [])
+            assert os.stat(target).st_mode & 0o777 == 0o640, oct(os.stat(target).st_mode & 0o777)
+        finally:
+            if os.path.exists(readonly):
+                os.chmod(readonly, 0o755)
+            if os.path.exists(target):
+                os.chmod(target, 0o640)
+
+
+@case("a git status warning for an unreadable untracked directory keeps the repository")
+def unreadable_untracked_directory_kept():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        repo = published(root, os.path.join(install, "realms", "realm-unreadable"))
+        blocked = os.path.join(repo, "unreadable")
+        os.mkdir(blocked)
+        os.chmod(blocked, 0)
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        if os.path.exists(blocked):
+            os.chmod(blocked, 0o700)
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert os.path.exists(os.path.join(repo, "realm.yml")), "deleted a repository git could not inspect"
+        assert "realm-unreadable — git could not check it for unsaved work" in out, out
+
+
+@case("unpushed and differing local tags keep the repository")
+def unpushed_and_differing_tags_kept():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        realms = os.path.join(install, "realms")
+        unpublished = published(root, os.path.join(realms, "realm-unpushed-tags"))
+        git(unpublished, "tag", "lightweight")
+        git(unpublished, "tag", "-a", "annotated", "-m", "local tag")
+
+        differing = published(root, os.path.join(realms, "realm-differing-tag"))
+        git(differing, "tag", "shared")
+        git(differing, "push", "-q", "origin", "refs/tags/shared")
+        with open(os.path.join(differing, "later.md"), "w", encoding="utf-8") as f:
+            f.write("published on another branch\n")
+        git(differing, "add", "later.md")
+        git(differing, "commit", "-qm", "second")
+        git(differing, "push", "-q", "origin", "HEAD:refs/heads/published-elsewhere")
+        git(differing, "tag", "-f", "shared")
+
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert os.path.exists(unpublished), "deleted a repository with local lightweight/annotated tags"
+        assert os.path.exists(differing), "deleted a repository whose remote tag has a different object"
+        assert "realm-unpushed-tags — it has tags that are not pushed" in out, out
+        assert "realm-differing-tag — it has tags that are not pushed" in out, out
+        assert "everything in them is committed and pushed" not in out, out
+
+
+@case("work changed after the repository listing is caught by the deletion recheck")
+def work_saved_after_listing_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        repo = published(root, os.path.join(install, "realms", "realm-clean"))
+        home = os.path.join(root, "home")
+        saved = os.path.join(repo, "saved-after-listing.md")
+        output = io.StringIO()
+        prompt_count = 0
+
+        def answer(message):
+            nonlocal prompt_count
+            prompt_count += 1
+            if prompt_count == 1:
+                return "yes"
+            assert "Delete these too?" in message
+            assert "realm-clean" in output.getvalue(), "the repository was not listed before the change"
+            with open(saved, "w", encoding="utf-8") as f:
+                f.write("mine\n")
+            return "yes"
+
+        old_cwd = os.getcwd()
+        try:
+            with patch.multiple(
+                    uninstall_module,
+                    APPLIANCE_DIR=install,
+                    DEFAULT_BACKUP_DIR=os.path.join(root, "backups"),
+                    docker_state=lambda: "absent",
+                    others_installed_here=lambda: [],
+                    installed_instances=lambda: [],
+                    cli_shim_paths=lambda: [],
+                    windows_shim_paths=lambda: [],
+                    codex_token_profiles=lambda: [],
+                    shell_profiles=lambda: [],
+                    env_file_value=lambda _: None,
+                    env_path=lambda: os.path.join(install, ".env"),
+                    unwire_coding_agents=lambda: None,
+                    remove_cli_shim=lambda: None,
+                    prompt=answer), patch.dict(os.environ, {"HOME": home}):
+                with contextlib.redirect_stdout(output):
+                    uninstall_module.uninstall()
+        finally:
+            os.chdir(old_cwd)
+        out = output.getvalue()
+        assert prompt_count == 2, prompt_count
+        assert os.path.exists(saved), "deleted work created after the safety listing"
+        assert os.path.exists(os.path.join(repo, "realm.yml")), "deleted the repository after it became dirty"
+        assert "realm-clean — not deleted: it has uncommitted changes" in out, out
+
+
 @case("work saved while remote checks run keeps the repository")
 def work_saved_during_remote_check_kept():
     import embabel_setup.uninstall as uninstall_module
