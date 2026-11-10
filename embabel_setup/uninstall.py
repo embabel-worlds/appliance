@@ -361,24 +361,6 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
     top = git("rev-parse", "--show-toplevel")
     if top is None or os.path.realpath(top.strip()) != os.path.realpath(repo):
         return "git could not check it for unsaved work"
-    status = git("status", "--porcelain", "-z", "--ignored", "--untracked-files=normal", "--ignore-submodules=none")
-    flags = git("ls-files", "-v")
-    if status is None or flags is None:
-        return "git could not check it for unsaved work"
-    entries = [e for e in status.split("\0") if e]
-    if any(not e.startswith("!! ") for e in entries):
-        return "it has uncommitted changes"
-    for entry in entries:
-        path = os.path.join(repo, entry[3:].rstrip("/"))
-        name = os.path.basename(path)
-        if not (os.path.realpath(path) in spare or name in ("__pycache__", ".DS_Store") or name.endswith(".pyc")):
-            return f"it holds files git ignores, such as {entry[3:]}"
-    # Lower case is assume-unchanged, S is skip-worktree: changes git status was told not to show.
-    if any(line[:1].islower() or line[:1] == "S" for line in flags.splitlines()):
-        return "git is told to overlook changes to some of its files"
-    stash = git("stash", "list")
-    if stash is None or stash.strip():
-        return "it has stashed changes"
     if git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}") is None:
         return "its branch has no upstream, so whether it is pushed cannot be checked"
     worktrees = git("worktree", "list", "--porcelain")
@@ -386,8 +368,16 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
         return "other git worktrees share its history"
     # A deinitialised submodule leaves its history in .git/modules with no folder to check it by.
     modules = git("rev-parse", "--git-path", "modules")
-    if modules is None or (os.path.isdir(os.path.join(repo, modules.strip()))
-                           and os.listdir(os.path.join(repo, modules.strip()))):
+    if modules is None:
+        return "it holds submodule history that cannot be checked"
+    modules_path = os.path.join(repo, modules.strip())
+    try:
+        module_entries = os.listdir(modules_path)
+    except FileNotFoundError:
+        module_entries = []
+    except OSError:
+        return "it holds submodule history that cannot be checked"
+    if module_entries:
         return "it holds submodule history that cannot be checked"
     remotes = (git("remote") or "").split()
     published = []
@@ -397,21 +387,46 @@ def unsaved_work(repo: str, spare: set[str] = frozenset()) -> str | None:
         local = os.path.join(repo, url2pathname(urlparse(url).path) if url.startswith("file:") else url)
         if not url or (os.path.exists(local) and inside(local, APPLIANCE_DIR)):
             return f"its remote '{remote}' is inside the folder being uninstalled"
-        listing = git("ls-remote", "--heads", "--tags", remote)
+        listing = git("ls-remote", "--refs", remote)
         if listing is None:
             return f"its remote '{remote}' could not be reached to confirm everything is pushed"
         published += ["^" + line.split()[0] for line in listing.splitlines() if line.strip()]
-    # A remote commit not fetched here is ignored, which can only make more look unpushed.
-    unpushed = git("rev-list", "--ignore-missing", "HEAD", "--branches", "--tags", "--stdin",
-                   stdin="".join(f"{rev}\n" for rev in published))
-    if not remotes or unpushed is None or unpushed.strip():
-        return "it has commits that are not pushed"
     for nested in git_repositories_inside(repo):
         if nested in spare and os.path.isdir(os.path.join(nested, ".git")):
             continue
         why = unsaved_work(nested)
         if why:
             return f"{tilde(nested)} inside it: {why}"
+
+    # Remote and nested-repository checks can take minutes. Re-read local history, the stash,
+    # index and finally the worktree only after they finish, so newly saved work cannot pass as clean.
+    unpushed = git("rev-list", "--ignore-missing", "--all", "--reflog", "--stdin",
+                   stdin="".join(f"{rev}\n" for rev in published))
+    if not remotes or unpushed is None or unpushed.strip():
+        stash = git("stash", "list")
+        if stash is None or stash.strip():
+            return "it has stashed changes"
+        return "it has commits that are not pushed"
+    flags = git("ls-files", "-v")
+    if flags is None:
+        return "git could not check it for unsaved work"
+    # Lower case is assume-unchanged, S is skip-worktree: changes git status was told not to show.
+    if any(line[:1].islower() or line[:1] == "S" for line in flags.splitlines()):
+        return "git is told to overlook changes to some of its files"
+    stash = git("stash", "list")
+    if stash is None or stash.strip():
+        return "it has stashed changes"
+    status = git("status", "--porcelain", "-z", "--ignored", "--untracked-files=normal", "--ignore-submodules=none")
+    if status is None:
+        return "git could not check it for unsaved work"
+    entries = [e for e in status.split("\0") if e]
+    if any(not e.startswith("!! ") for e in entries):
+        return "it has uncommitted changes"
+    for entry in entries:
+        path = os.path.join(repo, entry[3:].rstrip("/"))
+        name = os.path.basename(path)
+        if not (os.path.realpath(path) in spare or name in ("__pycache__", ".DS_Store") or name.endswith(".pyc")):
+            return f"it holds files git ignores, such as {entry[3:]}"
     return None
 
 

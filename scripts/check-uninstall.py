@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
@@ -377,6 +378,96 @@ def unsaved_repos_kept():
         assert "realm-submodule — not deleted: it holds submodule history" in out, out
         assert sorted(os.listdir(realms)) == ["realm-dirty", "realm-hidden", "realm-ignored", "realm-mine", "realm-self",
                                               "realm-stale", "realm-submodule", "realm-unpushed"], os.listdir(realms)
+
+
+@case("work saved while remote checks run keeps the repository")
+def work_saved_during_remote_check_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-clean"))
+        saved = os.path.join(repo, "saved-during-check.md")
+        real_run = subprocess.run
+        remote_check_started = False
+
+        def save_during_remote_check(command, *args, **kwargs):
+            nonlocal remote_check_started
+            if not remote_check_started and command[0] == "git" and "ls-remote" in command:
+                with open(saved, "w", encoding="utf-8") as f:
+                    f.write("mine\n")
+                remote_check_started = True
+            return real_run(command, *args, **kwargs)
+
+        with patch.object(uninstall_module.subprocess, "run", side_effect=save_during_remote_check):
+            why = uninstall_module.unsaved_work(repo)
+        assert remote_check_started, "the remote check did not run"
+        assert why == "it has uncommitted changes", why
+
+
+@case("unpublished Git notes keep the repository")
+def unpublished_notes_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-notes"))
+        git(repo, "notes", "add", "-m", "unpublished note")
+        why = uninstall_module.unsaved_work(repo)
+        assert why == "it has commits that are not pushed", why
+
+        published_notes = published(root, os.path.join(root, "realm-published-notes"))
+        git(published_notes, "notes", "add", "-m", "published note")
+        git(published_notes, "push", "origin", "refs/notes/commits")
+        why = uninstall_module.unsaved_work(published_notes)
+        assert why is None, why
+
+
+@case("a commit kept only in the reflog keeps the repository")
+def reflog_only_commit_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-reflog"))
+        with open(os.path.join(repo, "unpublished.md"), "w", encoding="utf-8") as f:
+            f.write("not pushed\n")
+        git(repo, "add", "unpublished.md")
+        git(repo, "commit", "-qm", "reflog-only commit")
+        git(repo, "reset", "--hard", "@{u}")
+        why = uninstall_module.unsaved_work(repo)
+        assert why == "it has commits that are not pushed", why
+
+
+@case("a stash keeps the repository")
+def stashed_work_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-stash"))
+        with open(os.path.join(repo, "realm.yml"), "a", encoding="utf-8") as f:
+            f.write("mine\n")
+        git(repo, "stash", "push", "-m", "unpublished work")
+        why = uninstall_module.unsaved_work(repo)
+        assert why == "it has stashed changes", why
+
+
+@case("unreadable submodule metadata keeps the repository")
+def unreadable_modules_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-modules"))
+        modules = os.path.join(repo, ".git", "modules")
+        os.makedirs(modules)
+        real_listdir = os.listdir
+        target = os.path.normcase(os.path.abspath(modules))
+
+        def unreadable(path):
+            if os.path.normcase(os.path.abspath(path)) == target:
+                raise PermissionError("not readable")
+            return real_listdir(path)
+
+        with patch.object(uninstall_module.os, "listdir", side_effect=unreadable):
+            why = uninstall_module.unsaved_work(repo)
+        assert why == "it holds submodule history that cannot be checked", why
 
 
 @case("--yes never deletes a repository, and never asks")
