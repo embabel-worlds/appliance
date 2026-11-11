@@ -10,7 +10,10 @@ uninstall` could not remove anything. This check holds the two halves of the fix
   - `setup.py --uninstall` works from the states a real machine gets left in — setup never
     finished, Docker stopped, Docker gone — and afterwards no container, volume, image, launcher,
     PATH line or install folder of ours remains, while what the person made (a realm repository
-    they cloned, a foreign `embabel`) is untouched and named.
+    they cloned, a foreign `embabel`) is untouched and named;
+  - the person's git repositories inside the install folder go only when they answer yes to the
+    second question, and only when nothing would be lost: no uncommitted or unpushed work, never
+    under --yes, never a realms folder outside the install.
 
 The uninstall cases run the REAL setup.py as a child process, from a copy of the installer in a
 temporary folder, against a stub `docker` that records what it was asked to do. HOME, PATH and
@@ -25,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
@@ -251,6 +255,392 @@ def other_appliance_keeps_shared_downloads():
         assert "image rm" not in calls and "model rm" not in calls, "removed downloads another appliance runs on"
         assert "other Embabel installations on this machine use them: other" in out, out
         assert "This appliance is uninstalled." in out and "Embabel is uninstalled." not in out, out
+
+
+def git(cwd: str, *args: str) -> None:
+    """git for building fixtures, deaf to this machine's config — a global commit.gpgsign would
+    otherwise ask for a key in the middle of a check."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="t",
+               GIT_AUTHOR_EMAIL="t@example.com", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+    subprocess.run(["git", "-c", "init.defaultBranch=main", *args], cwd=cwd, env=env, check=True,
+                   capture_output=True)
+
+
+def published(root: str, path: str, state: str = "pushed") -> str:
+    """Make [path] a git repository whose every commit is on its remote, then spoil it as asked:
+    "dirty" leaves an uncommitted file, "unpushed" a commit the remote never saw, "ignored" a
+    file git ignores, "hidden" a change git is told to overlook, "stale" deletes the branch on the
+    remote while the local remote-tracking ref still claims it is there, "self" makes it its own
+    remote, and "submodule" leaves a deinitialised submodule's history in its .git."""
+    os.makedirs(path, exist_ok=True)
+    if not os.listdir(path):
+        with open(os.path.join(path, "realm.yml"), "w") as f:
+            f.write("name: x\n")
+    if state == "ignored":
+        with open(os.path.join(path, ".gitignore"), "w") as f:
+            f.write("secret.env\n")
+    remote = os.path.join(root, "remotes", os.path.basename(path) + ".git")
+    git(root, "init", "-q", "--bare", remote)
+    git(path, "init", "-q")
+    git(path, "add", "-A")
+    git(path, "commit", "-qm", "first")
+    git(path, "remote", "add", "origin", remote)
+    git(path, "push", "-qu", "origin", "HEAD")
+    if state in ("dirty", "unpushed"):
+        with open(os.path.join(path, "notes.md"), "w") as f:
+            f.write("mine\n")
+    if state == "unpushed":
+        git(path, "add", "notes.md")
+        git(path, "commit", "-qm", "not pushed")
+    if state == "ignored":
+        with open(os.path.join(path, "secret.env"), "w") as f:
+            f.write("KEY=mine\n")
+    if state == "hidden":
+        with open(os.path.join(path, "realm.yml"), "a") as f:
+            f.write("mine: true\n")
+        git(path, "update-index", "--assume-unchanged", "realm.yml")
+    if state == "stale":
+        git(remote, "update-ref", "-d", "refs/heads/main")
+    if state == "self":  # its only remote is itself, so "pushed" proves nothing
+        git(path, "remote", "set-url", "origin", f"file://localhost{path}")
+        git(path, "fetch", "-q", "origin")
+    if state == "submodule":  # deinitialised: its history sits in .git/modules, no folder to check
+        lib = published(root, os.path.join(root, "lib"))
+        git(path, "-c", "protocol.file.allow=always", "submodule", "add", "-q", lib, "lib")
+        git(path, "commit", "-qm", "lib")
+        git(path, "push", "-q")
+        git(path, "submodule", "--quiet", "deinit", "-f", "lib")
+    return path
+
+
+@case("answering no to the repository question keeps every repository")
+def repos_kept_on_no():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        realm = published(root, os.path.join(install, "realms", "realm-clean"))
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\nn\n")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert "Delete these too? [y/N]" in out, out
+        assert os.path.exists(os.path.join(realm, "realm.yml")), "deleted a repository after the person said no"
+        assert "realm-clean — a git repository you put there" in out, out
+
+
+@case("answering yes deletes the clean repositories and the install folder, never an outside realms folder")
+def repos_deleted_on_yes():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        realm = published(root, os.path.join(install, "realms", "realm-clean"))
+        outside = published(root, os.path.join(root, "home", "my-realms", "realm-outside"))
+        with open(os.path.join(install, ".env"), "a") as f:
+            f.write(f"EMBABEL_REALMS_DIR={os.path.dirname(outside)}\n")
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert not os.path.exists(realm), "a repository the person agreed to delete was left"
+        assert "Removed ~/embabel/worlds/realms/realm-clean." in out, out
+        assert not os.path.exists(os.path.join(env["HOME"], "embabel")), "the install folder was left"
+        assert os.path.exists(os.path.join(outside, "realm.yml")), "touched a realms folder outside the install"
+        assert "realm-outside" not in out, f"offered a repository outside the install:\n{out}"
+        assert os.path.exists(os.path.join(root, "outside", "precious.txt")), "followed a symlink out of the install"
+
+
+@case("a repository with uncommitted, ignored, hidden or unpushed work is named and kept, whatever the answer")
+def unsaved_repos_kept():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root)  # realm-mine: a .git git cannot read, so nothing vouches for it
+        realms = os.path.join(install, "realms")
+        clean = published(root, os.path.join(realms, "realm-clean"))
+        dirty = published(root, os.path.join(realms, "realm-dirty"), "dirty")
+        unpushed = published(root, os.path.join(realms, "realm-unpushed"), "unpushed")
+        others = {state: published(root, os.path.join(realms, f"realm-{state}"), state)
+                  for state in ("ignored", "hidden", "stale", "self", "submodule")}
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert not os.path.exists(clean), out
+        assert os.path.exists(os.path.join(dirty, "notes.md")), "deleted a repository with uncommitted changes"
+        assert os.path.exists(os.path.join(unpushed, "notes.md")), "deleted a repository with unpushed commits"
+        assert os.path.exists(os.path.join(realms, "realm-mine", "realm.yml")), "deleted a repository git could not check"
+        assert "realm-dirty — not deleted: it has uncommitted changes" in out, out
+        assert "realm-unpushed — not deleted: it has commits that are not pushed" in out, out
+        assert "realm-mine — not deleted: git could not check it" in out, out
+        for state, path in others.items():
+            assert os.path.exists(path), f"deleted a repository whose work is {state}:\n{out}"
+        assert "realm-ignored — not deleted: it holds files git ignores, such as secret.env" in out, out
+        assert "realm-hidden — not deleted: git is told to overlook changes" in out, out
+        assert "realm-stale — not deleted: it has commits that are not pushed" in out, out
+        assert "realm-self — not deleted: its remote 'origin' is inside the folder being uninstalled" in out, out
+        assert "realm-submodule — not deleted: it holds submodule history" in out, out
+        assert sorted(os.listdir(realms)) == ["realm-dirty", "realm-hidden", "realm-ignored", "realm-mine", "realm-self",
+                                              "realm-stale", "realm-submodule", "realm-unpushed"], os.listdir(realms)
+
+
+@case("an unreadable directory in the install tree is reported without crashing")
+def unreadable_tree_directory_is_reported():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        blocked = os.path.join(root, "blocked")
+        os.mkdir(blocked)
+        os.chmod(blocked, 0)
+        try:
+            failures = uninstall_module.remove_tree(root, [])
+        finally:
+            if os.path.exists(blocked):
+                os.chmod(blocked, 0o700)
+        assert any(path == blocked for path, _ in failures), failures
+        assert os.path.isdir(blocked), "removed a directory it could not inspect"
+
+
+@case("a symlink in a read-only directory cannot change its target mode")
+def readonly_tree_symlink_preserves_target_mode():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        tree = os.path.join(root, "tree")
+        readonly = os.path.join(tree, "readonly")
+        target = os.path.join(root, "target")
+        os.makedirs(readonly)
+        with open(target, "w", encoding="utf-8") as f:
+            f.write("precious\n")
+        os.chmod(target, 0o640)
+        link = os.path.join(readonly, "link")
+        os.symlink(target, link)
+        os.chmod(readonly, 0o555)
+        try:
+            uninstall_module.remove_tree(tree, [])
+            assert os.stat(target).st_mode & 0o777 == 0o640, oct(os.stat(target).st_mode & 0o777)
+        finally:
+            if os.path.exists(readonly):
+                os.chmod(readonly, 0o755)
+            if os.path.exists(target):
+                os.chmod(target, 0o640)
+
+
+@case("a git status warning for an unreadable untracked directory keeps the repository")
+def unreadable_untracked_directory_kept():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        repo = published(root, os.path.join(install, "realms", "realm-unreadable"))
+        blocked = os.path.join(repo, "unreadable")
+        os.mkdir(blocked)
+        os.chmod(blocked, 0)
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        if os.path.exists(blocked):
+            os.chmod(blocked, 0o700)
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert os.path.exists(os.path.join(repo, "realm.yml")), "deleted a repository git could not inspect"
+        assert "realm-unreadable — git could not check it for unsaved work" in out, out
+
+
+@case("unpushed and differing local tags keep the repository")
+def unpushed_and_differing_tags_kept():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        realms = os.path.join(install, "realms")
+        unpublished = published(root, os.path.join(realms, "realm-unpushed-tags"))
+        git(unpublished, "tag", "lightweight")
+        git(unpublished, "tag", "-a", "annotated", "-m", "local tag")
+
+        differing = published(root, os.path.join(realms, "realm-differing-tag"))
+        git(differing, "tag", "shared")
+        git(differing, "push", "-q", "origin", "refs/tags/shared")
+        with open(os.path.join(differing, "later.md"), "w", encoding="utf-8") as f:
+            f.write("published on another branch\n")
+        git(differing, "add", "later.md")
+        git(differing, "commit", "-qm", "second")
+        git(differing, "push", "-q", "origin", "HEAD:refs/heads/published-elsewhere")
+        git(differing, "tag", "-f", "shared")
+
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert os.path.exists(unpublished), "deleted a repository with local lightweight/annotated tags"
+        assert os.path.exists(differing), "deleted a repository whose remote tag has a different object"
+        assert "realm-unpushed-tags — it has tags that are not pushed" in out, out
+        assert "realm-differing-tag — it has tags that are not pushed" in out, out
+        assert "everything in them is committed and pushed" not in out, out
+
+
+@case("work changed after the repository listing is caught by the deletion recheck")
+def work_saved_after_listing_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        repo = published(root, os.path.join(install, "realms", "realm-clean"))
+        home = os.path.join(root, "home")
+        saved = os.path.join(repo, "saved-after-listing.md")
+        output = io.StringIO()
+        prompt_count = 0
+
+        def answer(message):
+            nonlocal prompt_count
+            prompt_count += 1
+            if prompt_count == 1:
+                return "yes"
+            assert "Delete these too?" in message
+            assert "realm-clean" in output.getvalue(), "the repository was not listed before the change"
+            with open(saved, "w", encoding="utf-8") as f:
+                f.write("mine\n")
+            return "yes"
+
+        old_cwd = os.getcwd()
+        try:
+            with patch.multiple(
+                    uninstall_module,
+                    APPLIANCE_DIR=install,
+                    DEFAULT_BACKUP_DIR=os.path.join(root, "backups"),
+                    docker_state=lambda: "absent",
+                    others_installed_here=lambda: [],
+                    installed_instances=lambda: [],
+                    cli_shim_paths=lambda: [],
+                    windows_shim_paths=lambda: [],
+                    codex_token_profiles=lambda: [],
+                    shell_profiles=lambda: [],
+                    env_file_value=lambda _: None,
+                    env_path=lambda: os.path.join(install, ".env"),
+                    unwire_coding_agents=lambda: None,
+                    remove_cli_shim=lambda: None,
+                    prompt=answer), patch.dict(os.environ, {"HOME": home}):
+                with contextlib.redirect_stdout(output):
+                    uninstall_module.uninstall()
+        finally:
+            os.chdir(old_cwd)
+        out = output.getvalue()
+        assert prompt_count == 2, prompt_count
+        assert os.path.exists(saved), "deleted work created after the safety listing"
+        assert os.path.exists(os.path.join(repo, "realm.yml")), "deleted the repository after it became dirty"
+        assert "realm-clean — not deleted: it has uncommitted changes" in out, out
+
+
+@case("work saved while remote checks run keeps the repository")
+def work_saved_during_remote_check_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-clean"))
+        saved = os.path.join(repo, "saved-during-check.md")
+        real_run = subprocess.run
+        remote_check_started = False
+
+        def save_during_remote_check(command, *args, **kwargs):
+            nonlocal remote_check_started
+            if not remote_check_started and command[0] == "git" and "ls-remote" in command:
+                with open(saved, "w", encoding="utf-8") as f:
+                    f.write("mine\n")
+                remote_check_started = True
+            return real_run(command, *args, **kwargs)
+
+        with patch.object(uninstall_module.subprocess, "run", side_effect=save_during_remote_check):
+            why = uninstall_module.unsaved_work(repo)
+        assert remote_check_started, "the remote check did not run"
+        assert why == "it has uncommitted changes", why
+
+
+@case("unpublished Git notes keep the repository")
+def unpublished_notes_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-notes"))
+        git(repo, "notes", "add", "-m", "unpublished note")
+        why = uninstall_module.unsaved_work(repo)
+        assert why == "it has commits that are not pushed", why
+
+        published_notes = published(root, os.path.join(root, "realm-published-notes"))
+        git(published_notes, "notes", "add", "-m", "published note")
+        git(published_notes, "push", "origin", "refs/notes/commits")
+        why = uninstall_module.unsaved_work(published_notes)
+        assert why is None, why
+
+
+@case("a commit kept only in the reflog keeps the repository")
+def reflog_only_commit_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-reflog"))
+        with open(os.path.join(repo, "unpublished.md"), "w", encoding="utf-8") as f:
+            f.write("not pushed\n")
+        git(repo, "add", "unpublished.md")
+        git(repo, "commit", "-qm", "reflog-only commit")
+        git(repo, "reset", "--hard", "@{u}")
+        why = uninstall_module.unsaved_work(repo)
+        assert why == "it has commits that are not pushed", why
+
+
+@case("a stash keeps the repository")
+def stashed_work_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-stash"))
+        with open(os.path.join(repo, "realm.yml"), "a", encoding="utf-8") as f:
+            f.write("mine\n")
+        git(repo, "stash", "push", "-m", "unpublished work")
+        why = uninstall_module.unsaved_work(repo)
+        assert why == "it has stashed changes", why
+
+
+@case("unreadable submodule metadata keeps the repository")
+def unreadable_modules_kept():
+    import embabel_setup.uninstall as uninstall_module
+
+    with tempfile.TemporaryDirectory() as root:
+        repo = published(root, os.path.join(root, "realm-modules"))
+        modules = os.path.join(repo, ".git", "modules")
+        os.makedirs(modules)
+        real_listdir = os.listdir
+        target = os.path.normcase(os.path.abspath(modules))
+
+        def unreadable(path):
+            if os.path.normcase(os.path.abspath(path)) == target:
+                raise PermissionError("not readable")
+            return real_listdir(path)
+
+        with patch.object(uninstall_module.os, "listdir", side_effect=unreadable):
+            why = uninstall_module.unsaved_work(repo)
+        assert why == "it holds submodule history that cannot be checked", why
+
+
+@case("--yes never deletes a repository, and never asks")
+def yes_keeps_repos():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        realm = published(root, os.path.join(install, "realms", "realm-clean"))
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, "--yes")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert "Delete these too" not in out, out
+        assert "--yes never deletes them" in out, out
+        assert os.path.exists(os.path.join(realm, "realm.yml")), "--yes deleted a repository"
+
+
+@case("a clean, pushed git clone of the appliance goes when the person says so")
+def clean_clone_deleted_on_yes():
+    with tempfile.TemporaryDirectory() as root:
+        install = make_install(root, mine=False)
+        shutil.copy2(os.path.join(HERE, ".gitignore"), install)
+        published(root, install)
+        realm = published(root, os.path.join(install, "realms", "realm-clean"))
+        env = machine(root, install, "ok")
+        run = uninstall(install, env, stdin="yes\ny\n")
+        out = run.stdout + run.stderr
+        assert run.returncode == 0, out
+        assert "~/embabel/worlds — the install folder" in out, out
+        assert not os.path.exists(realm) and not os.path.exists(install), f"the clone was left:\n{out}"
+        assert not os.path.exists(os.path.join(env["HOME"], "embabel")), out
+        assert os.path.exists(os.path.join(root, "outside", "precious.txt")), "followed a symlink out of the clone"
 
 
 @case("with a foreign embabel first on PATH, every printed command is ours by full path")

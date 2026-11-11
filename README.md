@@ -604,6 +604,14 @@ What stays, each named with its reason when it uninstalls:
 - **`~/embabel-backups`** and a realms folder outside the install;
 - **another program called `embabel`** — never touched, whatever it is.
 
+Once you have typed `yes`, it names the git repositories it is keeping inside the install
+folder — realms you cloned, and the install folder itself when it is a git working tree — and
+asks once whether they go too, defaulting to no. Only a repository with nothing to lose is
+deleted: no uncommitted, stashed or git-ignored files, an upstream branch, and every commit on
+the remote as it stands now, not as this machine last saw it. Any other is named with its
+reason and kept whatever you answer. `--yes` never deletes them, and a realms folder outside
+the install folder is never offered.
+
 `--keep-images` keeps the images and the embedding model, which is what you want when you
 mean to install again soon; `--keep-dir` keeps the install folder. If Docker is installed but
 not running, it refuses and touches nothing — removing the settings while the data is still in
