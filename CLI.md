@@ -180,7 +180,7 @@ copy inside the container. Exit status: `0` passes, `1` does not, `2` could not 
 For a realm repository's CI, the same image runs directly — see realm-spec's README,
 "Validating a realm in CI".
 
-### `embabel realm import owl|skos|ossie <file-or-url> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>] [--ontology <file>] [--mapping <file>] [--jdbc-url <url>]
+### `embabel realm import owl|skos|ossie|okf <file-or-url-or-dir> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>] [--ontology <file>] [--mapping <file>] [--jdbc-url <url>]
 
 An ontology as a realm draft, with **no appliance running**. An OWL or RDFS file (Turtle, RDF/XML,
 N-Triples or JSON-LD; a path, or an `http(s)` URL) becomes `realm.ts`, DERIVE rule sets under
@@ -218,15 +218,31 @@ embabel realm validate ./realm-retail
   placeholder `jdbcUrl` (or `--jdbc-url`); relationships are edges both ways; metrics and `derived_by`
   aggregates become views with SQL's null semantics. `ai_context` lands in `ontology/ai-context.yml`,
   never in a description.
+- `okf`: an Open Knowledge Format bundle (Google's context-set format: a directory of Markdown with
+  YAML frontmatter, as Knowledge Studio exports). Table concepts with a `# Schema` become types read
+  by `sql` producers from the bundle's warehouse (`--jdbc-url`); join references become edges; every
+  concept (metric, policy, computation, skill) is a queryable `OkfConcept` record with its trust tier,
+  status and links; an Attested Computation is kept verbatim, never rewritten as a view.
+- **The source travels with the realm.** Whatever was imported is copied, byte for byte, under
+  `ontology/source/` (the ontology, each `owl:imports` document, the Ossie files, the bundle), and
+  `ontology/SOURCE.md` says what it is: its own title, version, licence and publisher as it declares
+  them, the hash and size of each document, the import closure, and the command that regenerates
+  the realm. A document over 32 MB is described rather than copied.
 - Exit status: `0` done, `1` done with refusals (read the report), `2` could not run.
 
-### `embabel realm export owl <directory> --out <file.ttl> [--base <iri>]`
+### `embabel realm export owl|okf <directory> --out <file.ttl | bundle-dir> [--base <iri>]`
 
 A realm checkout as OWL in Turtle: types as classes, properties with domain and range, edges as
 object properties, and the rule sets whose bodies OWL can state (a threshold, an existential, an
 inverse, a chain) as the axioms they came from. With `ontology/alignment.yml` present, every name
 goes out under the IRI it was imported with. `<file>-EXPORT-REPORT.md` names what has no OWL form:
 producers, views, verbs. That list is what a realm says that an ontology cannot.
+
+Or as an OKF bundle: each type a concept with a `# Schema` table and its joins, each saved view an
+`Attested Computation` whose runtime is the appliance and whose `# Computation` is the Cypher, each
+DERIVE rule set a derivation concept, with `index.md`, `log.md`, provenance on every document and
+the executor skill the computations point at. Import the directory into Knowledge Studio as a
+context set and a Gemini agent finds the realm's views as governed assets.
 
 ### `embabel version`
 

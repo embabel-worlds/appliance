@@ -1,13 +1,17 @@
-"""`embabel realm import owl` and `embabel realm export owl`: open standards in, open standards out,
-with no appliance running.
+"""`embabel realm import owl|skos|ossie|okf` and `embabel realm export owl|okf`: open standards in,
+open standards out, with no appliance running.
 
 The server image carries `ontology-io`, a second command beside `realm-validate`: an OWL or RDFS
-ontology (Turtle, RDF/XML, N-Triples, JSON-LD) becomes a realm draft — realm.ts, DERIVE rule sets, an
-alignment of every name to its IRI, and a mapping report naming what was refused — and a realm goes
-back out as OWL. This runs it in a throwaway container, as realmvalidate.py runs the validator:
+ontology (Turtle, RDF/XML, N-Triples, JSON-LD), a SKOS scheme, an Apache Ossie model or an OKF bundle
+becomes a realm draft — realm.ts, DERIVE rule sets, an alignment of every name to its IRI, the source
+itself under ontology/source/, and a mapping report naming what was refused — and a realm goes back
+out as OWL or as an OKF bundle. This runs it in a throwaway container, as realmvalidate.py runs the
+validator:
 
     docker run --rm --entrypoint ontology-io -v <file dir>:/in:ro -v <out parent>:/out <image> \
         import owl /in/<file> --out /out/<name> [options]
+
+An OKF bundle is a directory: it is mounted at /in itself.
 
 THE IMAGE IS THIS APPLIANCE'S, so what the import writes is what the server you will install into
 loads, and `embabel realm validate <out>` says whether it does. Nothing running is touched.
@@ -35,10 +39,11 @@ def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: 
     ontology = os.path.abspath(ontology)
     out = os.path.abspath(out)
     parent = os.path.dirname(out) or os.sep
-    in_dir = os.path.dirname(ontology)
+    bundle = fmt == "okf"
+    in_dir = ontology.rstrip(os.sep) if bundle else os.path.dirname(ontology)
     argv = ["docker", "run", "--rm", "--entrypoint", ENTRYPOINT,
             "-v", f"{in_dir}:/in:ro", "-v", f"{parent}:/out"]
-    tail = ["import", fmt, f"/in/{os.path.basename(ontology)}", "--out", f"/out/{os.path.basename(out)}"]
+    tail = ["import", fmt, "/in" if bundle else f"/in/{os.path.basename(ontology)}", "--out", f"/out/{os.path.basename(out)}"]
     for flag, value in (("--name", name), ("--mode", mode), ("--sparql-endpoint", sparql_endpoint),
                         ("--data-url-base", data_url_base), ("--term-label", term_label), ("--jdbc-url", jdbc_url)):
         if value:
@@ -59,14 +64,14 @@ def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: 
     return argv + [image] + tail
 
 
-def export_argv(realm: str, out: str, image: str, *, base: str | None = None) -> list[str]:
-    """The `docker run` that exports the realm checkout [realm] to the Turtle file [out]."""
+def export_argv(realm: str, out: str, image: str, *, fmt: str = "owl", base: str | None = None) -> list[str]:
+    """The `docker run` that exports the realm checkout [realm] to [out]: a Turtle file for owl, a bundle directory for okf."""
     realm = os.path.abspath(realm)
     out = os.path.abspath(out)
     parent = os.path.dirname(out) or os.sep
     argv = ["docker", "run", "--rm", "--entrypoint", ENTRYPOINT,
             "-v", f"{realm}:/in/{os.path.basename(realm.rstrip(os.sep)) or 'realm'}:ro", "-v", f"{parent}:/out"]
-    tail = ["export", "owl", f"/in/{os.path.basename(realm.rstrip(os.sep)) or 'realm'}", "--out", f"/out/{os.path.basename(out)}"]
+    tail = ["export", fmt, f"/in/{os.path.basename(realm.rstrip(os.sep)) or 'realm'}", "--out", f"/out/{os.path.basename(out)}"]
     if base:
         tail += ["--base", base]
     return argv + [image] + tail
@@ -92,7 +97,11 @@ def run(argv: list[str], image: str) -> int:
 
 
 def run_import(ontology: str, out: str, image: str, **options) -> int:
-    if not os.path.isfile(ontology):
+    if options.get("fmt") == "okf":
+        if not os.path.isdir(ontology):
+            print(f"  Not a directory: {ontology} (an OKF bundle is a directory with an index.md)")
+            return 2
+    elif not os.path.isfile(ontology):
         print(f"  Not a file: {ontology}")
         return 2
     os.makedirs(os.path.dirname(os.path.abspath(out)) or os.sep, exist_ok=True)
@@ -104,9 +113,9 @@ def run_import(ontology: str, out: str, image: str, **options) -> int:
     return run(argv, image)
 
 
-def run_export(realm: str, out: str, image: str, *, base: str | None = None) -> int:
+def run_export(realm: str, out: str, image: str, *, fmt: str = "owl", base: str | None = None) -> int:
     if not os.path.isdir(realm):
         print(f"  Not a directory: {realm}")
         return 2
     os.makedirs(os.path.dirname(os.path.abspath(out)) or os.sep, exist_ok=True)
-    return run(export_argv(realm, out, image, base=base), image)
+    return run(export_argv(realm, out, image, fmt=fmt, base=base), image)
