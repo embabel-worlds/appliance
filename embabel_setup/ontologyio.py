@@ -25,7 +25,8 @@ ENTRYPOINT = "ontology-io"
 def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: str | None = None, mode: str | None = None,
                 sparql_endpoint: str | None = None, data_url_base: str | None = None,
                 term_label: str | None = None, ontology_doc: str | None = None, mapping_doc: str | None = None,
-                jdbc_url: str | None = None) -> list[str]:
+                jdbc_url: str | None = None, imports: str | None = None, catalog: str | None = None,
+                no_resolve_namespaces: bool = False) -> list[str]:
     """The `docker run` that imports [ontology] into the directory [out].
 
     The file's directory is mounted at /in, so an Ossie mapping's relative references, and the
@@ -47,6 +48,14 @@ def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: 
             if os.path.dirname(os.path.abspath(value)) != in_dir:
                 raise ValueError(f"{flag} must sit in the same directory as {ontology}: only that directory is mounted")
             tail += [flag, f"/in/{os.path.basename(value)}"]
+    if imports:
+        tail += ["--imports", imports]
+    if catalog:
+        if os.path.abspath(catalog.rstrip(os.sep)) != in_dir:
+            raise ValueError(f"--catalog must be the file's own directory, {in_dir}: only that directory is mounted")
+        tail += ["--catalog", "/in"]
+    if no_resolve_namespaces:
+        tail.append("--no-resolve-namespaces")
     return argv + [image] + tail
 
 

@@ -126,6 +126,10 @@ def build_parser() -> argparse.ArgumentParser:
     ri.add_argument("--sparql-endpoint", metavar="URL", help="the store holding the instances, for the producers a schema import writes")
     ri.add_argument("--data-url-base", metavar="URL", help="where a terminology import's data/ files will be served from")
     ri.add_argument("--term-label", metavar="Label", help="the one type a terminology import declares, e.g. GoTerm")
+    ri.add_argument("--imports", choices=["fetch", "catalog", "none"],
+                    help="owl: follow owl:imports and define reused terms by fetching (default), from a catalog only, or not at all")
+    ri.add_argument("--catalog", metavar="DIR", help="owl: a directory of ontology files (or a catalog-v001.xml) imports are resolved from; must be the file's own directory")
+    ri.add_argument("--no-resolve-namespaces", action="store_true", help="owl: do not define terms reused from other vocabularies without an import")
     ri.add_argument("--image", help="convert with this server image instead of this appliance's")
     rx = rsub.add_parser("export", help="a realm checkout as OWL in Turtle, with a report of what has no OWL form")
     rx.add_argument("format", choices=["owl"], help="the standard to write")

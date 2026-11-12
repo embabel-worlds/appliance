@@ -202,6 +202,14 @@ embabel realm validate ./realm-retail
 - A vocabulary (`--mode terminology`, the default past a thousand classes): one type whose rows are
   the terms, `IS_A` and the ontology's relationships as edges both ways, served from CSV files under
   the draft's `data/` at `--data-url-base`. The Gene Ontology imports in seconds.
+- `owl:imports` are followed, transitively: from `--catalog` (a directory of ontology files, or a
+  Protégé `catalog-v001.xml`, which must be the file's own directory) first, then fetched by IRI.
+  Terms an ontology reuses from another vocabulary without importing it (PKO names PROV-O and
+  Dublin Core terms this way; FIBO names OMG Commons) are defined from that vocabulary's document,
+  and only those terms. `--imports catalog` never fetches; `--imports none` reads the file as it is.
+  Every document resolved, and every one that was not, is a row in the report.
+- A class's restrictions (`Party ⊑ ∃hasName.Name`), which is how FIBO and most Protégé-written OWL
+  declare their schema, are read as the edge or property they declare on the class, never as a rule.
 - `skos`: a concept scheme (a Collibra or Atlan glossary, EuroVoc) is always a terminology: one type
   of terms with `BROADER`, `RELATED` and the mapping relations as edges.
 - `ossie`: an Apache Ossie semantic model, or its mapping document (which brings the ontology and the
