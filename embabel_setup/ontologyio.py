@@ -1,12 +1,12 @@
 """`embabel realm import owl` and `embabel realm export owl`: open standards in, open standards out,
 with no appliance running.
 
-The server image carries `realm-standards`, a second command beside `realm-validate`: an OWL or RDFS
+The server image carries `ontology-io`, a second command beside `realm-validate`: an OWL or RDFS
 ontology (Turtle, RDF/XML, N-Triples, JSON-LD) becomes a realm draft — realm.ts, DERIVE rule sets, an
 alignment of every name to its IRI, and a mapping report naming what was refused — and a realm goes
 back out as OWL. This runs it in a throwaway container, as realmvalidate.py runs the validator:
 
-    docker run --rm --entrypoint realm-standards -v <file dir>:/in:ro -v <out parent>:/out <image> \
+    docker run --rm --entrypoint ontology-io -v <file dir>:/in:ro -v <out parent>:/out <image> \
         import owl /in/<file> --out /out/<name> [options]
 
 THE IMAGE IS THIS APPLIANCE'S, so what the import writes is what the server you will install into
@@ -19,7 +19,7 @@ import subprocess
 
 from .realmvalidate import DOCKER_COULD_NOT_RUN, NO_SUCH_COMMAND
 
-ENTRYPOINT = "realm-standards"
+ENTRYPOINT = "ontology-io"
 
 
 def import_argv(ontology: str, out: str, image: str, *, name: str | None = None, mode: str | None = None,
@@ -63,7 +63,7 @@ def run(argv: list[str], image: str) -> int:
         print("  Docker is not installed, and the converter runs in the appliance's image.")
         return 2
     if status == NO_SUCH_COMMAND:
-        print(f"  {image} predates `realm-standards`. Upgrade the appliance, or name a newer image with --image.")
+        print(f"  {image} predates `ontology-io`. Upgrade the appliance, or name a newer image with --image.")
         return 2
     if status == DOCKER_COULD_NOT_RUN:
         print(f"  Docker could not run {image} — is Docker running, and can it pull that image?")
