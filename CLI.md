@@ -223,6 +223,9 @@ embabel realm validate ./realm-retail
   by `sql` producers from the bundle's warehouse (`--jdbc-url`); join references become edges; every
   concept (metric, policy, computation, skill) is a queryable `OkfConcept` record with its trust tier,
   status and links; an Attested Computation is kept verbatim, never rewritten as a view.
+- **A large realm is written in the YAML layout.** Past 512 KiB of `realm.ts` (FIBO Business Entities
+  is 1.7 MB of it) the draft is `realm.yml` with `types/`, `producers/` and `views/` beside it, which
+  the server reads file by file with no evaluation cap. A small realm stays one `realm.ts`.
 - **The source travels with the realm.** Whatever was imported is copied, byte for byte, under
   `ontology/source/` (the ontology, each `owl:imports` document, the Ossie files, the bundle), and
   `ontology/SOURCE.md` says what it is: its own title, version, licence and publisher as it declares
