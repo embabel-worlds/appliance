@@ -1,0 +1,87 @@
+"""`embabel realm import owl` and `embabel realm export owl`: open standards in, open standards out,
+with no appliance running.
+
+The server image carries `realm-standards`, a second command beside `realm-validate`: an OWL or RDFS
+ontology (Turtle, RDF/XML, N-Triples, JSON-LD) becomes a realm draft — realm.ts, DERIVE rule sets, an
+alignment of every name to its IRI, and a mapping report naming what was refused — and a realm goes
+back out as OWL. This runs it in a throwaway container, as realmvalidate.py runs the validator:
+
+    docker run --rm --entrypoint realm-standards -v <file dir>:/in:ro -v <out parent>:/out <image> \
+        import owl /in/<file> --out /out/<name> [options]
+
+THE IMAGE IS THIS APPLIANCE'S, so what the import writes is what the server you will install into
+loads, and `embabel realm validate <out>` says whether it does. Nothing running is touched.
+"""
+
+from __future__ import annotations
+import os
+import subprocess
+
+from .realmvalidate import DOCKER_COULD_NOT_RUN, NO_SUCH_COMMAND
+
+ENTRYPOINT = "realm-standards"
+
+
+def import_argv(ontology: str, out: str, image: str, *, name: str | None = None, mode: str | None = None,
+                sparql_endpoint: str | None = None, data_url_base: str | None = None,
+                term_label: str | None = None) -> list[str]:
+    """The `docker run` that imports [ontology] into the directory [out]."""
+    ontology = os.path.abspath(ontology)
+    out = os.path.abspath(out)
+    parent = os.path.dirname(out) or os.sep
+    argv = ["docker", "run", "--rm", "--entrypoint", ENTRYPOINT,
+            "-v", f"{os.path.dirname(ontology)}:/in:ro", "-v", f"{parent}:/out"]
+    tail = ["import", "owl", f"/in/{os.path.basename(ontology)}", "--out", f"/out/{os.path.basename(out)}"]
+    for flag, value in (("--name", name), ("--mode", mode), ("--sparql-endpoint", sparql_endpoint),
+                        ("--data-url-base", data_url_base), ("--term-label", term_label)):
+        if value:
+            tail += [flag, value]
+    return argv + [image] + tail
+
+
+def export_argv(realm: str, out: str, image: str, *, base: str | None = None) -> list[str]:
+    """The `docker run` that exports the realm checkout [realm] to the Turtle file [out]."""
+    realm = os.path.abspath(realm)
+    out = os.path.abspath(out)
+    parent = os.path.dirname(out) or os.sep
+    argv = ["docker", "run", "--rm", "--entrypoint", ENTRYPOINT,
+            "-v", f"{realm}:/in/{os.path.basename(realm.rstrip(os.sep)) or 'realm'}:ro", "-v", f"{parent}:/out"]
+    tail = ["export", "owl", f"/in/{os.path.basename(realm.rstrip(os.sep)) or 'realm'}", "--out", f"/out/{os.path.basename(out)}"]
+    if base:
+        tail += ["--base", base]
+    return argv + [image] + tail
+
+
+def run(argv: list[str], image: str) -> int:
+    """Run, streaming the tool's own output; only docker's failures get a line from here.
+
+    The converter's exit status: 0 done, 1 done with refusals (the report names them), 2 could not run.
+    """
+    try:
+        status = subprocess.run(argv).returncode
+    except FileNotFoundError:
+        print("  Docker is not installed, and the converter runs in the appliance's image.")
+        return 2
+    if status == NO_SUCH_COMMAND:
+        print(f"  {image} predates `realm-standards`. Upgrade the appliance, or name a newer image with --image.")
+        return 2
+    if status == DOCKER_COULD_NOT_RUN:
+        print(f"  Docker could not run {image} — is Docker running, and can it pull that image?")
+        return 2
+    return status
+
+
+def run_import(ontology: str, out: str, image: str, **options) -> int:
+    if not os.path.isfile(ontology):
+        print(f"  Not a file: {ontology}")
+        return 2
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or os.sep, exist_ok=True)
+    return run(import_argv(ontology, out, image, **options), image)
+
+
+def run_export(realm: str, out: str, image: str, *, base: str | None = None) -> int:
+    if not os.path.isdir(realm):
+        print(f"  Not a directory: {realm}")
+        return 2
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or os.sep, exist_ok=True)
+    return run(export_argv(realm, out, image, base=base), image)

@@ -180,6 +180,38 @@ copy inside the container. Exit status: `0` passes, `1` does not, `2` could not 
 For a realm repository's CI, the same image runs directly — see realm-spec's README,
 "Validating a realm in CI".
 
+### `embabel realm import owl <file-or-url> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>]`
+
+An ontology as a realm draft, with **no appliance running**. An OWL or RDFS file (Turtle, RDF/XML,
+N-Triples or JSON-LD; a path, or an `http(s)` URL) becomes `realm.ts`, DERIVE rule sets under
+`rules/`, `ontology/alignment.yml` recording which IRI every name came from, and `IMPORT-REPORT.md`,
+in which every class, property and axiom lands as exact, inferred, noted or refused by name. The
+contract is realm-spec's `OPEN_STANDARDS.md`; the converter is the one in this appliance's own
+server image, beside `realm-validate`, so what it writes is what the server loads.
+
+```
+embabel realm import owl retail.ttl --out ./realm-retail --sparql-endpoint http://host.docker.internal:7878/query
+embabel realm import owl https://current.geneontology.org/ontology/go-basic.owl --out ./realm-gene-ontology \
+    --term-label GoTerm --data-url-base https://raw.githubusercontent.com/me/realm-gene-ontology/main/
+embabel realm validate ./realm-retail
+```
+
+- A domain ontology (`--mode schema`, the default for a few dozen classes): classes are types,
+  properties are properties and edges, defining axioms are rules. Instances are **not copied**: each
+  producer is a SPARQL query keyed by IRI against `--sparql-endpoint`, or a placeholder the report names.
+- A vocabulary (`--mode terminology`, the default past a thousand classes): one type whose rows are
+  the terms, `IS_A` and the ontology's relationships as edges both ways, served from CSV files under
+  the draft's `data/` at `--data-url-base`. The Gene Ontology imports in seconds.
+- Exit status: `0` done, `1` done with refusals (read the report), `2` could not run.
+
+### `embabel realm export owl <directory> --out <file.ttl> [--base <iri>]`
+
+A realm checkout as OWL in Turtle: types as classes, properties with domain and range, edges as
+object properties, and the rule sets whose bodies OWL can state (a threshold, an existential, an
+inverse, a chain) as the axioms they came from. With `ontology/alignment.yml` present, every name
+goes out under the IRI it was imported with. `<file>-EXPORT-REPORT.md` names what has no OWL form:
+producers, views, verbs. That list is what a realm says that an ontology cannot.
+
 ### `embabel version`
 
 Which appliance this is, in the four layers that can actually differ between
