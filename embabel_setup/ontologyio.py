@@ -22,20 +22,31 @@ from .realmvalidate import DOCKER_COULD_NOT_RUN, NO_SUCH_COMMAND
 ENTRYPOINT = "ontology-io"
 
 
-def import_argv(ontology: str, out: str, image: str, *, name: str | None = None, mode: str | None = None,
+def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: str | None = None, mode: str | None = None,
                 sparql_endpoint: str | None = None, data_url_base: str | None = None,
-                term_label: str | None = None) -> list[str]:
-    """The `docker run` that imports [ontology] into the directory [out]."""
+                term_label: str | None = None, ontology_doc: str | None = None, mapping_doc: str | None = None,
+                jdbc_url: str | None = None) -> list[str]:
+    """The `docker run` that imports [ontology] into the directory [out].
+
+    The file's directory is mounted at /in, so an Ossie mapping's relative references, and the
+    --ontology and --mapping files, resolve when they sit beside it.
+    """
     ontology = os.path.abspath(ontology)
     out = os.path.abspath(out)
     parent = os.path.dirname(out) or os.sep
+    in_dir = os.path.dirname(ontology)
     argv = ["docker", "run", "--rm", "--entrypoint", ENTRYPOINT,
-            "-v", f"{os.path.dirname(ontology)}:/in:ro", "-v", f"{parent}:/out"]
-    tail = ["import", "owl", f"/in/{os.path.basename(ontology)}", "--out", f"/out/{os.path.basename(out)}"]
+            "-v", f"{in_dir}:/in:ro", "-v", f"{parent}:/out"]
+    tail = ["import", fmt, f"/in/{os.path.basename(ontology)}", "--out", f"/out/{os.path.basename(out)}"]
     for flag, value in (("--name", name), ("--mode", mode), ("--sparql-endpoint", sparql_endpoint),
-                        ("--data-url-base", data_url_base), ("--term-label", term_label)):
+                        ("--data-url-base", data_url_base), ("--term-label", term_label), ("--jdbc-url", jdbc_url)):
         if value:
             tail += [flag, value]
+    for flag, value in (("--ontology", ontology_doc), ("--mapping", mapping_doc)):
+        if value:
+            if os.path.dirname(os.path.abspath(value)) != in_dir:
+                raise ValueError(f"{flag} must sit in the same directory as {ontology}: only that directory is mounted")
+            tail += [flag, f"/in/{os.path.basename(value)}"]
     return argv + [image] + tail
 
 
@@ -76,7 +87,12 @@ def run_import(ontology: str, out: str, image: str, **options) -> int:
         print(f"  Not a file: {ontology}")
         return 2
     os.makedirs(os.path.dirname(os.path.abspath(out)) or os.sep, exist_ok=True)
-    return run(import_argv(ontology, out, image, **options), image)
+    try:
+        argv = import_argv(ontology, out, image, **options)
+    except ValueError as e:
+        print(f"  {e}")
+        return 2
+    return run(argv, image)
 
 
 def run_export(realm: str, out: str, image: str, *, base: str | None = None) -> int:

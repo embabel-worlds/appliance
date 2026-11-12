@@ -180,7 +180,7 @@ copy inside the container. Exit status: `0` passes, `1` does not, `2` could not 
 For a realm repository's CI, the same image runs directly — see realm-spec's README,
 "Validating a realm in CI".
 
-### `embabel realm import owl <file-or-url> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>]`
+### `embabel realm import owl|skos|ossie <file-or-url> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>] [--ontology <file>] [--mapping <file>] [--jdbc-url <url>]
 
 An ontology as a realm draft, with **no appliance running**. An OWL or RDFS file (Turtle, RDF/XML,
 N-Triples or JSON-LD; a path, or an `http(s)` URL) becomes `realm.ts`, DERIVE rule sets under
@@ -202,6 +202,14 @@ embabel realm validate ./realm-retail
 - A vocabulary (`--mode terminology`, the default past a thousand classes): one type whose rows are
   the terms, `IS_A` and the ontology's relationships as edges both ways, served from CSV files under
   the draft's `data/` at `--data-url-base`. The Gene Ontology imports in seconds.
+- `skos`: a concept scheme (a Collibra or Atlan glossary, EuroVoc) is always a terminology: one type
+  of terms with `BROADER`, `RELATED` and the mapping relations as edges.
+- `ossie`: an Apache Ossie semantic model, or its mapping document (which brings the ontology and the
+  model it references, from the same directory), or a semantic model with `--ontology` and `--mapping`
+  beside it. Datasets are types read by `sql` producers from a datasource the draft declares with a
+  placeholder `jdbcUrl` (or `--jdbc-url`); relationships are edges both ways; metrics and `derived_by`
+  aggregates become views with SQL's null semantics. `ai_context` lands in `ontology/ai-context.yml`,
+  never in a description.
 - Exit status: `0` done, `1` done with refusals (read the report), `2` could not run.
 
 ### `embabel realm export owl <directory> --out <file.ttl> [--base <iri>]`

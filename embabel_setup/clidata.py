@@ -36,9 +36,10 @@ def cmd_realms(args) -> int:
         from . import ontologyio
         image = args.image or realmvalidate.appliance_image(current_mode() or s.configured_mode() or "worlds")
         if args.realms_command == "import":
-            return ontologyio.run_import(args.file, args.out, image, name=args.name, mode=args.mode,
-                                             sparql_endpoint=args.sparql_endpoint, data_url_base=args.data_url_base,
-                                             term_label=args.term_label)
+            return ontologyio.run_import(args.file, args.out, image, fmt=args.format, name=args.name, mode=args.mode,
+                                         sparql_endpoint=args.sparql_endpoint, data_url_base=args.data_url_base,
+                                         term_label=args.term_label, ontology_doc=args.ontology, mapping_doc=args.mapping,
+                                         jdbc_url=args.jdbc_url)
         return ontologyio.run_export(args.directory, args.out, image, base=args.base)
     # list: what the appliance can actually see, which is the question worth asking.
     realms = os.environ.get("EMBABEL_REALMS_DIR")
