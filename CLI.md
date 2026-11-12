@@ -180,6 +180,73 @@ copy inside the container. Exit status: `0` passes, `1` does not, `2` could not 
 For a realm repository's CI, the same image runs directly — see realm-spec's README,
 "Validating a realm in CI".
 
+### `embabel realm import owl|skos|ossie|okf <file-or-url-or-dir> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>] [--ontology <file>] [--mapping <file>] [--jdbc-url <url>]
+
+An ontology as a realm draft, with **no appliance running**. An OWL or RDFS file (Turtle, RDF/XML,
+N-Triples or JSON-LD; a path, or an `http(s)` URL) becomes `realm.ts`, DERIVE rule sets under
+`rules/`, `ontology/alignment.yml` recording which IRI every name came from, and `IMPORT-REPORT.md`,
+in which every class, property and axiom lands as exact, inferred, noted or refused by name. The
+contract is realm-spec's `OPEN_STANDARDS.md`; the converter is the one in this appliance's own
+server image, beside `realm-validate`, so what it writes is what the server loads.
+
+```
+embabel realm import owl retail.ttl --out ./realm-retail --sparql-endpoint http://host.docker.internal:7878/query
+embabel realm import owl https://current.geneontology.org/ontology/go-basic.owl --out ./realm-gene-ontology \
+    --term-label GoTerm --data-url-base https://raw.githubusercontent.com/me/realm-gene-ontology/main/
+embabel realm validate ./realm-retail
+```
+
+- A domain ontology (`--mode schema`, the default for a few dozen classes): classes are types,
+  properties are properties and edges, defining axioms are rules. Instances are **not copied**: each
+  producer is a SPARQL query keyed by IRI against `--sparql-endpoint`, or a placeholder the report names.
+- A vocabulary (`--mode terminology`, the default past a thousand classes): one type whose rows are
+  the terms, `IS_A` and the ontology's relationships as edges both ways, served from CSV files under
+  the draft's `data/` at `--data-url-base`. The Gene Ontology imports in seconds.
+- `owl:imports` are followed, transitively: from `--catalog` (a directory of ontology files, or a
+  Protégé `catalog-v001.xml`, which must be the file's own directory) first, then fetched by IRI.
+  Terms an ontology reuses from another vocabulary without importing it (PKO names PROV-O and
+  Dublin Core terms this way; FIBO names OMG Commons) are defined from that vocabulary's document,
+  and only those terms. `--imports catalog` never fetches; `--imports none` reads the file as it is.
+  Every document resolved, and every one that was not, is a row in the report.
+- A class's restrictions (`Party ⊑ ∃hasName.Name`), which is how FIBO and most Protégé-written OWL
+  declare their schema, are read as the edge or property they declare on the class, never as a rule.
+- `skos`: a concept scheme (a Collibra or Atlan glossary, EuroVoc) is always a terminology: one type
+  of terms with `BROADER`, `RELATED` and the mapping relations as edges.
+- `ossie`: an Apache Ossie semantic model, or its mapping document (which brings the ontology and the
+  model it references, from the same directory), or a semantic model with `--ontology` and `--mapping`
+  beside it. Datasets are types read by `sql` producers from a datasource the draft declares with a
+  placeholder `jdbcUrl` (or `--jdbc-url`); relationships are edges both ways; metrics and `derived_by`
+  aggregates become views with SQL's null semantics. `ai_context` lands in `ontology/ai-context.yml`,
+  never in a description.
+- `okf`: an Open Knowledge Format bundle (Google's context-set format: a directory of Markdown with
+  YAML frontmatter, as Knowledge Studio exports). Table concepts with a `# Schema` become types read
+  by `sql` producers from the bundle's warehouse (`--jdbc-url`); join references become edges; every
+  concept (metric, policy, computation, skill) is a queryable `OkfConcept` record with its trust tier,
+  status and links; an Attested Computation is kept verbatim, never rewritten as a view.
+- **A large realm is written in the YAML layout.** Past 512 KiB of `realm.ts` (FIBO Business Entities
+  is 1.7 MB of it) the draft is `realm.yml` with `types/`, `producers/` and `views/` beside it, which
+  the server reads file by file with no evaluation cap. A small realm stays one `realm.ts`.
+- **The source travels with the realm.** Whatever was imported is copied, byte for byte, under
+  `ontology/source/` (the ontology, each `owl:imports` document, the Ossie files, the bundle), and
+  `ontology/SOURCE.md` says what it is: its own title, version, licence and publisher as it declares
+  them, the hash and size of each document, the import closure, and the command that regenerates
+  the realm. A document over 32 MB is described rather than copied.
+- Exit status: `0` done, `1` done with refusals (read the report), `2` could not run.
+
+### `embabel realm export owl|okf <directory> --out <file.ttl | bundle-dir> [--base <iri>]`
+
+A realm checkout as OWL in Turtle: types as classes, properties with domain and range, edges as
+object properties, and the rule sets whose bodies OWL can state (a threshold, an existential, an
+inverse, a chain) as the axioms they came from. With `ontology/alignment.yml` present, every name
+goes out under the IRI it was imported with. `<file>-EXPORT-REPORT.md` names what has no OWL form:
+producers, views, verbs. That list is what a realm says that an ontology cannot.
+
+Or as an OKF bundle: each type a concept with a `# Schema` table and its joins, each saved view an
+`Attested Computation` whose runtime is the appliance and whose `# Computation` is the Cypher, each
+DERIVE rule set a derivation concept, with `index.md`, `log.md`, provenance on every document and
+the executor skill the computations point at. Import the directory into Knowledge Studio as a
+context set and a Gemini agent finds the realm's views as governed assets.
+
 ### `embabel version`
 
 Which appliance this is, in the four layers that can actually differ between
