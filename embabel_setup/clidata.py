@@ -40,7 +40,7 @@ def cmd_realms(args) -> int:
                                          sparql_endpoint=args.sparql_endpoint, data_url_base=args.data_url_base,
                                          term_label=args.term_label, ontology_doc=args.ontology, mapping_doc=args.mapping,
                                          jdbc_url=args.jdbc_url, imports=args.imports, catalog=args.catalog,
-                                         no_resolve_namespaces=args.no_resolve_namespaces)
+                                         no_resolve_namespaces=args.no_resolve_namespaces, roots=args.root)
         return ontologyio.run_export(args.directory, args.out, image, fmt=args.format, base=args.base)
     # list: what the appliance can actually see, which is the question worth asking.
     realms = os.environ.get("EMBABEL_REALMS_DIR")
