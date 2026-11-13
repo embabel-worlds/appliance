@@ -130,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="owl: follow owl:imports and define reused terms by fetching (default), from a catalog only, or not at all")
     ri.add_argument("--catalog", metavar="DIR", help="owl: a directory of ontology files (or a catalog-v001.xml) imports are resolved from; must be the file's own directory")
     ri.add_argument("--no-resolve-namespaces", action="store_true", help="owl: do not define terms reused from other vocabularies without an import")
+    ri.add_argument("--root", action="append", metavar="CLASS",
+                    help="owl: import a subset: this class, its subclasses and its ancestors (repeatable; a local name or an IRI). For a vocabulary too wide to want whole, such as Schema.org")
     ri.add_argument("--image", help="convert with this server image instead of this appliance's")
     rx = rsub.add_parser("export", help="a realm checkout as OWL in Turtle or as an OKF bundle, with a report of what has no form in that standard")
     rx.add_argument("format", choices=["owl", "okf"], help="the standard to write")

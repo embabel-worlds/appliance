@@ -30,7 +30,7 @@ def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: 
                 sparql_endpoint: str | None = None, data_url_base: str | None = None,
                 term_label: str | None = None, ontology_doc: str | None = None, mapping_doc: str | None = None,
                 jdbc_url: str | None = None, imports: str | None = None, catalog: str | None = None,
-                no_resolve_namespaces: bool = False) -> list[str]:
+                no_resolve_namespaces: bool = False, roots: list[str] | None = None) -> list[str]:
     """The `docker run` that imports [ontology] into the directory [out].
 
     The file's directory is mounted at /in, so an Ossie mapping's relative references, and the
@@ -61,6 +61,8 @@ def import_argv(ontology: str, out: str, image: str, *, fmt: str = "owl", name: 
         tail += ["--catalog", "/in"]
     if no_resolve_namespaces:
         tail.append("--no-resolve-namespaces")
+    for root in roots or []:
+        tail += ["--root", root]
     return argv + [image] + tail
 
 

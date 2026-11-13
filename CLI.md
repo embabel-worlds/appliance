@@ -193,6 +193,8 @@ server image, beside `realm-validate`, so what it writes is what the server load
 embabel realm import owl retail.ttl --out ./realm-retail --sparql-endpoint http://host.docker.internal:7878/query
 embabel realm import owl https://current.geneontology.org/ontology/go-basic.owl --out ./realm-gene-ontology \
     --term-label GoTerm --data-url-base https://raw.githubusercontent.com/me/realm-gene-ontology/main/
+embabel realm import owl schemaorg-current-https.ttl --out ./realm-catalogue \
+    --root Product --root Offer --root Organization         # a subset of a wide vocabulary
 embabel realm validate ./realm-retail
 ```
 
@@ -210,6 +212,12 @@ embabel realm validate ./realm-retail
   Every document resolved, and every one that was not, is a row in the report.
 - A class's restrictions (`Party ⊑ ∃hasName.Name`), which is how FIBO and most Protégé-written OWL
   declare their schema, are read as the edge or property they declare on the class, never as a rule.
+- `--root CLASS` (repeatable; a local name or an IRI) imports a subset of a vocabulary too wide to want
+  whole: each root, its subclasses and its ancestors, so a Schema.org `Product` is still a `Thing` and
+  inherits `name`. An edge whose range falls outside the subset is refused by name with the `--root`
+  that would keep it, so the report is the list of what to add. Schema.org whole is a thousand classes
+  and imports as a terminology; cut at `Product`, `Offer` and `Organization` it is 207 types.
+  `schema:domainIncludes` and Dublin Core's `dcam:domainIncludes` count as domains.
 - `skos`: a concept scheme (a Collibra or Atlan glossary, EuroVoc) is always a terminology: one type
   of terms with `BROADER`, `RELATED` and the mapping relations as edges.
 - `ossie`: an Apache Ossie semantic model, or its mapping document (which brings the ontology and the
