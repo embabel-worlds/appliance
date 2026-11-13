@@ -40,7 +40,8 @@ WHERE c.notes_last_contacted < '2026-05-01' RETURN c.email
 That example is a ME appliance's shape — `Person` is the user's own contacts, `HubSpotContact` a
 CRM nobody had joined to them. On a Worlds appliance the same move uses whatever anchors ITS
 realms declare; step 2 discovers them before any of this applies. The mechanism either way is a
-**virtual join** in a type file — `anchorLabel`, `relationship`, `keyField`,
+**virtual join** — in `realm.ts`, a captured producer's `joins`; in a legacy type file,
+`virtualJoins` naming `anchorLabel`, `relationship`, `keyField`,
 `recordKeyField`, `producer` — and it is the single highest-value thing you are hunting for.
 
 This is not a theory. Across the realms that already exist, `Person` and `Organization` are the
@@ -146,8 +147,8 @@ Say what resolution it would need rather than quietly hoping.
 
 Also collect, as before:
 
-- **Realms that already exist.** Directories with a `realm.yml`, or repos named `realm-*`. Do not
-  propose authoring what someone already wrote.
+- **Realms that already exist.** Directories with a `realm.ts` or a `realm.yml`, or repos named
+  `realm-*`. Do not propose authoring what someone already wrote.
 - **APIs with a spec.** `openapi*.y*ml`, `swagger*.json`, `*.graphql` — note title, operation
   count, auth. A public reference API keyed on a company number is a strong spine.
 - **Databases.** `docker-compose*.yml`, `*.tf`, `.env*`, `application*.yml` — the service, the
@@ -247,7 +248,7 @@ only the live ones):
    anyone else type questions at this realm — through `kg_ask`, a chat, an app's ask box — or
    only call its views?"* A yes is a build decision, not a test decision. The realm-authoring
    skill's "Make it askable" section then applies to every type from the first one: closed
-   `values:` on coded properties AND on every literal-seeded anchor key, an `examples:` pair per
+   `values` on coded properties AND on every literal-seeded anchor key, an `examples:` pair per
    literal door, descriptions that say what the data does NOT carry, and a `tests/questions.yml`
    battery with its adversarial half. Turn the demo sentence from question 2 into the battery's
    first entry. A realm that answers its views but not its users' words is not done — and without
@@ -300,13 +301,13 @@ For each realm: the route, the demo question it unlocks, and what it costs.
 | Evidence | Route |
 |---|---|
 | A reachable database | `learn_connect` → `learn_sources` → `learn_source` → review → `learn_promote` |
-| A directory with `realm.yml` | `install_realm_from_path` if it is under the mounted realms dir, else `install_realm` for its git repo — see below |
+| A directory with `realm.ts` (or a legacy `realm.yml`) | `install_realm_from_path` if it is under the mounted realms dir, else `install_realm` for its git repo — see below |
 | An OpenAPI spec | The console's `POST /api/v1/world/apis/learn` — say so; it is not on the MCP surface |
 | Genuinely new capability | `realm_write` → `realm_validate` → `realm_install`, per `realm_brief` |
 
 `install_realm_from_path` reaches only what the operator mounted — the appliance sees
 `${EMBABEL_REALMS_DIR:-./realms}` from the compose file as `/realms`, read-only, and nothing else.
-A `realm.yml` you found under `~/dev` is therefore not installable where it sits. Say that plainly
+A realm you found under `~/dev` is therefore not installable where it sits. Say that plainly
 and offer the two honest routes: `install_realm` from its git repo, or have the user symlink the
 checkout into their realms directory and restart.
 
