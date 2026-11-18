@@ -327,6 +327,9 @@ services:
       # app (15 s apart, so 5 is about 75 s); 0 turns it off. See container/health-watchdog.sh.
       - APP_WATCHDOG_FAILURES=${APP_WATCHDOG_FAILURES:-5}
       - MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
+      # Clones of the repositories that code and git questions read are kept on the data volume, so
+      # a restart or an upgrade does not fetch them again (a large repository is hundreds of MB).
+      - ASSISTANT_VIRTUALCYPHER_SOURCE_GIT_CACHE=/data/embabel/source-git
       # Distinguishes this mode from the Me mode in the usage payload — a constant,
       # not information about you. See PHONE_HOME.md.
       - ASSISTANT_PACKAGING=docker-compose-worlds
