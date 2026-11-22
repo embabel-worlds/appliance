@@ -45,6 +45,14 @@ realm's `realm.yml` description before relying on it; the table is a starting po
 | "Which change broke production" questions | `which-change` |
 | Code summaries / understanding wanted | `code-summaries`, `code-understanding` |
 
+The questions every agent asks of any repository — will this push be refused (`PushChecks`), how
+much room is left under the size rules (`RulesHeadroom`), which tests exercise this class and the
+command (`TestsFor`), who calls or reads X (`WhoCalls`) — are polyglot-code's. Which changes are in
+flight is github's (`OpenPullsTouching`, `OpenPullsOverlapping`); is a red build mine is
+github-actions' (`ActionsIsItMe`, `ActionsFlakyJobs`). A realm folder in the world that is not
+published (no git history, no remote) is a draft or a leftover: never `require` it; find where its
+views went.
+
 Also note the project's own identities, because every later step uses them: repository
 (`owner/name`), code project key (`https://github.com/owner/name` or a workspace folder), default
 branch, CI workflow names, deployment target (namespace, service, image), log index or path, Sonar key.
@@ -55,6 +63,11 @@ List installed realms and their versions (`realm_status`, or `GET /api/v1/realms
 realm: is it installed, at what version, and does it answer for this project? Run one view of each
 against the project's identity before depending on it — a realm that returns nothing for this
 repository is a problem to fix upstream, not something to paper over in the project realm.
+
+Reconcile one number per realm against the source itself, not just "rows came back": the commit
+count the git realm sees against the forge's, the open pull requests against the forge's list, the
+endpoints against the controllers. On petclinic the git realm answered every view — from 3 commits
+of 1,055, a shallow-clone defect in the engine that only the reconciliation showed (me#4086).
 
 ## Step 3 — scaffold
 
@@ -124,10 +137,17 @@ gap, do not hard-code a detector in the project realm.
 ## Step 6 — cross-realm views only this project needs
 
 Write a view here only when it joins this project's anchors across realms in a way no other project
-would reuse as-is — for example, the running deployment's image → its commit → the pull requests in
-it. Every view: a `description` that starts with the questions it answers (SELECT THIS for …),
+would reuse as-is — for example, which built image carries which pull request, from the project's own
+image workflow and tag convention (embabel/me's `MeImages`). Often there is none: petclinic's realm
+has only anchors, rules and a skill, and that is the right size. When such a view needs a field the
+shared realm does not expose, add it upstream (embabel/me needed the run's whole commit title, which
+GitHub truncates in `display_title`). Every view: a `description` that starts with the questions it answers (SELECT THIS for …),
 parameters with defaults set to this project's values, filters on projected variables, a stated
 cache/staleness, and an empty case that says why it is empty.
+
+Every view that can come back empty ends with one row saying so (`collect`, then `UNWIND CASE WHEN
+size(x) = 0 THEN [{…sentence…}] ELSE x END`): the engine reports a read that matched nothing as a
+failure (`FETCHED_NOT_MATCHED`), which an agent cannot tell from a broken view.
 
 ## Step 7 — the agent skill
 
@@ -141,7 +161,12 @@ cache/staleness, and an empty case that says why it is empty.
 | Who calls / reads X | `WhoCalls`, `WhereDefined`, `Impact` | `project: <key>` |
 | What is deployed, is it healthy | the deployment and log views found in Step 1 | … |
 
-Fill every argument with the project's real values; an agent should be able to copy a row. Copy
+Fill every argument with the project's real values; an agent should be able to copy a row, and
+run every row before shipping it — on embabel/me two rows were wrong as first written (`GitBlame`
+takes `<project key>!<path>`; a settings view took `actuator`, not `project`). Leave out rows that
+do not apply: `PushChecks`' literal-joining and qualified-name checks read Kotlin, and `RulesHeadroom`'s
+caps are one repository's defaults, so a Java project with Checkstyle rules gets its own rows in
+`reference/rules.md` instead. Copy
 the same skill into the repository itself (`.claude/skills/ask-the-appliance/SKILL.md` or the
 project's agent-instructions file) so agents find it without knowing the realm exists.
 
@@ -161,6 +186,12 @@ A view that has never returned rows in front of you does not exist yet.
 - Editing a producer re-keys its cache: a shared realm's change can make the next call cold.
 - A `LIMIT` before a hop bounds that hop only in a query's first part; a view that needs two bounded
   reads (CI history and the newest runs, say) is refused today. Call two views instead.
+- A complete empty read can still be flagged `PARTIAL` (a repository with no open pull requests);
+  say what the forge itself shows when that happens.
+- `FailuresAndTheirChanges` can be refused when its blame read stops at a fetch limit; `WhichChange`
+  per failure fingerprint answers the same question one failure at a time.
+- A log view's `logs` argument is a path under the world's data, e.g. `logs/clinic`. A service's live
+  log outside the world's data (the appliance's own) is not readable by any realm today.
 
 ## Do not
 
