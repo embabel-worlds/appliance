@@ -110,6 +110,15 @@ directly, run the natural-language battery, assert the same fact equal everywher
 app in a real browser, ship the harness with the realm. Born from three trivially-found
 failures in one evening; exists so there is never a fourth.
 
+## project-realm
+
+One small realm per software project — Spring, Java, TypeScript, Python, anything — that
+`requires:` the shared realms (code, git, forge, CI, framework, quality, logs, deployment) and adds
+only what is true of that project: its identities pinned once as node views, its own rules read from
+the repository, the cross-realm questions only it can ask, and a skill telling coding agents which
+view answers what at each moment of work (before editing, before pushing, red build, what is
+deployed). Anything a second project would also want goes upstream into the shared realm instead.
+
 
 
 Symlink, so a `git pull` updates the skill too:
