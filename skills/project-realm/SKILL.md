@@ -99,9 +99,12 @@ requires:
   # … only what Step 1 found
 ```
 
-Take each lower bound from the version installed now (Step 2). A plain version is a soft preference;
-brackets are a hard range. An unmet requirement holds the project realm back with a named problem,
-which is correct: say so rather than dropping the requirement.
+Require EVERY realm whose labels a view, join or skill row reads, not only the ones you think of as
+dependencies: a view naming a label no installed realm declares is refused, and the project realm
+goes degraded wherever that realm is missing. Take each lower bound from the version installed now
+(Step 2). A plain version is a soft preference; brackets are a hard range. An unmet requirement
+holds the project realm back with a named problem, which is correct: say so rather than dropping the
+requirement.
 
 ## Step 4 — anchor views: the project's identities, once
 
@@ -141,9 +144,10 @@ would reuse as-is — for example, which built image carries which pull request,
 image workflow and tag convention (embabel/me's `MeImages`). Often there is none: petclinic's realm
 has only anchors, rules and a skill, and that is the right size. When such a view needs a field the
 shared realm does not expose, add it upstream (embabel/me needed the run's whole commit title, which
-GitHub truncates in `display_title`). Every view: a `description` that starts with the questions it answers (SELECT THIS for …),
-parameters with defaults set to this project's values, filters on projected variables, a stated
-cache/staleness, and an empty case that says why it is empty.
+GitHub truncates in `display_title`). Every view: a `description` whose first sentence says what it
+answers in 80 characters (that is all the view list shows), then what it leaves out, parameters with
+defaults set to this project's values, filters on projected variables, a stated cache/staleness, and
+an empty case that says why it is empty.
 
 Every view that can come back empty ends with one row saying so (`collect`, then `UNWIND CASE WHEN
 size(x) = 0 THEN [{…sentence…}] ELSE x END`): the engine reports a read that matched nothing as a
@@ -170,13 +174,18 @@ caps are one repository's defaults, so a Java project with Checkstyle rules gets
 the same skill into the repository itself (`.claude/skills/ask-the-appliance/SKILL.md` or the
 project's agent-instructions file) so agents find it without knowing the realm exists.
 
-## Step 8 — install, then test like a user
+## Step 8 — validate, audit, install, then test like a user
 
-Install from its folder (`install_realm_from_path`, or `realm_write` + `realm_install`), check
+Before installing: `embabel realm validate <dir> --strict` (zero errors; strict fails on keys the
+host would silently drop) and `embabel realm audit <dir> -v` (aim for 100, document what remains).
+Then install from its folder (`install_realm_from_path`, or `realm_write` + `realm_install`), check
 `realm_status` and the realm's problems, then follow `relentless-testing`: run every view with its
 defaults and each parameter varied; reconcile at least one figure per view against the source
 (GitHub's API, `git`, the cluster); hold first-call and warm times to a stated budget and report them.
-A view that has never returned rows in front of you does not exist yet.
+A view that has never returned rows in front of you does not exist yet. Ship it as `tests/verify.sh`
+to the battery contract in `relentless-testing`: every view by name on its defaults, one figure per
+view reconciled against the source, a cost bound for each pinned identity, last line exactly
+`ALL CHECKS PASS`.
 
 ## Known edges (check they still hold)
 

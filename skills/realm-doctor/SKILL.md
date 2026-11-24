@@ -20,6 +20,57 @@ Work symptom-first. Run the checks for the symptom you have; stop at the first v
    `docker logs embabel-<instance>-worlds-1 2>&1 | grep -E "RealmBundleBuilder|<realm-name>"`,
    where `<instance>` is `appliance` for the default one (`embabel instances` lists them).
 
+## Symptom: `degraded`, or held back
+
+`problems` names the cause. These four are the ones realms actually hit:
+
+- **A requirement is unmet (version lock).** `requires:` holds a Maven range, and the installed
+  dependency is outside it or missing. The realm is held back until it is met, which is correct.
+  Install or update the dependency; do not drop the requirement to make the status green.
+- **A view or join reads another realm's label without `requires:` on it.** A query naming a label
+  no installed realm declares is refused, not empty, so the view fails wherever that realm is
+  absent. Add the realm to `requires:`, or keep the view on labels this realm declares.
+- **An unresolvable parent.** `parents:` names a label nothing installed declares — usually a
+  vocabulary another realm owns. The parent is dropped, so the records do not answer to the shared
+  label. Require the vocabulary realm, or fix the spelling.
+- **Unknown keys.** A misspelled or unread key is dropped at load, so the declaration it carried
+  does nothing — a `fixes:` on a virtual join was silently ignored this way. Run
+  `embabel realm validate <dir> --strict`: it names each unknown key with the nearest real one.
+
+**A version bump that did not arrive is not a defect.** A realm installed from git is pinned to the
+commit it was installed at, and a refresh reloads that pin. Update it
+(`POST /api/v1/realms/<name>/update`) or reinstall, then check `realm_status` shows the new version.
+
+## Symptom: slow — a question takes many source calls or walks the whole book
+
+Find which filter was not sent and which producer read everything. The engine says so; read it
+before guessing:
+
+1. **Count the calls.** `apiCalls` on a query result, `metrics.externalCalls` on a view result. Run
+   it twice; a warm second run hides the problem, so compare against a cold read
+   (`{ai: {fresh: true}}` on the edge). A question about one entity should cost O(1) calls.
+2. **`EXPLAIN` the query.** Per join it prints `pushed to source: …` and
+   `applied by the graph after fetching: …`. The residual is the missing rule.
+3. **Read the notes on the result:**
+   - `FILTERED_IN_GRAPH`: the producer has no rule for that property. Declare one, with an explicit
+     `op` — an omitted `op` is `CONTAINS` and never matches an equality.
+   - `PUSHDOWN_VALUE_UNMATCHED`: a rule exists but the value failed its `valuePattern`. The note
+     quotes both; usually a date spelled with a time where the source takes `YYYY-MM-DD`.
+   - `PARTIAL_RESULT` (`TRUNCATED`): the page walk hit `maxPages`. Usually an unsent filter;
+     otherwise the page size is below the source's maximum or the cap below the book.
+   - `EMPTY_NOT_KEPT`: clean misses are re-asked every query. Add `negativeTtlSeconds`.
+4. **Find the producer that walked.** In `/app/logs/assistant.log`, a run of
+   `producer 'x' → tool 'op' args={…page…}` lines for one question is the walk, and the `args`
+   show which filters were sent. A count that walks pages means `aggregates:` is missing, or a
+   residual filter (step 2) stopped the count being pushed.
+5. **Check the declaration against the source's documentation.** A single record read through a
+   list endpoint wants a key-addressed producer; one call per anchor where the source takes a list
+   wants `keyArg` and `maxKeysPerCall`. The realm-authoring skill's "Pushdown first" section has
+   the pattern for each.
+
+Then prove the fix with a cost check in the realm's battery (`relentless-testing`, battery L3), so it
+stays fixed.
+
 ## Symptom: installed and active, but `verbs: []` (or a handler is missing)
 
 - **`problems` names a wasm build failure** — the reason is the compiler's own words ("TypeScript

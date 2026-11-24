@@ -30,6 +30,28 @@ battery.
 
 If you do not know what the world already holds, run `world-atlas` first.
 
+## A realm is finished at the quality bar
+
+The standard is realm-spec `REALM_QUALITY.md`, and the realm-authoring skill carries the method.
+Hold every realm to this, in this order:
+
+1. **Pushdown first.** Before writing a producer, list from the source's documentation every
+   filter, sort, key lookup, batch endpoint, count, page-size maximum and rate limit, and declare
+   each one you have proven narrows. *Why:* a filter left to the graph forfeits the pushed `LIMIT`
+   and `count()` too, and the answer is the same, so nothing tells you.
+2. **Metadata a model can act on.** Type description says what one node is and what identifies it
+   in 320 characters; property descriptions give unit, currency, every value and which clock a
+   date is in 160; `unit:`/`currency:`/`format:` declared as fields; `values:` only when complete.
+   *Why:* that is all a model is shown, and it is cut there.
+3. **`requires:` every realm whose labels a view reads.** *Why:* without it the realm goes degraded
+   wherever that realm is missing.
+4. **`embabel realm validate <dir> --strict`, then `embabel realm audit <dir> -v`.** Aim for audit
+   100; document every remaining finding as deliberate. *Why:* strict mode fails on keys the host
+   silently drops; the audit checks the metadata validation does not.
+5. **A battery that ends `ALL CHECKS PASS`** (`relentless-testing`). *Why:* the files can be perfect
+   while every join matches nothing.
+6. **After a version bump, update or reinstall — a refresh reloads the pinned version.**
+
 ## Views
 
 World lane: `POST /api/v1/admin/kg/views` saves a user-authored view — name, cypher,
@@ -48,6 +70,13 @@ Rules that hold in both lanes:
 - **Ids travel beside display columns** (`customerId` beside `customer`). Dedupe and
   record-linking key on ids; names duplicate, and figures merged by name inflate.
 - **Aggregation and dedupe live in the view, tested once** — not in every consumer.
+- **The first sentence says what the view answers, in 80 characters.** That is all the list a
+  model picks from shows. Then say what it leaves out or how it is bounded.
+- **Name params match exactly by default.** "Acme" must not return "Acme Holdings"; partial
+  matching is its own documented param. Near-named entities are distinct: key on ids.
+- **Money totals return one row per currency.** A sum across currencies is never right.
+- **Say which date a date param filters** — the business date or the system clock — and its
+  format.
 
 ### Intelligence views
 
@@ -133,9 +162,10 @@ skill beside this one) specifies. Handover includes it.
 
 ## Testing, per lane
 
-A realm ships its battery: `tests/questions.yml` reconciled by a harness, per
-`relentless-testing`. A world artifact has no repository to ship a battery in, so
-verification happens at authoring time, before you call it done:
+A realm ships its battery, `tests/verify.sh`, per `relentless-testing`: every view by name, ground
+truth from the source, cost checks for every pushdown, last line exactly `ALL CHECKS PASS`; plus
+`tests/questions.yml` once people ask it in words. A world artifact has no repository to ship a
+battery in, so verification happens at authoring time, before you call it done:
 
 - **A view**: invoke it through the runtime path and read the whole envelope. Reconcile its
   figures against the source system directly if you can reach one; say so plainly if you
@@ -149,5 +179,5 @@ Judgment cells (classify labels, synthesized prose) are asserted for vocabulary 
 cases seeded to be unambiguous — never for exact wording. Figures are asserted exactly.
 
 When a world artifact earns promotion to a realm, the questions you verified by hand become
-`tests/questions.yml`, and the hand-verification becomes a harness. That is the point of the
+`tests/questions.yml`, and the hand-verification becomes `tests/verify.sh`. That is the point of the
 promotion: the checking you did once starts running forever.

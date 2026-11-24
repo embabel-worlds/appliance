@@ -302,7 +302,24 @@ For each realm: the route, the demo question it unlocks, and what it costs.
 | A reachable database | `learn_connect` → `learn_sources` → `learn_source` → review → `learn_promote` |
 | A directory with `realm.yml` | `install_realm_from_path` if it is under the mounted realms dir, else `install_realm` for its git repo — see below |
 | An OpenAPI spec | The console's `POST /api/v1/world/apis/learn` — say so; it is not on the MCP surface |
-| Genuinely new capability | `realm_write` → `realm_validate` → `realm_install`, per `realm_brief` |
+| Genuinely new capability | `realm_write` → `realm_validate` → `realm_install`, per `realm_brief` and the realm-authoring skill's "Pushdown first" |
+
+**The bar a proposed realm commits to.** A realm you propose to build is built to realm-spec
+`REALM_QUALITY.md`, and what it costs depends on the source, so check these before proposing, not
+after building:
+
+- **Can the source be asked narrowly?** Read its API documentation for filters, by-id and bulk
+  endpoints, counts and the page-size maximum. A source that can only be listed whole makes every
+  question a full read: say so in the proposal, with the book's size, and propose a cache window
+  that fits how it changes.
+- **Can the battery reach ground truth?** The realm ships `tests/verify.sh`, which reconciles its
+  figures against the source directly. A source you cannot query outside the realm cannot be
+  verified; say what will go unverified.
+- **What keys does it join on?** A join on a name joins near-namesakes. Name the key (domain,
+  email, registration number) and the realm whose labels it reads, which it must `require`.
+- **Done means:** `embabel realm validate --strict` clean, `embabel realm audit` at or near 100,
+  and the battery ending `ALL CHECKS PASS`. Quote that bar in the proposal, so "installed" is not
+  mistaken for "finished".
 
 `install_realm_from_path` reaches only what the operator mounted — the appliance sees
 `${EMBABEL_REALMS_DIR:-./realms}` from the compose file as `/realms`, read-only, and nothing else.
