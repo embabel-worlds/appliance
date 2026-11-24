@@ -32,6 +32,11 @@ def cmd_realms(args) -> int:
         image = args.image or realmvalidate.appliance_image(current_mode() or s.configured_mode() or "worlds")
         return realmvalidate.run_validation(args.directory, args.with_dirs, image,
                                             as_json=args.json, strict=args.strict)
+    if args.realms_command == "audit":
+        # Read from the files, so no image and no appliance: a realm repository's CI can run it.
+        from . import realmaudit
+        return realmaudit.run_audit(args.directory, as_json=args.json, markdown=args.markdown,
+                                    verbose=args.verbose, fail_under=args.fail_under)
     if args.realms_command in ("import", "export"):
         from . import ontologyio
         image = args.image or realmvalidate.appliance_image(current_mode() or s.configured_mode() or "worlds")

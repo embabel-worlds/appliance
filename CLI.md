@@ -42,6 +42,7 @@ embabel embeddings use local  # turn document search on
 embabel trust add ca.crt  # trust your company's certificate authority
 embabel data add app.war --to jars  # a file a realm reads, into the world's data/
 embabel realm validate .  # would this realm checkout load? Nothing needs to be running
+embabel realm audit .     # how good is its metadata, against realm-spec REALM_QUALITY.md
 ```
 
 ---
@@ -179,6 +180,34 @@ copy inside the container. Exit status: `0` passes, `1` does not, `2` could not 
 
 For a realm repository's CI, the same image runs directly — see realm-spec's README,
 "Validating a realm in CI".
+
+### `embabel realm audit <directory> [--json] [--markdown] [--verbose] [--fail-under <score>]`
+
+How good is this realm's metadata? Validation asks whether a realm loads; the audit asks whether a
+model can answer from it and the planner can fetch little: the rules of realm-spec
+[`REALM_QUALITY.md`](https://github.com/embabel-worlds/realm-spec/blob/main/REALM_QUALITY.md) that
+can be checked from the files. A type's first 320 characters, a property with no unit or no listed
+values, a producer that declares no `pushdown:` or no cache, paging left at its defaults, a
+list-only producer beside a by-id endpoint in its vendored API document, a view param matched
+partially without saying so, a view named for one value of several it counts, and fields the host
+drops without a word (`unit:` on a property, `ttlSeconds` for a ttl's `seconds`).
+
+```
+embabel realm audit ~/dev/realm-odoo              # its score and every finding
+embabel realm audit ~/dev                         # every realm checkout in the directory
+embabel realm audit . --json --fail-under 80      # for CI
+```
+
+Each finding names its rule (`T2`, `R1`, `V3` …) so the standard says why. The score is a
+weighted mean over the rules that apply, MUST weighing three times SHOULD, each rule scored by the
+share of its declarations that meet it. A directory of checkouts skips working copies: `-fix…`,
+spike and draft directories, and a second checkout declaring the same realm as `realm-<name>`. `--markdown` prints the score table [`docs/realm-audit-baseline.md`](docs/realm-audit-baseline.md)
+is made from.
+
+Nothing runs and no image is pulled: the realm is read from its files, YAML the way the host reads
+it and `realm.ts` by evaluating it with Node (22.6 or later). Reading YAML needs PyYAML
+(`pip install pyyaml`). Exit status: `0` done, `1` a realm scored under `--fail-under`, `2` not a
+realm, or one that could not be read.
 
 ### `embabel realm import owl|skos|ossie|okf <file-or-url-or-dir> --out <dir> [--name <realm>] [--mode auto|schema|terminology] [--sparql-endpoint <url>] [--data-url-base <url>] [--term-label <Label>] [--ontology <file>] [--mapping <file>] [--jdbc-url <url>]
 
@@ -1242,7 +1271,8 @@ kg_query(…)                            # does it answer?
 and `git push` from the checkout, to your own GitHub. Nothing in that requires the
 appliance to write to your files, which is why the mount is read-only.
 
-`realm_brief` over MCP explains the realm format and points at the
+`embabel realm audit ~/dev/realm-esg` says how far its metadata is from the standard, from the
+files alone. `realm_brief` over MCP explains the realm format and points at the
 `realm-authoring` skill that walks through building one.
 
 ---
