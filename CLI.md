@@ -153,7 +153,7 @@ needs nothing; a realm with a build step must be built on the host first.
 
 Which realms the appliance can currently see.
 
-### `embabel realm validate <directory> [--with <dir>]... [--json] [--strict]`
+### `embabel realm validate <directory> [--with <dir>]... [--json] [--strict] [--host worlds|shinar]`
 
 Would this realm checkout load? The same checks `realm_validate` runs over MCP — `realm.yml`,
 types and their parents, joins, producers and the governance their source can honour, views,
@@ -172,6 +172,11 @@ embabel realm validate ~/dev/realm-java-source-code \
   not itself validated. The default world's types are always known, as they are in every
   world. Repeatable.
 - `--json` prints the report as JSON; `--strict` fails on warnings as well as errors.
+- `--host` names the host the realm is judged for: `worlds` (the default) or `shinar`. Some
+  loader rules are one host's policy — Shinar requires every vendored API server to be a single
+  https origin on port 443 and every materialised view to name an `outputLabel` — and are
+  applied only when judging for that host. Left out, nothing is passed and the validator judges
+  for Worlds; an image older than the flag refuses it.
 - `--image` validates with another server image, such as a local build.
 
 The checkout and every `--with` directory are mounted read-only; validation builds into a

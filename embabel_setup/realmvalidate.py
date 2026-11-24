@@ -40,7 +40,7 @@ def appliance_image(mode: str) -> str:
 
 
 def docker_argv(realm: str, with_dirs: list[str], image: str, *,
-                as_json: bool = False, strict: bool = False) -> list[str]:
+                as_json: bool = False, strict: bool = False, host: str | None = None) -> list[str]:
     """The `docker run` that validates [realm] beside [with_dirs].
 
     Mounted under their own names, so the report names the checkout the way the person
@@ -60,11 +60,15 @@ def docker_argv(realm: str, with_dirs: list[str], image: str, *,
         tail.append("--json")
     if strict:
         tail.append("--strict")
+    # Only when named: an image built before the validator took --host refuses the flag, and
+    # leaving it out asks for the same Worlds judgement anyway.
+    if host:
+        tail += ["--host", host]
     return argv + [image] + tail
 
 
 def run_validation(realm: str, with_dirs: list[str], image: str, *,
-                   as_json: bool = False, strict: bool = False) -> int:
+                   as_json: bool = False, strict: bool = False, host: str | None = None) -> int:
     """Validate, streaming the report, and exit with the validator's own status.
 
     The report is not captured: it is the output, and a CI log or a person wants it as the
@@ -76,7 +80,7 @@ def run_validation(realm: str, with_dirs: list[str], image: str, *,
         print(f"  Not a directory: {', '.join(missing)}")
         return 2
     try:
-        status = subprocess.run(docker_argv(realm, with_dirs, image, as_json=as_json, strict=strict)).returncode
+        status = subprocess.run(docker_argv(realm, with_dirs, image, as_json=as_json, strict=strict, host=host)).returncode
     except FileNotFoundError:
         print("  Docker is not installed, and the validator runs in the appliance's image.")
         return 2
