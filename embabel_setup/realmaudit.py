@@ -13,7 +13,8 @@ three times a SHOULD, each rule scored by the share of its declarations that mee
 
     score = 100 * sum(weight * (1 - failed / checked)) / sum(weight)
 
-A realm with nothing a rule applies to (no types, no producers, no views) has no score, not 100.
+Every realm is held to its realm.yml description (M1, M2), which routing shows whatever else the
+realm declares, so a realm that is only an app or only verbs is scored on that, not left unscored.
 
 HEURISTICS SAY SO. A unit on a field named `amount`, a list of values on one named `status`, a by-id
 endpoint beside a list-only producer: each is a guess from a name or an API document, and the
@@ -86,25 +87,42 @@ PUSHDOWN_KINDS = REMOTE_KINDS | {"sql", "sparql", "cypher", "tabular", "feed", "
 CACHED_KINDS = REMOTE_KINDS | {"sql", "sparql", "cypher", "graphql", "feed", "elasticsearch", "elastic",
                                "remote-search", "publisher"}
 
-MONEY = re.compile(r"(?i)(amount|price|cost|revenue|balance|fee|mrr|arr|cents|salary|income|spend|budget|"
-                   r"(?<![a-z])value$|total(?!count)|subtotal|tax|discount|refund|paid|due$)")
-MEASURE = re.compile(r"(?i)(duration|latency|elapsed|bytes|weight|distance|height|length|width|depth|"
-                     r"temperature|seconds|minutes|hours|millis|ms$|_ms$|size$|area|volume|speed|"
-                     r"(?<![a-z])age$|percent|ratio)")
-UNIT_WORDS = re.compile(r"(?i)((?-i:\b[A-Z]{3}\b)|currency|cents|minor units|major units|dollars|pounds|euros|"
-                        r"[$£€¥]|\bunits?\b|seconds|minutes|hours|days|millis|\bms\b|bytes|\b[kmg]i?b\b|"
-                        r"metres|meters|\bkm\b|\bm\b|miles|kg|grams|\bg\b|celsius|fahrenheit|°|"
-                        r"percent|%|fraction|ratio|0\s*(to|-|–|\.\.)\s*1|per\s)")
+# NAME HEURISTICS READ A NAME'S WORDS, never its letters: `durationMs` is a duration in ms, and
+# `teams`, `synonyms`, `feedState`, `arrayClass` and `configuration` hold no `ms`, `fee`, `arr` or
+# `ratio`. A name splits at camelCase humps and underscores (_tokens), and a word matches whole.
+# `value` is not money: it is the generic name for whatever a record holds.
+MONEY_WORDS = {"amount", "price", "prices", "cost", "costs", "revenue", "balance", "fee", "fees", "mrr", "arr",
+               "cents", "salary", "income", "spend", "budget", "subtotal", "tax", "taxes", "discount", "refund",
+               "paid"}
+MEASURE_WORDS = {"duration", "latency", "elapsed", "bytes", "weight", "distance", "height", "length", "width",
+                 "depth", "temperature", "seconds", "minutes", "hours", "millis", "ms", "area", "volume", "speed",
+                 "percent", "ratio"}
+# Words that are a money or a measure only as the name's last word: `pageSize` is a size, but
+# `sizeClass` is a class and `dueDate` a date. `age` only alone or snake_cased (`age`, `patient_age`).
+LAST_WORDS = {"due", "size"}
+# A unit is a whole word too: `kg` in "background" and `grams` in "programs" state nothing. Currency
+# is the exception, as it reads the same inside a sibling's name: "in revenueCurrency" says it.
+UNIT_WORDS = re.compile(r"(?i)((?-i:\b[A-Z]{3}\b)|[$£€¥°%]|currenc(y|ies)|0\s*(to|-|–|\.\.)\s*1|\b(cents?|pence|"
+                        r"minor units|major units|dollars?|pounds?|euros?|units?|(milli|micro|nano)?seconds?|"
+                        r"minutes?|hours?|days?|millis|ms|bytes?|[kmgt]i?b|"
+                        r"(kilo|centi|milli)?(metres?|meters?)|km|cm|mm|m|miles?|kg|grams?|g|celsius|fahrenheit|"
+                        r"percent(age)?|fraction|ratio|ply|plies|per)\b)")
 ENUMISH = re.compile(r"(?i)(^|[a-z])(status|state|stage|priority|severity|kind|category|level|tier|phase|"
                      r"outcome|conclusion|result|direction|visibility|role)$|^type$")
-# Case matters: `openedOn` is a date and `location` is not.
-DATEISH = re.compile(r"(?:On|At|Date|Time|Since|_at|_on|_date|_time)$|^(?:date|time|created|updated|modified|"
-                     r"timestamp|when|since)$|_date_|[Dd]ate[A-Z_]")
+# By words, as for money: `openedOn` and `dateOfBirth` are dates, `location` and `candidateId` are not.
+DATE_ANYWHERE = {"date", "datetime", "timestamp"}
+DATE_LAST = {"on", "at", "time", "since"}
+# Alone, `at` and `on` are as often a place (`at: "Foo.bar:12"`) as a moment, so they need a word before them.
+DATE_ALONE = {"created", "updated", "modified", "when", "time", "since"}
 DATE_WORDS = re.compile(r"(?i)(iso|yyyy|epoch|utc|unix|date-?time|timestamp|\bday\b|\bdate\b|"
                         r"time ?zone|local time|seconds since|milliseconds since)")
 # Case matters here: `isPaid` is a flag and `issuedOn` is not, `numSeats` a count and `name` not.
 NUMERIC_NAME = re.compile(r"(?:[Cc]ount|[Tt]otal|[Qq]ty|[Qq]uantity|[Ss]core|[Dd]ays|[Hh]ours|[Mm]inutes|[Ss]econds|"
                           r"[Pp]ercent|[Rr]ate)$|^(?:is|has|can|was)[A-Z]|^num[A-Z_]|^(?:count|total|days)\b")
+# A value quoted in a description: 'open', "open", `open` or ‘open’. A quote opens only where a word
+# does not run into it and closes only where none runs on, so the apostrophe in "the plan's" is not
+# the start of a quotation that swallows the backticked values after it.
+QUOTED = re.compile(r"(?<![\w'])'[^'\n]+'(?!\w)|(?<![\w\"])\"[^\"\n]+\"(?!\w)|`[^`\n]+`|‘[^’\n]+’|“[^”\n]+”")
 CROSS_KEY = re.compile(r"(?i)^(email|domain|website|accountKey|companyDomain|emailDomain)$")
 PARTIAL_WORDS = re.compile(r"(?i)(partial|contain|substring|fragment|part of|anywhere in|starts with|"
                            r"prefix|suffix|regex|pattern|fuzzy|case-insensitive|matches any)")
@@ -141,7 +159,26 @@ def _text(value) -> str:
 
 
 def _words(name: str) -> str:
-    return re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name).replace("_", " ").lower()
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name).replace("_", " ").replace("-", " ").lower()
+
+
+def _tokens(name: str) -> list:
+    """A property name's words: `durationMs` is [duration, ms], `created_date` [created, date]."""
+    return _words(re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", name)).split()
+
+
+def _is_money_or_measure(name: str) -> bool:
+    """By the name's words. `total` is one wherever it stands, except as `totalCount`, a count."""
+    words = _tokens(name)
+    total = any(w in ("total", "subtotal") and words[i + 1:i + 2] != ["count"] for i, w in enumerate(words))
+    age = name.lower() == "age" or name.lower().endswith("_age")
+    return bool(words) and (bool(set(words) & (MONEY_WORDS | MEASURE_WORDS)) or total or age or words[-1] in LAST_WORDS)
+
+
+def _is_date(name: str) -> bool:
+    words = _tokens(name)
+    return bool(words) and (bool(set(words) & DATE_ANYWHERE) or (len(words) > 1 and words[-1] in DATE_LAST)
+                            or (len(words) == 1 and words[0] in DATE_ALONE))
 
 
 FILLER = {"the", "a", "an", "its", "it", "of", "this", "is", "s"}
@@ -232,15 +269,17 @@ def _check_types(a: Audit, realm: dict):
                               (isinstance(spec.get("validation"), list) and any(
                                   isinstance(v, dict) and v.get("rule") == "oneOf" for v in spec["validation"])))
             text = f"{pdesc} {json.dumps(spec.get('metadata') or {})}"
-            if (MONEY.search(pname) or MEASURE.search(pname)) and not ptype.startswith("bool") \
-                    and not DATEISH.search(pname) and not DATEISH.search(pname):
+            # A declared list of values makes it a category, whatever its name: `speed` in chess is
+            # bullet, blitz or rapid, and no unit applies.
+            if _is_money_or_measure(pname) and not ptype.startswith("bool") and not has_values \
+                    and not _is_date(pname):
                 a.apply("P2", UNIT_WORDS.search(pdesc) is not None,
                         pwhere, "looks like money or a measure, and no currency or unit is stated")
             if ENUMISH.search(pname) and ptype not in ("int", "integer", "number", "boolean", "long", "float"):
-                listed = has_values or len(re.findall(r"'[^']+'|\"[^\"]+\"|`[^`]+`", pdesc)) >= 2 \
+                listed = has_values or len(QUOTED.findall(pdesc)) >= 2 \
                     or re.search(r"\w+\s*,\s*\w+.*\bor\b|\w+\s*[/|]\s*\w+\s*[/|]", pdesc) is not None
                 a.apply("P3", listed, pwhere, "looks like an enumeration, and lists no values")
-            if DATEISH.search(pname):
+            if _is_date(pname):
                 a.apply("P4", DATE_WORDS.search(text) is not None and len(pdesc) >= 20, pwhere,
                         "a date or time with no word on which moment it is or how it is written (ISO, epoch, UTC, day)")
             if NUMERIC_NAME.search(pname):
@@ -399,10 +438,9 @@ def _first_sentence(text: str) -> str:
 
 def _check_realm(a: Audit, realm: dict):
     """The realm's own description reaches a model: whole in the selector that picks realms for a
-    question, by its first sentence in the guide's index. Only a realm with something to query is
-    picked, so only such a realm is held to it."""
-    if not (realm.get("types") or realm.get("views")):
-        return
+    question, by its first sentence in the guide's index. Every realm is routed on it, one that is
+    only an app or only verbs as much as one with types, so every realm is held to it, and a realm
+    with nothing else to score is scored on it."""
     d = _text(realm.get("description"))
     a.apply("M1", len(d) >= 20, "realm.yml", "no description" if not d else f"description {d!r} says too little")
     if d:

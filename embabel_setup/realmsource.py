@@ -15,9 +15,14 @@ YAML IS READ THE HOST'S WAY, not PyYAML's. PyYAML resolves YAML 1.1, where `yes`
 one mapping, which PyYAML would quietly keep the last of, is a problem here as it is a refusal there.
 The same reader is in scripts/realm-yml-to-ts.py's lineage; one definition is the point.
 
-realm.ts IS EVALUATED BY NODE, which erases its types and runs it (Node 22.6 or later). Definition
-code is deterministic and side-effect free by contract, so running it is reading it. A machine with
-no Node cannot read a realm.ts, and that is said, not guessed around.
+realm.ts IS EVALUATED, as the host evaluates it: types erased, the default export's value read.
+Definition code is deterministic and side-effect free by contract, so running it is reading it.
+The realm tooling emits no synthesized declaration to read instead (the SDK ships source, and the
+host bundles it itself), so a runtime is needed, and it must read the realm AS SHIPPED: a fresh
+clone with no `npm install`, or one with the SDK installed from its tarball. Node 22.6 or later
+does, through realm_ts_hooks.mjs beside this file, which answers both; bun or tsx, when Node cannot
+(none, or one too old to strip types under node_modules). A machine with none of them cannot read a
+realm.ts, and that is said, in one line, not guessed around.
 
 PyYAML is the one dependency outside the standard library, as for `embabel sample` from a .yml set:
 a YAML parser is a solved problem, and a hand-rolled one is wrong in exactly the places nobody tested.
@@ -26,6 +31,7 @@ a YAML parser is a solved problem, and a hand-rolled one is wrong in exactly the
 from __future__ import annotations
 import json
 import os
+import pathlib
 import re
 import subprocess
 
@@ -83,28 +89,93 @@ def read_yaml(path: str):
         loader.dispose()
 
 
+HOOKS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "realm_ts_hooks.mjs")
+SDK = "@embabel/realm-types"
+# Read through an environment variable rather than argv, whose shape differs between runtimes.
+# The error is one tagged JSON line, so what reaches the person is its message, not a stack.
+EVAL_SCRIPT = (
+    "import(require('url').pathToFileURL(process.env.EMBABEL_REALM_TS).href)"
+    ".then(m => process.stdout.write(JSON.stringify(m.default === undefined ? null : m.default)))"
+    ".catch(e => { console.error('REALM_TS_ERROR ' + JSON.stringify("
+    "{name: e && e.name, code: e && e.code, message: String(e && e.message || e)})); process.exit(2) })")
+# What a runtime too old for this says. It is the runtime that cannot read the realm, not the realm
+# that is wrong, so the next runtime is tried.
+TOO_OLD = re.compile(r"bad option|is not a function|does not provide an export named 'register'|"
+                     r"ERR_UNKNOWN_FILE_EXTENSION|ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING|"
+                     r"ERR_UNKNOWN_MODULE_FORMAT")
+
+
+def _runtimes() -> list:
+    """(name, argv prefix) for each runtime that could evaluate realm.ts, in the order tried."""
+    register = ("data:text/javascript,import{register}from'node:module';"
+                f"register({json.dumps(pathlib.Path(HOOKS).as_uri())})")
+    return [("Node", ["node", "--experimental-strip-types", "--no-warnings", "--import", register, "-e"]),
+            # --no-install: bun would otherwise fetch a missing package, and reading a realm fetches nothing.
+            ("bun", ["bun", "--no-install", "-e"]),
+            ("tsx", ["tsx", "-e"])]
+
+
+def _error_line(stderr: str) -> str:
+    for line in stderr.splitlines():
+        if line.startswith("REALM_TS_ERROR "):
+            try:
+                e = json.loads(line[len("REALM_TS_ERROR "):])
+                return f"{e.get('name') or 'Error'}: {e.get('message')}".splitlines()[0]
+            except ValueError:
+                break
+    lines = [ln.strip() for ln in stderr.splitlines() if ln.strip()]
+    found = next((ln for ln in lines if re.search(r"\b\w*Error\b", ln)), lines[0] if lines else "no output")
+    return found[:300]
+
+
+def _sdk_installed(root: str) -> bool:
+    """Whether Node's resolution from the realm would find the SDK in some node_modules above it."""
+    here = os.path.abspath(root)
+    while True:
+        if os.path.isdir(os.path.join(here, "node_modules", *SDK.split("/"))):
+            return True
+        parent = os.path.dirname(here)
+        if parent == here:
+            return False
+        here = parent
+
+
 def evaluate_realm_ts(path: str) -> dict:
-    """The value realm.ts evaluates to. Node erases the types; the default export is the declaration."""
-    script = ("import(require('url').pathToFileURL(process.argv[1]).href)"
-              ".then(m => process.stdout.write(JSON.stringify(m.default)))"
-              ".catch(e => { console.error(String(e)); process.exit(2) })")
-    # Node 22.6 to 23.5 strip types only when asked; later Nodes do it anyway and accept the flag.
-    # A Node too old to know the flag says "bad option", and is tried once more bare.
-    run = None
-    for flags in (["--experimental-strip-types", "--no-warnings"], []):
+    """The value realm.ts evaluates to: its types erased, its default export the declaration."""
+    env = {**os.environ, "EMBABEL_REALM_TS": os.path.abspath(path)}
+    tried = []
+    for name, argv in _runtimes():
         try:
-            run = subprocess.run(["node", *flags, "-e", script, "--", os.path.abspath(path)],
-                                 capture_output=True, text=True, timeout=60)
+            run = subprocess.run([*argv, EVAL_SCRIPT], capture_output=True, text=True, timeout=60,
+                                 cwd=os.path.dirname(os.path.abspath(path)), env=env)
         except FileNotFoundError:
-            raise RealmSourceError("reading a realm.ts needs Node 22.6 or later, which evaluates it; none is installed")
-        if "bad option" not in run.stderr:
-            break
-    if run.returncode != 0:
-        raise RealmSourceError(f"realm.ts does not evaluate: {run.stderr.strip()[:300]}")
-    value = json.loads(run.stdout or "null")
-    if not isinstance(value, dict):
-        raise RealmSourceError("realm.ts has no default export object")
-    return value
+            continue
+        except subprocess.TimeoutExpired:
+            raise RealmSourceError(f"realm.ts did not finish evaluating in 60 seconds under {name}")
+        if run.returncode == 0:
+            try:
+                value = json.loads(run.stdout or "null")
+            except ValueError:
+                raise RealmSourceError(f"realm.ts evaluated under {name} to something that is not JSON")
+            if not isinstance(value, dict):
+                raise RealmSourceError("realm.ts has no default export object")
+            return value
+        if TOO_OLD.search(run.stderr):
+            tried.append(name)
+            continue
+        line = _error_line(run.stderr)
+        # Node names the missing export (its hook stood in an empty SDK); bun and tsx, the package.
+        missing = re.search(r"does not provide an export named '([\w$]+)'|Cannot find (?:package|module) '@embabel/realm-types", line)
+        if missing and SDK in line and not _sdk_installed(os.path.dirname(os.path.abspath(path))):
+            raise RealmSourceError(
+                f"realm.ts uses {missing.group(1) or 'a value'} from {SDK}, which is not installed beside it. "
+                "Type-only imports need nothing; a value does. Install the SDK in the realm "
+                "(npm install, from the version or tarball its package.json names) and audit again")
+        raise RealmSourceError(f"realm.ts does not evaluate under {name}: {line}")
+    if tried:
+        raise RealmSourceError(f"reading a realm.ts needs Node 22.6 or later, bun or tsx; {', '.join(tried)} "
+                               "here is too old to strip its types")
+    raise RealmSourceError("reading a realm.ts needs Node 22.6 or later, bun or tsx, which evaluate it; none is installed")
 
 
 def _named(record: dict) -> list:
