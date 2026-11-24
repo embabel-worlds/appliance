@@ -141,6 +141,10 @@ services:
       # surfaces are the same whichever product you bought, so the server names
       # them and the packaging says nothing.
       - ASSISTANT_INFRASTRUCTURE_MCP_DEVELOPER_ENDPOINT_ENABLED=true
+      # Where a project key that is a bare folder name finds its code: `shop` reads /workspace/shop,
+      # mounted from EMBABEL_PROJECT_WORKSPACE below. A coding agent's working tree, read live, so the
+      # appliance answers about the code as the agent has just edited it, not as it was last pushed.
+      - ASSISTANT_VIRTUALCYPHER_PROJECT_WORKSPACE=/workspace
       # Host timezone, from .env (setup.py writes it) — see the Me mode's note.
       - TZ=${TZ:-Etc/UTC}
       # The engine is .env's answer — setup writes EMBABEL for a new appliance, and
@@ -404,6 +408,13 @@ services:
       # build runs inside cloneRepo, so it never fires for a local reference;
       # a realm that needs npm must be built on the host first.
       - ${EMBABEL_REALMS_DIR:-./realms}:/realms:ro
+      # Your projects' working trees, for the code realms: a project key that is a bare folder name
+      # (`shop`) reads /workspace/shop. Mount the PARENT of your checkouts, as for realms above.
+      # EMBABEL_PROJECT_WORKSPACE in .env points it anywhere; the default is ./workspace in this
+      # checkout, which exists and is empty, so the mount is always valid and inert until used.
+      # READ-ONLY for the same reason as realms: you and your coding agent edit on the host, and the
+      # appliance only reads — which is what lets it answer about code that is not yet pushed.
+      - ${EMBABEL_PROJECT_WORKSPACE:-./workspace}:/workspace:ro
       # Certificate authorities to trust beyond the public ones: a company's own
       # root, for a gateway on an internal address or a network that inspects
       # outbound traffic. The image imports every *.crt here when it starts.

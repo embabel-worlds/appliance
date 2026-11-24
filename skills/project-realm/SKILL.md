@@ -178,11 +178,51 @@ defaults and each parameter varied; reconcile at least one figure per view again
 (GitHub's API, `git`, the cluster); hold first-call and warm times to a stated budget and report them.
 A view that has never returned rows in front of you does not exist yet.
 
+## Step 9 — put the answers in the agent's loop: the hooks
+
+A skill row is an answer the agent has to think to ask for, and it mostly does not: an agent that can grep
+finds code well, so it rarely reaches for a tool to do it. What it gets wrong is what its change did to the
+rest of the project. So install the
+hooks in `hooks/embabel_hook.py` beside this skill. They answer unasked, at the moment it matters:
+
+- **after any change to the working tree** (an Edit, a Write, or a script run in Bash, which agents edit
+  with as often): each signature the tree now has that `HEAD` did not, with every other use of it
+  (`FileDeclarations`, `WhoCalls`), and, the first time a file changes, the tests that cover it and the
+  command that runs them (`TestsFor`). Each finding once a session.
+- **before `git commit` and `git push`**: what the project's rules would refuse in the changed files,
+  read from the working tree now (`RulesHeadroom` with the project's own caps, `PushChecks`). A definite
+  refusal (`over`, `refused`) blocks the command with the reason; anything short of that is said.
+
+They read the agent's **working tree**, not the last push, so the appliance must see it: put the project's
+checkout in the folder `.env` names as `EMBABEL_PROJECT_WORKSPACE` (mounted read-only at `/workspace`),
+and use the checkout's folder name as the project key. The hook keeps each changed file's `HEAD` copy
+beside it (`<workspace>/.<key>--base`) for the comparison.
+
+Install into the repository's `.claude/settings.json`, with the key in a file the repository does not hold:
+
+```json
+{
+  "hooks": {
+    "PreToolUse":  [{"matcher": "Bash", "hooks": [{"type": "command", "timeout": 60,
+      "command": "EMBABEL_PROJECT=<key> EMBABEL_URL=<appliance> EMBABEL_AUTH_FILE=~/.config/embabel/agent-hook.auth EMBABEL_FILE_CAP=<the project's cap> python3 <path>/embabel_hook.py"}]}],
+    "PostToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{"type": "command", "timeout": 60,
+      "command": "<the same command>"}]}]
+  }
+}
+```
+
+The auth file holds the header value (`Bearer <an appliance API key>`). Set `EMBABEL_FILE_CAP`,
+`EMBABEL_METHOD_CAP` and `EMBABEL_TYPE_CAP` from `reference/rules.md`; the defaults are one repository's.
+A hook that cannot reach the appliance says nothing: it is never why a tool call fails.
+
+Test it the way `hooks/test_embabel_hook_e2e.py` does before handing it over: a headless session that
+changes a signature must be told the callers, and a commit past a cap must be stopped.
+
 ## Known edges (check they still hold)
 
 - A realm installed from git at `ref: main` is pinned by digest; a plain refresh does not move it.
   After a shared realm merges, update it explicitly (`POST /api/v1/realms/<name>/update`).
-- `polyglot-code` uses `code-model`'s types without declaring `requires:` on it; require both.
+- `polyglot-code` uses `code-model`'s types; until it declares `requires:` on it (realm-polyglot-code#16), require both.
 - Editing a producer re-keys its cache: a shared realm's change can make the next call cold.
 - A `LIMIT` before a hop bounds that hop only in a query's first part; a view that needs two bounded
   reads (CI history and the newest runs, say) is refused today. Call two views instead.
