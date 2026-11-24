@@ -31,7 +31,7 @@ def cmd_realms(args) -> int:
         # run in CI, which is the place it is for.
         image = args.image or realmvalidate.appliance_image(current_mode() or s.configured_mode() or "worlds")
         return realmvalidate.run_validation(args.directory, args.with_dirs, image,
-                                            as_json=args.json, strict=args.strict)
+                                            as_json=args.json, strict=args.strict, host=args.host)
     if args.realms_command == "audit":
         # Read from the files, so no image and no appliance: a realm repository's CI can run it.
         from . import realmaudit

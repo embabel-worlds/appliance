@@ -40,12 +40,14 @@ def check(ok, message):
 # ── the command surface ──────────────────────────────────────────────────────
 for verb in ("realm", "realms"):
     args = build_parser().parse_args([verb, "validate", "./r", "--with", "a", "--with", "b",
-                                      "--json", "--strict", "--image", "x:1"])
+                                      "--json", "--strict", "--image", "x:1", "--host", "shinar"])
     check(args.realms_command == "validate", f"`{verb} validate` does not reach validate")
     check(args.with_dirs == ["a", "b"], f"`{verb} validate` --with gave {args.with_dirs}")
-    check(args.json and args.strict and args.image == "x:1", f"`{verb} validate` dropped a flag")
+    check(args.json and args.strict and args.image == "x:1" and args.host == "shinar",
+          f"`{verb} validate` dropped a flag")
 plain = build_parser().parse_args(["realm", "validate", "."])
-check(plain.with_dirs == [] and not plain.json and not plain.strict and plain.image is None,
+check(plain.with_dirs == [] and not plain.json and not plain.strict and plain.image is None
+      and plain.host is None,
       "`realm validate .` has defaults it should not")
 
 # With several appliances, a run that names its image needs none of them; one that does not
@@ -102,6 +104,18 @@ with tempfile.TemporaryDirectory() as tmp:
           f"the validator is not handed what was asked: {after}")
     bare = realmvalidate.docker_argv(realm + os.sep, [], "img:7")
     check(bare[-1] == "/realms/realm-thing", f"a trailing separator lost the realm's name: {bare[-1]}")
+    # --host reaches the validator when named, and is absent otherwise: an image older than the
+    # flag refuses it, and its absence already means the Worlds host.
+    hosted = realmvalidate.docker_argv(realm, [], "img:7", host="shinar")
+    check(hosted[hosted.index("img:7") + 1:] == ["/realms/realm-thing", "--host", "shinar"],
+          f"--host shinar did not reach the validator: {hosted}")
+    check("--host" not in bare, f"--host was passed though none was named: {bare}")
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            build_parser().parse_args(["realm", "validate", ".", "--host", "elsewhere"])
+            check(False, "--host accepted a host the validator does not know")
+        except SystemExit:
+            pass
 
     def status_of(returncode):
         calls = []
@@ -112,7 +126,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
         out = io.StringIO()
         with patch.object(realmvalidate.subprocess, "run", fake_run), contextlib.redirect_stdout(out):
-            status = realmvalidate.run_validation(realm, deps, "img:7")
+            status = realmvalidate.run_validation(realm, deps, "img:7", host="shinar")
         return status, out.getvalue(), calls
 
     for code in (0, 1, 2):
@@ -120,6 +134,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check(status == code, f"the validator exited {code} and the command said {status}")
         check(said == "", f"the validator's own exit {code} got a docker sentence: {said!r}")
         check(len(calls) == 1, "docker was not called exactly once")
+        check(calls[0][-2:] == ["--host", "shinar"], f"run_validation dropped --host: {calls[0]}")
     status, said, _ = status_of(realmvalidate.NO_SUCH_COMMAND)
     check(status == 2 and "predates" in said and "img:7" in said,
           f"an image without the validator read as {status}: {said!r}")

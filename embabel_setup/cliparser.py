@@ -120,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     rv.add_argument("--json", action="store_true", help="the report as JSON")
     rv.add_argument("--strict", action="store_true", help="fail on warnings as well as errors")
     rv.add_argument("--image", help="validate with this server image instead of this appliance's")
+    # No default here: the validator's own is worlds, and an image older than --host refuses the flag.
+    rv.add_argument("--host", choices=["worlds", "shinar"],
+                    help="the host the realm is judged for: worlds (the validator's default) or shinar")
     # The standard every realm is brought up to (realm-spec REALM_QUALITY.md), scored from its files.
     ra = rsub.add_parser("audit", help="score a realm checkout, or a directory of them, against realm-spec REALM_QUALITY.md; nothing needs to be running",
                          epilog=REALM_AUDIT_EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter)
