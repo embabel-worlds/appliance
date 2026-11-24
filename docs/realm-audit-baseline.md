@@ -42,6 +42,24 @@ on names that only held `ratio` or `ms` (`commemoration`, `psalms`), and now sta
 private app-only realm gained a score (75). Several more realms lost false findings without their
 rounded score moving. The mean is unchanged at 78.
 
+## Rescored again: entries that only add joins
+
+Joins accumulate across every declaration of a type name, so a realm contributes an edge from its own
+anchor into a type another realm owns with an entry holding only the joins: no properties, no
+description (realm-jvm-logs and realm-jheapo into realm-java-code's `JavaMethod`, `SourceSpan` and the
+rest). The checker scored such
+an entry as a declaration of the type, asking it for a description (T1) and an identity (T3, T5) that
+belong to the owning realm and are scored there. It no longer does; the joins themselves are still held
+to J1. Same checkouts, same commits:
+
+- realm-jvm-logs 70 → 77 (T1 5/8 → ✓, T3 5/5 → 2/2, T5 2/3 → ✓). Its two remaining T3 findings,
+  `JavaThrowable` and `JavaStackFrame`, are its own types.
+- realm-jheapo 73 → 74 (T1 2/19 → ✓, T5 2/13 → ✓).
+- One private realm 59 → 82, all three of its type findings having been join-only entries.
+
+Across the estate T1 loses 9 checks and 9 failures, T3 4 and 4, T5 5 and 3. The mean rises by about
+half a point (31 points over 55 realms).
+
 ## The five business realms
 
 | Realm | Commit | Score | MUST | SHOULD | Most frequent findings |
@@ -75,10 +93,10 @@ Where the estate as a whole stands, and so what to fix first.
 | R6 a source that reports a total is counted at the source (aggregates: count) | SHOULD | 4 | 10 | 8 | 19% |
 | R7 a single record is read through the source's by-id endpoint, not a listing | SHOULD | 4 | 7 | 5 | 28% |
 | R8 a remote pushdown rule states its op (left out, it is CONTAINS) | SHOULD | 12 | 182 | 4 | 97% |
-| T1 every type has a description | MUST | 52 | 666 | 13 | 98% |
+| T1 every type has a description | MUST | 51 | 657 | 4 | 99% |
 | T2 a type's first 320 characters say what one node is and what identifies it | MUST | 51 | 656 | 311 | 52% |
-| T3 a type reached by more than one join, populated, or a spine, declares its identity | MUST | 28 | 91 | 8 | 91% |
-| T5 every other fetched type declares its identity | SHOULD | 39 | 343 | 133 | 61% |
+| T3 a type reached by more than one join, populated, or a spine, declares its identity | MUST | 27 | 87 | 4 | 95% |
+| T5 every other fetched type declares its identity | SHOULD | 38 | 338 | 130 | 62% |
 | V1 every view has a description saying what it answers | MUST | 51 | 872 | 5 | 99% |
 | V2 every view param has a type and a description | MUST | 50 | 1308 | 0 | 100% |
 | V3 a param matched partially (CONTAINS, STARTS WITH, =~) says it is partial | MUST | 26 | 84 | 44 | 47% |
@@ -119,11 +137,11 @@ Where the estate as a whole stands, and so what to fix first.
 | realm-npm | 76 | 23 | 21 | 14 | 13 | 12 | ✓ |  | ✓ | ✓ | ✓ |  |  | 2/3 | 4/4 | 12/12 | ✓ | 2/12 |  |  |  |  |  | ✓ | 10/14 | 1/2 | 1/11 | ✓ | ✓ |  | ✓ | 1/12 | ✓ | 10/12 | 1/1 | ✓ |
 | realm-quran | 76 | 5 | 17 | 4 | 0 | 9 |  |  | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |  |  |  |  |  | ✓ | 2/4 |  |  | ✓ | ✓ | 3/3 | ✓ | 8/9 | ✓ | 8/9 | 1/1 | ✓ |
 | realm-ca-streets | 74 | 63 | 104 | 38 | 36 | 54 | 15/36 | 2/2 | ✓ | 1/1 | ✓ | 8/11 |  | ✓ | ✓ | 36/36 | ✓ | 6/36 |  |  |  |  |  | ✓ | 12/38 |  | 28/36 | ✓ | ✓ |  | ✓ | 16/54 | ✓ | 42/54 | 1/1 | ✓ |
-| realm-jheapo | 73 | 63 | 87 | 19 | 23 | 39 | 9/28 |  | ✓ | 1/1 | 19/135 | 3/17 | 4/4 | ✓ | ✓ | ✓ | 21/21 |  |  |  |  |  | ✓ | 2/19 | 11/17 | ✓ | 2/13 | 1/39 | ✓ |  | 14/43 | 25/39 | 1/39 | 36/39 | 1/1 | ✓ |
+| realm-jheapo | 74 | 61 | 85 | 19 | 23 | 39 | 9/28 |  | ✓ | 1/1 | 19/135 | 3/17 | 4/4 | ✓ | ✓ | ✓ | 21/21 |  |  |  |  |  | ✓ | ✓ | 11/17 | ✓ | ✓ | 1/39 | ✓ |  | 14/43 | 25/39 | 1/39 | 36/39 | 1/1 | ✓ |
 | realm-uk-streets | 73 | 91 | 139 | 36 | 40 | 60 | ✓ | 1/1 | ✓ | 1/1 | 6/361 | 18/42 | 12/20 | 7/14 | 1/31 | 39/40 | ✓ | 19/25 | ✓ |  | 1/1 |  | ✓ | ✓ | 29/36 | ✓ | 2/30 | ✓ | ✓ | 17/24 | ✓ | 18/60 | 1/60 | 58/60 | ✓ | ✓ |
 | realm-tanakh | 72 | 6 | 19 | 5 | 0 | 10 |  |  | ✓ | ✓ | ✓ |  |  | 1/1 | ✓ |  |  |  |  |  |  |  |  | ✓ | 4/5 |  |  | ✓ | ✓ | 2/2 | ✓ | 8/10 | ✓ | 9/10 | 1/1 | ✓ |
 | realm-book-of-mormon | 70 | 5 | 16 | 4 | 0 | 7 |  |  | ✓ | 1/1 | ✓ |  |  |  | ✓ |  |  |  |  |  |  |  |  | ✓ | 3/4 |  |  | ✓ | ✓ | 2/2 | ✓ | 7/7 | ✓ | 7/7 | 1/1 | ✓ |
-| realm-jvm-logs | 70 | 11 | 22 | 8 | 3 | 10 | ✓ |  | ✓ | ✓ | ✓ | 2/2 |  | 1/1 | ✓ |  |  |  |  |  |  |  |  | 5/8 | 1/3 | 5/5 | 2/3 | ✓ | ✓ |  | 5/9 | 1/10 | ✓ | 10/10 | 1/1 | ✓ |
+| realm-jvm-logs | 77 | 3 | 20 | 8 | 3 | 10 | ✓ |  | ✓ | ✓ | ✓ | 2/2 |  | 1/1 | ✓ |  |  |  |  |  |  |  |  | ✓ | 1/3 | 2/2 | ✓ | ✓ | ✓ |  | 5/9 | 1/10 | ✓ | 10/10 | 1/1 | ✓ |
 | realm-lds-scriptures | 68 | 8 | 24 | 7 | 0 | 10 |  |  | ✓ | 1/1 | ✓ |  |  | 2/2 | ✓ |  |  |  |  |  |  |  |  | ✓ | 5/7 |  |  | ✓ | ✓ | 3/3 | ✓ | 10/10 | ✓ | 10/10 | 1/1 | ✓ |
 
 ## Regenerating
