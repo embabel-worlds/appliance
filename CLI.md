@@ -209,6 +209,13 @@ share of its declarations that meet it. A directory of checkouts skips working c
 spike and draft directories, and a second checkout declaring the same realm as `realm-<name>`. `--markdown` prints the score table [`docs/realm-audit-baseline.md`](docs/realm-audit-baseline.md)
 is made from.
 
+A type is scored where it is declared. An entry for a label that a realm named in `requires:`
+declares extends that type, and is not asked for the owner's description, identity or property
+descriptions; the owner's own declaration is checked instead, found beside the realm (`realm-<name>`,
+`<name>`, or a checkout declaring that name) or under `EMBABEL_REALMS_DIR`, and its findings are
+printed as the owner's, outside this realm's score. An owner that is not checked out is said in a
+`NOTE`, and the extending entry is left unscored rather than passed or failed.
+
 Nothing runs and no image is pulled: the realm is read from its files, YAML the way the host reads
 it and `realm.ts` by evaluating it with Node (22.6 or later). Reading YAML needs PyYAML
 (`pip install pyyaml`). Exit status: `0` done, `1` a realm scored under `--fail-under`, `2` not a
