@@ -23,6 +23,8 @@ What has to stay true for the score to be worth bringing a realm up to:
 - The name heuristics read words, not letters: `teams` is no measure in ms, `value` no money,
   `candidateId` no date; a depth "in plies" states its unit; a declared `values:` list makes a
   `speed` a category; and an apostrophe ("the plan's") does not swallow the values quoted after it.
+- An entry holding only joins into a type another realm owns is not that type's declaration: it is
+  not asked for a description or an identity (T1, T3, T5), and its joins are still held to J1.
 - Every realm is held to its realm.yml description, which routing shows: an app-only realm is
   scored on it rather than left without a score.
 
@@ -207,6 +209,25 @@ try:
     t2 = [f for f in b["findings"] if f["id"] == "T2"]
     check(t2 and "the guide stops at 320" in t2[0]["message"],
           "an identity said only after the 320-character cut is not called out as cut")
+
+    # An entry that only adds joins into a type another realm owns (no properties, no description:
+    # joins accumulate across declarations) is not a declaration of that type, so it is not asked
+    # for the type's description or identity. Its joins are still this realm's, and still held to J1.
+    bridge = os.path.join(tmp, "realm-bridge")
+    shutil.copytree(good, bridge)
+    write(bridge, "types/bridge.yml", """
+- name: Firmographics
+  userAnchor: false
+  virtualJoins:
+    - { anchorLabel: Desk, relationship: HAS_FIRMOGRAPHICS, keyField: status, recordKeyField: matchedFor,
+        producer: ticketsByStatus, description: "The company behind the desk, matched by its status key." }
+    - { anchorLabel: Ticket, relationship: HAS_FIRMOGRAPHICS, keyField: id, producer: ticketById }
+""")
+    jb = realmaudit.audit_realm(bridge)
+    check(not [w for cid in ("T1", "T2", "T3", "T5") for w in ids(jb, cid)],
+          f"a join-only entry is scored as a type declaration: {[(f['id'], f['where']) for f in jb['findings']]}")
+    check(any("HAS_FIRMOGRAPHICS" in w and "Ticket" in w for w in ids(jb, "J1")),
+          f"a join-only entry's undescribed join went unflagged: {ids(jb, 'J1')}")
 
     # Property measures are read by the host: a unit, a currency or a format declared as a field
     # states it, with no word of it in the description, and is not a dropped key.

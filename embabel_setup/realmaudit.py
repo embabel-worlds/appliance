@@ -236,10 +236,17 @@ def _check_types(a: Audit, realm: dict):
         identity = [p for p, spec in props.items() if _is_identity(spec)]
         if isinstance(t.get("spine"), dict) and t["spine"].get("key"):
             identity.append(t["spine"]["key"])
+        # Joins accumulate across every declaration of a type name, so a realm adds an edge from its
+        # own anchor into a type another realm owns by an entry holding only the joins. That entry is
+        # no declaration of the type: the owner's description and identity are the ones a model sees,
+        # and the owner is scored on them. Only its joins are this realm's, and J1 still reads those.
+        join_only = bool(joins) and not props and not description \
+            and not t.get("population") and not t.get("spine")
 
         # A description that only says the name again is dropped before a model sees it.
-        a.apply("T1", len(description) >= 40 and _describes(name, description), where,
-                "no description" if not description else f"description {description[:60]!r} says too little to steer by")
+        if not join_only:
+            a.apply("T1", len(description) >= 40 and _describes(name, description), where,
+                    "no description" if not description else f"description {description[:60]!r} says too little to steer by")
         if description:
             head = description[:GUIDE_CUT].lower()
             names_one = re.search(r"(?i)^(a|an|one|each|the)\b|\b(one|each|a single|every)\b", head) is not None
@@ -251,7 +258,7 @@ def _check_types(a: Audit, realm: dict):
         # Identity is what makes two paths to one record one node. Where two paths exist (several joins,
         # a population, a spine) it is required; on a single join it is still what a cache and a
         # model key a record by.
-        if fetched and not t.get("projected"):
+        if fetched and not t.get("projected") and not join_only:
             must = len(joins) > 1 or bool(t.get("population") or t.get("spine"))
             a.apply("T3" if must else "T5", bool(identity), where,
                     "reached by more than one path and declares no identity property" if must
