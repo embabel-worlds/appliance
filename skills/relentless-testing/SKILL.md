@@ -86,12 +86,48 @@ realm reconciling against itself, no literals to rot. A vocabulary the battery g
 missed ("win", "receivables", "client") is exactly what a user will type first: enumerate the
 schema's stage and status values into questions so no domain word goes unclaimed.
 
-## The harness ships with the realm
+## The harness ships with the realm: the battery contract
 
-Encode L0–L4 as an executable script in the realm (`tests/verify.sh` or equivalent): source
-queries, expected figures inline, exact-match assertions, exit nonzero on any drift. L5 ships
-beside it as the browser specs and their captured fixtures, under the same `tests/`. One
-command re-verifies after every change; a harness that lives in your head re-verifies nothing.
+Every realm ships `tests/verify.sh`, and every battery keeps the same contract so any host, CI job
+or reviewer runs any realm's the same way. Its three levels are the shipped form of the ladder
+above:
+
+- **Inputs.** `APPLIANCE` (the host URL) and `AUTH` (`user:pass`) or `TOKEN`. Source keys come from
+  environment variables the script's header names. Credentials go to curl through a config file,
+  never on a command line.
+- **Battery L1 — every view answers BY NAME on its defaults** (the ladder's L2). Rows, or a stated
+  empty. A refusal arrives as no rows plus an `error`: print it, never read it as zero.
+- **Battery L2 — ground truth from the source** (L0 against L1 and L2). Counts and figures read
+  directly from the source's API, asserted EQUAL to the realm's. Include one non-zero cross-realm
+  count for every spine the realm keys.
+- **Battery L3 — cost.** Every pushdown the realm declares is checked: a single-entity read makes
+  O(1) source calls, a filtered count is one call, a one-day window is one page. Read `apiCalls`
+  from a query result and `metrics.externalCalls` from a view result. Run it on a cold cache — the
+  edge directive `{ai: {fresh: true}}`, or before anything sweeps the book — because a read the
+  cache answered costs 0 calls and proves nothing about the request. A failed bound means a filter
+  was not sent; say so in the failure line.
+- **Output.** One line per check. On success the LAST line is exactly `ALL CHECKS PASS`; any
+  failure exits non-zero. Not "all green", not "N/N passed": a runner greps for one string.
+
+```sh
+at_most() { # name bound actual — a cost: source calls must not exceed the bound
+  case "$3" in ''|*[!0-9]*) echo "  FAIL $1: no call count ($3)"; fail=1; return ;; esac
+  if [ "$3" -le "$2" ]; then echo "  ok   $1: $3 source call(s), bound $2"
+  else echo "  FAIL $1: $3 source calls, bound $2 — the filter was not sent"; fail=1; fi
+}
+R=$(kg "MATCH (b:LagoBooks)-[:HAS_CUSTOMER]->(c:BillingCustomer) WHERE c.externalId = '$ID' RETURN c.name AS n")
+at_most "one customer by external id" 1 "$(calls "$R")"
+…
+[ $fail -eq 0 ] && echo "ALL CHECKS PASS" || { echo "SOME CHECKS FAILED"; exit 1; }
+```
+
+The PR that adds or changes pushdown carries the L3 figures as a before/after table — calls per
+question on a cold cache. Pushdown changes cost and never rows, so no row-level check can see a
+rule that does nothing.
+
+The ladder's L3–L6 ship beside it where they apply: `tests/questions.yml` for a realm people ask
+in words, and the browser specs with their captured fixtures for an app, under the same `tests/`.
+One command re-verifies after every change; a harness that lives in your head re-verifies nothing.
 
 ## The discipline under it
 
@@ -99,6 +135,9 @@ command re-verifies after every change; a harness that lives in your head re-ver
   anything.
 - A test that has never failed proves nothing: break one input once, watch it fail, restore it.
 - After ANY change to a producer, view, type or app — the whole ladder again. The cache is part
-  of the system: producer TTLs survive `realm_refresh`, so restart before re-measuring.
+  of the system: producer TTLs survive `realm_refresh`, so read cold (`{ai: {fresh: true}}`) or
+  restart before re-measuring.
+- Test the version you think you are testing. A realm installed from git is pinned; after a version
+  bump, update or reinstall it and check `realm_status` shows the new version before running.
 - At handover, list what was NOT verified with the same prominence as what was. The user must
   never discover the boundary of your testing by falling over it.

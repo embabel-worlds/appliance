@@ -117,8 +117,9 @@ excuse. Then run EVERY view the realm ships, on its defaults: a view that loads 
 view that answers.
 
 **L4 — seed and reconcile.** Run the realm's seed (gated, so consent again), then its
-shipped battery — `tests/verify.sh` with the keys from `secrets.env` — and require ALL
-CHECKS PASS. This is the rung that proves the whole stack: producers, joins, views, the
+shipped battery — `tests/verify.sh` with the keys from `secrets.env` — and require its last
+line to be exactly `ALL CHECKS PASS` with exit status 0 (the battery contract in
+relentless-testing). This is the rung that proves the whole stack: producers, joins, views, the
 NL surface, the app assets, figures to the cent. relentless-testing owns the discipline;
 the realm ships the harness; this skill just insists it runs on a fresh box.
 
