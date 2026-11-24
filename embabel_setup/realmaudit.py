@@ -76,8 +76,12 @@ RULES = {
 
 # What the host reads on a property. Anything else on one — `unit:`, `currency:`, `format:`,
 # `valuePattern:`, `default:` — is dropped without a word, so it is a promise nothing keeps.
+# `unit`, `currency` and `format` are the property measures (realm-spec DECLARING_TYPES, embabel/me#4178):
+# the host shows them under the type to every model writing a query, so declaring one states the
+# unit, the currency or the shape as well as any description could.
 PROPERTY_KEYS = {"name", "description", "type", "cardinality", "validation", "values", "enum", "metadata",
-                 "identity", "required", "annotatable", "annotationVersion", "joinKey", "hub"}
+                 "identity", "required", "annotatable", "annotationVersion", "joinKey", "hub",
+                 "unit", "currency", "format"}
 CACHE_KINDS = {"none", "fresh", "ttl", "immutable", "graph", "session"}
 GRAPH_CACHE_KINDS = {"aggregate", "extract"}
 
@@ -258,7 +262,7 @@ def _check_types(a: Audit, realm: dict):
             ignored = sorted(k for k in spec if k not in PROPERTY_KEYS and not k.startswith("_"))
             if ignored:
                 a.apply("Z1", False, pwhere, f"{', '.join(ignored)} on a property is dropped by the host; "
-                        "say it in the description (a unit or format), or on a pushdown rule (valuePattern)")
+                        "say it in the description, as unit:, currency: or format:, or on a pushdown rule (valuePattern)")
             else:
                 a.apply("Z1", True, pwhere)
             pdesc = _text(spec.get("description"))
@@ -273,14 +277,14 @@ def _check_types(a: Audit, realm: dict):
             # bullet, blitz or rapid, and no unit applies.
             if _is_money_or_measure(pname) and not ptype.startswith("bool") and not has_values \
                     and not _is_date(pname):
-                a.apply("P2", UNIT_WORDS.search(pdesc) is not None,
+                a.apply("P2", bool(spec.get("unit") or spec.get("currency")) or UNIT_WORDS.search(pdesc) is not None,
                         pwhere, "looks like money or a measure, and no currency or unit is stated")
             if ENUMISH.search(pname) and ptype not in ("int", "integer", "number", "boolean", "long", "float"):
                 listed = has_values or len(QUOTED.findall(pdesc)) >= 2 \
                     or re.search(r"\w+\s*,\s*\w+.*\bor\b|\w+\s*[/|]\s*\w+\s*[/|]", pdesc) is not None
                 a.apply("P3", listed, pwhere, "looks like an enumeration, and lists no values")
             if _is_date(pname):
-                a.apply("P4", DATE_WORDS.search(text) is not None and len(pdesc) >= 20, pwhere,
+                a.apply("P4", bool(spec.get("format")) or (DATE_WORDS.search(text) is not None and len(pdesc) >= 20), pwhere,
                         "a date or time with no word on which moment it is or how it is written (ISO, epoch, UTC, day)")
             if NUMERIC_NAME.search(pname):
                 a.apply("P5", bool(ptype), pwhere,

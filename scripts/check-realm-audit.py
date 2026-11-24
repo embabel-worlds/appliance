@@ -12,7 +12,8 @@ What has to stay true for the score to be worth bringing a realm up to:
   values, a producer with no pushdown or no cache, paging below the API document's maximum, a
   list-only producer beside an unused by-id read, a partial match the param does not own up to,
   a view named for one value of the several it counts, and a field the host drops without a word
-  (`format:` on a property, `ttlSeconds` for a ttl's `seconds`).
+  (`dimension:` on a property, `ttlSeconds` for a ttl's `seconds`). The property measures the host
+  does read — `unit:`, `currency:`, `format:` — state a unit or a shape as a description would.
 - A directory of checkouts is each checkout, minus `-fix…`, spike and draft working copies and any
   other copy declaring the same realm name as the `realm-<name>` checkout beside it.
 - `--fail-under` is the exit status a CI check needs; a directory that is no realm is 2.
@@ -152,7 +153,7 @@ try:
         .replace("domain: { hub: CustomerAccount, description:", "domain: { description:") \
         .replace('description: "Every ticket on the desk in this status; one listing per status." ', "") \
         .replace("  examples:\n    - q: \"how many open tickets\"\n      cypher: \"MATCH (:Desk {status:'open'})-[:HAS_TICKET]->(t) RETURN count(t)\"\n", "")
-    types = types.replace('openedOn: "When it was opened by them."', 'openedOn: { description: "When it was opened by them.", format: date }')
+    types = types.replace('openedOn: "When it was opened by them."', 'openedOn: { description: "When it was opened by them.", dimension: date }')
     write(bad, "types/t.yml", types + "- name: Orphan\n  properties: { x: {} }\n  virtualJoins: [{ anchorLabel: Desk, relationship: HAS_ORPHAN, keyField: status, producer: ticketsByStatus }]\n"
                     "- name: Twice\n  properties: { x: {} }\n  virtualJoins:\n"
                     "    - { anchorLabel: Desk, relationship: A, keyField: status, producer: ticketsByStatus }\n"
@@ -206,6 +207,19 @@ try:
     t2 = [f for f in b["findings"] if f["id"] == "T2"]
     check(t2 and "the guide stops at 320" in t2[0]["message"],
           "an identity said only after the 320-character cut is not called out as cut")
+
+    # Property measures are read by the host: a unit, a currency or a format declared as a field
+    # states it, with no word of it in the description, and is not a dropped key.
+    measured = os.path.join(tmp, "realm-measured")
+    shutil.copytree(good, measured)
+    write(measured, "types/t.yml", GOOD_TYPES
+          .replace('amount: { type: number, description: "What the customer was charged, in major units of currency (ISO 4217)." }',
+                   'amount: { type: number, currency: currency, description: "What the customer was charged." }')
+          .replace("openedOn: \"The business day the customer raised it, ISO YYYY-MM-DD.\"",
+                   "openedOn: { format: yyyy-MM-dd, description: \"The business day the customer raised it.\" }"))
+    m = realmaudit.audit_realm(measured)
+    check(not [f for f in m["findings"] if f["id"] in ("P2", "P4", "Z1")],
+          f"declared measures are not read as stating the unit and shape: {[(f['id'], f['where']) for f in m['findings']]}")
 
     # The host's YAML: a key written twice is a problem, not the last one quietly kept.
     write(bad, "types/dup.yml", "- name: Dup\n  description: one\n  description: two\n")
