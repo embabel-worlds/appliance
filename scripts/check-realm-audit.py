@@ -16,9 +16,17 @@ What has to stay true for the score to be worth bringing a realm up to:
 - A directory of checkouts is each checkout, minus `-fix…`, spike and draft working copies and any
   other copy declaring the same realm name as the `realm-<name>` checkout beside it.
 - `--fail-under` is the exit status a CI check needs; a directory that is no realm is 2.
+- A realm.ts reads as a fresh clone ships it: `import { type Realm }` with no SDK installed, and a
+  value import with the SDK installed as TypeScript source under node_modules, which Node will not
+  strip by itself. A value import with no SDK, or no runtime at all, is one line saying what to do.
+- The name heuristics read words, not letters: `teams` is no measure in ms, `value` no money,
+  `candidateId` no date; a depth "in plies" states its unit; a declared `values:` list makes a
+  `speed` a category; and an apostrophe ("the plan's") does not swallow the values quoted after it.
+- Every realm is held to its realm.yml description, which routing shows: an app-only realm is
+  scored on it rather than left without a score.
 
-Nothing runs but this process (and Node, only for the realm.ts case, skipped where there is no
-Node 22.6 or later to evaluate it).
+Nothing runs but this process (and Node, only for the realm.ts cases, skipped where there is no
+Node 22.13 or later to evaluate them).
 """
 import contextlib
 import io
@@ -228,6 +236,96 @@ try:
         t = realmaudit.audit_realm(ts)
         check(t.get("source") == "realm.ts" and t.get("score") == 100 and not t.get("findings"),
               f"the realm.ts spelling of a clean realm read as {t.get('error') or [(f['id'], f['where']) for f in t['findings']]}")
+
+        # A fresh clone: an inline type import erases to `import {} from`, which still loads the
+        # package, and nothing has installed it.
+        inline = os.path.join(tmp, "realm-ts-inline")
+        os.makedirs(inline)
+        write(inline, "realm.ts", "import { type Realm } from '@embabel/realm-types'\n"
+                                  f"export default {json.dumps(definition)} satisfies Realm\n")
+        write(inline, "apis/desk.json", json.dumps(API))
+        t = realmaudit.audit_realm(inline)
+        check(t.get("score") == 100, f"an inline type import with no SDK installed read as {t.get('error') or t.get('score')}")
+
+    # ── realm.ts beyond a type import ────────────────────────────────────────
+    def node_strips_node_modules():
+        """Node 22.13 or later has the stripper the hooks use for TypeScript under node_modules."""
+        try:
+            v = subprocess.run(["node", "-p", "process.versions.node"], capture_output=True, text=True).stdout
+            return tuple(int(x) for x in v.strip().split(".")[:2]) >= (22, 13)
+        except (OSError, ValueError):
+            return False
+
+    sdk_index = ("export interface Realm { name: string; description?: string }\n"
+                 "export function defineRealm<T extends Realm>(realm: T): T { return realm }\n")
+    uses_value = ("import { defineRealm, type Realm } from '@embabel/realm-types'\n"
+                  "export default defineRealm({ name: 'valued', description: 'A realm built by a helper, read as shipped.' } satisfies Realm)\n")
+    if node_strips_node_modules():
+        # The SDK installed from its tarball ships TypeScript source, which Node refuses to strip
+        # under node_modules on its own.
+        installed = os.path.join(tmp, "ts-sdk-installed")
+        write(installed, "realm.ts", uses_value)
+        write(installed, "node_modules/@embabel/realm-types/package.json", json.dumps(
+            {"name": "@embabel/realm-types", "version": "0.2.0", "type": "module", "exports": {".": "./src/index.ts"}}))
+        write(installed, "node_modules/@embabel/realm-types/src/index.ts", sdk_index)
+        t = realmaudit.audit_realm(installed)
+        check(t.get("realm") == "valued" and not t.get("error"),
+              f"a realm.ts using the SDK installed as TypeScript source read as {t.get('error')}")
+
+        absent = os.path.join(tmp, "ts-sdk-absent")
+        write(absent, "realm.ts", uses_value)
+        e = realmaudit.audit_realm(absent).get("error") or ""
+        check("defineRealm" in e and "not installed" in e and "\n" not in e and "    at " not in e,
+              f"a value import with no SDK installed is not one line saying to install it: {e!r}")
+
+    # No runtime at all is said, not thrown.
+    saved_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = os.path.join(tmp, "no-such-bin")
+    try:
+        no_runtime = os.path.join(tmp, "ts-no-runtime")
+        write(no_runtime, "realm.ts", uses_value)
+        e = realmaudit.audit_realm(no_runtime).get("error") or ""
+        check("none is installed" in e, f"a machine with no Node, bun or tsx is not told so: {e!r}")
+    finally:
+        os.environ["PATH"] = saved_path
+
+    # ── name heuristics that misfired on real realms ─────────────────────────
+    fp = os.path.join(tmp, "realm-names")
+    write(fp, "realm.yml", "name: names\ndescription: Words that look like units, dates and money, and are not.\n")
+    write(fp, "types/t.yml", """
+- name: Player
+  description: One cricket player, identified by their player id, with the teams they have played for.
+  properties:
+    id: { identity: true, description: "The scorer's id for the player." }
+    teams: "Every county the player has turned out for, most recent first."
+    value: "Whatever the stat holds, as the scorer wrote it."
+    candidateId: "The FEN and the first move in UCI, which identify the line."
+    depth: "Search depth reached, in plies."
+    speed: { values: [bullet, blitz, rapid, classical], description: "Time control class, for a Lichess game." }
+    tier: "The plan's tier: `free`, `pro` or `team`; the customer's choice, made at signup."
+    durationMs: "How long the innings lasted."
+    openedOn: "When the season opened for them."
+""")
+    n = realmaudit.audit_realm(fp)
+    flagged = {f["where"].rsplit(".", 1)[-1] for f in n["findings"] if f["id"] in ("P2", "P3", "P4")}
+    for name, why in (("teams", "a unit in ms, from the letters 'ms'"), ("value", "money"),
+                      ("candidateId", "a date, from the letters 'dateId'"), ("depth", "a measure with no unit, in plies"),
+                      ("speed", "a measure, though it declares its values"),
+                      ("tier", "an enumeration with no values, its backticks swallowed by an apostrophe")):
+        check(name not in flagged, f"`{name}` is still read as {why}")
+    check({"durationMs", "openedOn"} <= flagged, f"a real measure or date went unflagged: {sorted(flagged)}")
+
+    # ── an app-only realm is scored on its description ───────────────────────
+    app = os.path.join(tmp, "realm-app-only")
+    write(app, "realm.yml", "name: app-only\ndescription: Pull-request throughput as a page, read from another realm's view.\n")
+    write(app, "apps/index.html", "<!doctype html><title>page</title>\n")
+    r_app = realmaudit.audit_realm(app)
+    check(r_app["score"] == 100 and set(r_app["checks"]) == {"M1", "M2"},
+          f"an app-only realm scored {r_app['score']} on {sorted(r_app['checks'])}")
+    write(app, "realm.yml", "name: app-only\n")
+    r_app = realmaudit.audit_realm(app)
+    check(r_app["score"] == 0 and ids(r_app, "M1"), f"an app-only realm with no description scored {r_app['score']}")
+    shutil.rmtree(app)
 
     # ── a directory of checkouts ─────────────────────────────────────────────
     shutil.copytree(good, os.path.join(tmp, "realm-good-fix-thing"))

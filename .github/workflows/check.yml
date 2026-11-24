@@ -26,6 +26,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # The realm audit evaluates realm.ts with Node; without one its realm.ts cases are skipped.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       # `embabel realm audit` reads YAML realms, and a YAML parser is the one dependency it takes.
       - name: PyYAML, for the realm audit
         run: python3 -m pip install --quiet pyyaml
