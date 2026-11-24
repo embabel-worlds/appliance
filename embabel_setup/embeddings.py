@@ -61,9 +61,13 @@ CHOICES = {
 # Hosted model names somebody might type from memory or an older README. Passing one through
 # would write a name the appliance cannot resolve, and the failure arrives later, as documents
 # that will not index — so they are mapped to the role that does work.
+#
+# `text-embedding-3-large` is NOT here any more: the server reaches it by name through an
+# `embedding-roles` entry keyed by that name (server images from 2026-11). Mapping it to `hosted` turned a
+# request for the large model into "unchanged" on the small one, which is worse than a refusal.
+# A server older than that entry refuses it with a reason, and `apply_now` prints the reason.
 LEGACY_HOSTED_MODELS = {
     "text-embedding-3-small",
-    "text-embedding-3-large",
     "text-embedding-ada-002",
 }
 
@@ -182,10 +186,13 @@ def apply_now(model: str, base: str, auth: str) -> bool:
     either: the environment variable is the appliance's durable answer to "which model", and the
     API call is the same answer delivered to a process that has already read it.
 
-    IT MAY LEGITIMATELY FAIL, and a failure is not an error here. An older server does not accept
-    a ROLE by name and will refuse `hosted`; a server mid-restart will not answer at all. Both
-    leave .env correct, so the restart the caller was going to be told about anyway is still the
-    way through — which is why this returns a boolean rather than raising.
+    NOT ANSWERING IS SOFT; BEING REFUSED IS NOT. A server mid-restart, one that is down, or one
+    too old to have the endpoint leaves .env correct and the restart the caller was going to be
+    told about anyway still the way through — so those return False. A server that answers and
+    says no (400: no such model here, or the change failed and was rolled back; 409: a reindex is
+    already running) has given a reason a restart will not change, and printing "restart to
+    apply" over it would send somebody off to restart for nothing. That raises SetupError with
+    the server's own words, which the CLI prints and exits non-zero on.
 
     RE-EMBEDS, when there is anything to re-embed. Changing the model on an appliance that already
     holds vectors rewrites all of them, so this can take a while and the caller should say so
@@ -200,13 +207,52 @@ def apply_now(model: str, base: str, auth: str) -> bool:
     request.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(request, timeout=1800) as response:
-            body = json.loads(response.read() or "{}")
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+            body = _decoded(response.read())
+    except urllib.error.HTTPError as refusal:
+        if refusal.code not in REFUSAL_CODES:
+            return False
+        raise SetupError(_refused(model, _decoded(refusal.read())))
+    except (urllib.error.URLError, OSError):
         return False
+    if not isinstance(body, dict):
+        # Nothing this server sends on success is anything but an object, so a bare string is
+        # somebody's explanation — print it rather than reach into it as if it were a map.
+        raise SetupError(_refused(model, body))
     # The server reports what it ENDED UP with. Trusting the status code alone would call a
     # no-op a success, which is the same mistake the server itself used to make.
-    return (body.get("status") or {}).get("model") == model or (
-        (body.get("result") or {}).get("newModel") == model
+    result = body.get("result")
+    status = body.get("status")
+    if isinstance(status, dict) and status.get("model") == model:
+        return True
+    if isinstance(result, dict):
+        return result.get("newModel") == model
+    # `unchanged` is a STRING, not the object a change returns: the server resolved the request
+    # to the model already in use, and a role does that by design — `hosted` names whichever
+    # model the key resolves to, so its status reports that model, never the word `hosted`.
+    return result == "unchanged"
+
+
+# What the server answers when it heard the request and said no. Anything else that is not a
+# 2xx (404 from a server without the endpoint, 401 from a token that has moved on, a 5xx from
+# one mid-restart) is not about the model, and leaves the restart route to say what happens.
+REFUSAL_CODES = (400, 409)
+
+
+def _decoded(raw: bytes):
+    """The response as JSON when it is JSON, and as its text when it is not."""
+    try:
+        return json.loads(raw or b"{}")
+    except ValueError:
+        return raw.decode(errors="replace").strip()
+
+
+def _refused(model: str, body) -> str:
+    """The server's reason, in a sentence that also says what .env now holds."""
+    reason = body.get("error") if isinstance(body, dict) else body
+    return (
+        f"The appliance refused {model}: {reason or 'no reason given'}.\n"
+        f"  .env names it already, so choose another with `{embabel_command('embeddings')} use …`\n"
+        f"  or clear it with `{embabel_command('embeddings')} off`."
     )
 
 

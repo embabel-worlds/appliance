@@ -153,6 +153,13 @@ def image_identity(image: str) -> dict:
 LABEL_VERSION = "org.opencontainers.image.version"
 LABEL_REVISION = "org.opencontainers.image.revision"
 LABEL_CREATED = "org.opencontainers.image.created"
+# Whose labels they are. Labels INHERIT: an image that sets none of its own carries its base
+# image's, and the server's base is Ubuntu, which stamps version 26.04 and the date Canonical
+# built it. Read as ours, that made an image built minutes ago from a working tree look a month
+# old, and the downgrade guard refused it. Every published build says Embabel here, and so does
+# a local docker/build.sh build, so a label set without it describes some other image.
+LABEL_VENDOR = "org.opencontainers.image.vendor"
+VENDOR = "Embabel"
 
 
 def image_facts(reference: str | None) -> dict:
@@ -170,6 +177,11 @@ def image_facts(reference: str | None) -> dict:
     except ValueError:
         return {}
     labels = (found.get("Config") or {}).get("Labels") or {}
+    if labels.get(LABEL_VENDOR) != VENDOR:
+        # Not ours, so neither version nor date is this build's. Docker's own Created below is,
+        # and is what the guard falls back to: a local build is as new as its build, and a
+        # genuinely older one is older by that clock too.
+        labels = {}
     digests = found.get("RepoDigests") or []
     tag = reference.rpartition(":")[2] if ":" in reference and not reference.startswith("sha256:") else None
     return {
