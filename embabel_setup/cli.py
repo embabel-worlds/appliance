@@ -138,10 +138,13 @@ def resolve_instance(args) -> int:
 
 
 def names_its_own_image(args) -> bool:
-    """`realm validate --image` reads no appliance's settings: the image it was given is
+    """`realm audit`, and `realm validate --image`, read no appliance's settings: the image it was given is
     everything it needs, so asking which of several appliances it is about would be a
     question with no answer that matters. Without --image the image is an appliance's
     EMBABEL_VERSION, and the question stands."""
+    if args.command in ("realms", "realm") and getattr(args, "realms_command", None) == "audit":
+        # The audit reads the checkout and nothing else: no image, no appliance, no question.
+        return True
     return (args.command in ("realms", "realm") and getattr(args, "realms_command", None) == "validate"
             and bool(getattr(args, "image", None)))
 

@@ -16,7 +16,8 @@ checks, the staged start, the wizard, the realms validation, the uninstall — a
 this imports them. Two copies of "is Docker running" is how they come to disagree.
 
 Python 3 standard library only, like everything else here, so it runs wherever the
-appliance does with nothing installed.
+appliance does with nothing installed. (`realm audit` reads YAML realms and so needs PyYAML,
+and says so; nothing else does.)
 """
 
 # THE VERSION GATE, BEFORE ANY embabel_setup IMPORT. The setup package is written for
