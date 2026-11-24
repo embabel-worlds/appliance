@@ -25,6 +25,11 @@ What has to stay true for the score to be worth bringing a realm up to:
   `speed` a category; and an apostrophe ("the plan's") does not swallow the values quoted after it.
 - An entry holding only joins into a type another realm owns is not that type's declaration: it is
   not asked for a description or an identity (T1, T3, T5), and its joins are still held to J1.
+- A type is scored where it is declared. An entry for a label a required realm declares (realm.yml
+  `requires:` or realm.ts `requires: {...}`) extends it: it is not asked for the description,
+  identity or inherited property descriptions (T1, T2, T3, P1), which the owner's declaration is,
+  found beside it and reported as the owner's, outside the extender's score. A property only the
+  extension adds is still its own. An owner not checked out is said, not passed or failed.
 - Every realm is held to its realm.yml description, which routing shows: an app-only realm is
   scored on it rather than left without a score.
 
@@ -228,6 +233,75 @@ try:
           f"a join-only entry is scored as a type declaration: {[(f['id'], f['where']) for f in jb['findings']]}")
     check(any("HAS_FIRMOGRAPHICS" in w and "Ticket" in w for w in ids(jb, "J1")),
           f"a join-only entry's undescribed join went unflagged: {ids(jb, 'J1')}")
+
+    # An entry extending a type a required realm owns is not that type's declaration: restating the
+    # owner's description or identity would load a second one. The owner's declaration is checked,
+    # beside the extender, and reported as the owner's; a property the extension adds is its own.
+    estate = os.path.join(tmp, "estate")
+    vocab = os.path.join(estate, "realm-ownvocab")
+    write(vocab, "realm.yml", "name: ownvocab\ndescription: Shared words for issues, owned once and extended by others.\n")
+    owner_types = """
+- name: Issue
+  description: One issue in a tracker, identified by its key, as every tracker realm reports it.
+  properties:
+    key: { identity: true, description: "The tracker's issue key, unique across the estate." }
+    title: "The one-line summary the reporter gave it."
+"""
+    write(vocab, "types/issue.yml", owner_types)
+    extender = os.path.join(estate, "realm-extender")
+    write(extender, "realm.yml", "name: extender\ndescription: A tracker's issues, extending the shared vocabulary.\n"
+                                 "requires:\n  ownvocab: \"[0.1.0,1.0.0)\"\n")
+    write(extender, "types/t.yml", """
+- name: Board
+  description: One board in the tracker, identified by its board key, holding issues.
+  properties:
+    key: { identity: true, description: "The board's key, as the tracker shows it." }
+- name: Issue
+  properties:
+    title: {}
+    storyPoints: {}
+  virtualJoins:
+    - { anchorLabel: Board, relationship: HAS_ISSUE, keyField: key, producer: issues,
+        description: "Every issue on the board, as the tracker lists it." }
+    - { anchorLabel: Board, relationship: HAD_ISSUE, keyField: key, producer: issues,
+        description: "Every issue that has left the board, closed or moved." }
+""")
+    ext = realmaudit.audit_realm(extender)
+    type_rules = [(f["id"], f["where"]) for f in ext["findings"] if f["id"] in ("T1", "T2", "T3", "T5")]
+    check(not type_rules, f"an entry extending a required realm's type is scored as its declaration: {type_rules}")
+    check(not any(w.endswith("Issue.title") for w in ids(ext, "P1")),
+          f"a property the owner describes is asked for a description in the extension: {ids(ext, 'P1')}")
+    check(any(w.endswith("Issue.storyPoints") for w in ids(ext, "P1")),
+          f"a property only the extension adds is not held to P1: {ids(ext, 'P1')}")
+    check(not ext["ownerFindings"] and not ext["notes"],
+          f"a sound owner declaration was reported: {ext['ownerFindings']} {ext['notes']}")
+
+    # The owner's own declaration falls short: that is reported, against the owner.
+    write(vocab, "types/issue.yml", owner_types.replace(
+        "  description: One issue in a tracker, identified by its key, as every tracker realm reports it.\n", "")
+        .replace('title: "The one-line summary the reporter gave it."', "title: {}"))
+    ext = realmaudit.audit_realm(extender)
+    owned = [(f["id"], f["where"]) for f in ext["ownerFindings"]]
+    check({"T1", "P1"} <= {cid for cid, _ in owned} and all(w.startswith("ownvocab:") for _, w in owned),
+          f"a deficient owner declaration is not reported against the owner: {owned}")
+    check(not [f for f in ext["findings"] if f["id"] == "T1" or f["where"].endswith("Issue.title")],
+          "the owner's deficient declaration is scored against the extender")
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        realmaudit.run_audit(extender)
+    check("ownvocab: types/issue.yml Issue" in out.getvalue() and "not counted in its score" in out.getvalue(),
+          f"owner findings are not shown as the owner's: {out.getvalue()}")
+
+    # The owner not checked out: the extension is skipped, and the output says the owner went unchecked.
+    shutil.rmtree(vocab)
+    ext = realmaudit.audit_realm(extender)
+    check(not [f for f in ext["findings"] if f["id"] in ("T1", "T2", "T3", "T5")]
+          and not any(w.endswith("Issue.title") for w in ids(ext, "P1")),
+          f"an extension of an unread owner was scored: {[(f['id'], f['where']) for f in ext['findings']]}")
+    check(any("Issue" in n and "ownvocab" in n and "could not be checked" in n for n in ext["notes"]),
+          f"an owner that is not checked out is not said: {ext['notes']}")
+    check(ext["checks"].get("T1", {}).get("checked") == 1,
+          "an entry with a declaration of its own is not scored beside an unread requirement")
+    shutil.rmtree(estate)
 
     # Property measures are read by the host: a unit, a currency or a format declared as a field
     # states it, with no word of it in the description, and is not a dropped key.

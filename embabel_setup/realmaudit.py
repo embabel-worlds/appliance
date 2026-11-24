@@ -21,6 +21,11 @@ endpoint beside a list-only producer: each is a guess from a name or an API docu
 finding reads "looks like", never "is". The fix for a false positive is a better description, which
 is never wasted.
 
+A TYPE IS SCORED WHERE IT IS DECLARED. An entry for a label a realm it `requires` declares extends
+that type, and is not asked for the owner's description or identity: restating them would load a
+second declaration. The owner's declaration is checked instead, when its checkout is found beside
+this one (realmowners.py), and reported as the owner's, outside this realm's score.
+
 Nothing is fetched and nothing needs to be running: the realm is read the host's way
 (realmsource.py), and a vendored OpenAPI document under apis/ is the only view of the source it has.
 """
@@ -31,7 +36,8 @@ import math
 import os
 import re
 
-from .realmsource import RealmSourceError, api_documents, read_realm, read_yaml
+from .realmowners import SKIP, Owners, declared_name, declares, is_realm
+from .realmsource import RealmSourceError, api_documents, read_realm
 
 GUIDE_CUT = 320          # the query guide shows a type's description up to here, and no further
 PROPERTY_CUT = 160       # a property's description, when the question names it
@@ -204,6 +210,8 @@ class Audit:
         self.checked = {}   # id -> count applied
         self.failed = {}    # id -> count failed
         self.findings = []
+        self.owned = {}       # label -> (owner, path, entry): an owner's declaration this realm extends
+        self.notes = []       # what was not checked, and why
 
     def apply(self, cid: str, ok: bool, where: str, message: str = ""):
         self.checked[cid] = self.checked.get(cid, 0) + 1
@@ -225,7 +233,7 @@ class Audit:
         return round(100 * met / total)
 
 
-def _check_types(a: Audit, realm: dict):
+def _check_types(a: Audit, realm: dict, owners: Owners | None = None):
     for t in realm.get("types") or []:
         name = t.get("name") or "?"
         where = f"{t.get('_file', '')} {name}".strip()
@@ -242,12 +250,27 @@ def _check_types(a: Audit, realm: dict):
         # and the owner is scored on them. Only its joins are this realm's, and J1 still reads those.
         join_only = bool(joins) and not props and not description \
             and not t.get("population") and not t.get("spine")
+        # A label a required realm declares is that realm's type, and this entry extends it: restating
+        # the description or identity here would load a second declaration. The owner's declaration is
+        # the one held to the type rules, and reported as the owner's. Where a requirement cannot be
+        # read, an entry that declares nothing of its own is taken for an extension and said to be.
+        owned = owners.owner(name) if owners else None
+        unread = bool(owners and owners.unavailable) and not owned and not declares(t)
+        extension = bool(owned) or unread
+        inherited = owners.properties(name) if owned else set()
+        if owned:
+            a.owned.setdefault(name, owned)
+        elif unread:
+            why = "; ".join(f"{n}: {r}" for n, r in sorted(owners.unavailable.items()))
+            a.notes.append(f"{where} declares no description or identity, so it is taken for an extension of a "
+                           f"type from a required realm that could not be read ({why}); the type and property rules "
+                           "were skipped for it, and the owner's declaration could not be checked")
 
         # A description that only says the name again is dropped before a model sees it.
-        if not join_only:
+        if not join_only and not extension:
             a.apply("T1", len(description) >= 40 and _describes(name, description), where,
                     "no description" if not description else f"description {description[:60]!r} says too little to steer by")
-        if description:
+        if description and not extension:
             head = description[:GUIDE_CUT].lower()
             names_one = re.search(r"(?i)^(a|an|one|each|the)\b|\b(one|each|a single|every)\b", head) is not None
             names_key = (not identity or any(re.search(rf"\b{re.escape(i.lower())}\b", head) for i in identity)
@@ -258,7 +281,7 @@ def _check_types(a: Audit, realm: dict):
         # Identity is what makes two paths to one record one node. Where two paths exist (several joins,
         # a population, a spine) it is required; on a single join it is still what a cache and a
         # model key a record by.
-        if fetched and not t.get("projected") and not join_only:
+        if fetched and not t.get("projected") and not join_only and not extension:
             must = len(joins) > 1 or bool(t.get("population") or t.get("spine"))
             a.apply("T3" if must else "T5", bool(identity), where,
                     "reached by more than one path and declares no identity property" if must
@@ -272,6 +295,9 @@ def _check_types(a: Audit, realm: dict):
                         "say it in the description, as unit:, currency: or format:, or on a pushdown rule (valuePattern)")
             else:
                 a.apply("Z1", True, pwhere)
+            # A property the owner gives the type is described there; one this realm adds is its own.
+            if extension and (unread or pname in inherited):
+                continue
             pdesc = _text(spec.get("description"))
             a.apply("P1", _describes(pname, pdesc), pwhere,
                     "no description" if not pdesc else f"description {pdesc!r} says little more than the name")
@@ -474,7 +500,7 @@ def audit_realm(root: str) -> dict:
     except RealmSourceError as e:
         return {"realm": os.path.basename(root.rstrip(os.sep)), "path": a.root, "error": str(e)}
     apis = api_documents(root, realm)
-    _check_types(a, realm)
+    _check_types(a, realm, Owners(root, realm))
     _check_producers(a, realm, apis)
     _check_views(a, realm)
     _check_examples(a, realm)
@@ -495,14 +521,23 @@ def audit_realm(root: str) -> dict:
                    for c, n in sorted(a.checked.items())},
         "problems": realm.get("problems") or [],
         "findings": a.findings,
+        "ownerFindings": _owner_findings(a),
+        "notes": a.notes,
     }
 
 
-SKIP = re.compile(r"-fix|spike|draft", re.IGNORECASE)
+def _owner_findings(a: Audit) -> list:
+    """The type rules on each owner's declaration this realm extends, as the owner's findings.
 
-
-def is_realm(path: str) -> bool:
-    return any(os.path.isfile(os.path.join(path, f)) for f in ("realm.ts", "realm.yml", "realm.yaml", "pack.yml"))
+    They are not this realm's and do not count in its score: the fix is in the owner's files. Each
+    declaration is checked as the owner audits it, so the finding reads the same in both places.
+    """
+    out = []
+    for label, (owner, path, entry) in sorted(a.owned.items()):
+        o = Audit(path)
+        _check_types(o, {"types": [entry]})
+        out += [{**f, "owner": owner, "where": f"{owner}: {f['where']}"} for f in o.findings]
+    return out
 
 
 def realm_dirs(path: str) -> list:
@@ -517,21 +552,9 @@ def realm_dirs(path: str) -> list:
     found = [os.path.join(path, d) for d in sorted(os.listdir(path))
              if os.path.isdir(os.path.join(path, d)) and not d.startswith(".") and not SKIP.search(d)
              and is_realm(os.path.join(path, d))]
-    names = {d: _declared_name(d) for d in found}
+    names = {d: declared_name(d) for d in found}
     canonical = {n for d, n in names.items() if n and os.path.basename(d) == f"realm-{n}"}
     return [d for d in found if not (names[d] in canonical and os.path.basename(d) != f"realm-{names[d]}")]
-
-
-def _declared_name(root: str):
-    """realm.yml's name, cheaply; a realm.ts realm is known by its directory alone."""
-    path = os.path.join(root, "realm.yml")
-    if not os.path.isfile(path):
-        return None
-    try:
-        doc = read_yaml(path)
-    except Exception:  # an unreadable realm.yml is reported when the realm is audited
-        return None
-    return doc.get("name") if isinstance(doc, dict) else None
 
 
 def render_text(results: list, verbose: bool) -> str:
@@ -545,9 +568,15 @@ def render_text(results: list, verbose: bool) -> str:
                      f"  ·  {c['types']} types, {c['producers']} producers, {c['views']} views")
         for problem in r["problems"]:
             lines.append(f"  PROBLEM  {problem}")
+        for note in r.get("notes") or []:
+            lines.append(f"  NOTE   {note}")
         if verbose or len(results) == 1:
             for f in sorted(r["findings"], key=lambda f: (f["level"] != MUST, f["id"], f["where"])):
                 lines.append(f"  {f['level']:<6} {f['id']}  {f['where']}: {f['message']}")
+            if r.get("ownerFindings"):
+                lines.append("  In the declarations this realm extends, not counted in its score:")
+                for f in sorted(r["ownerFindings"], key=lambda f: (f["level"] != MUST, f["id"], f["where"])):
+                    lines.append(f"  {f['level']:<6} {f['id']}  {f['where']}: {f['message']}")
         lines.append("")
     if len(results) > 1:
         scored = [r for r in results if not r.get("error") and r["score"] is not None]

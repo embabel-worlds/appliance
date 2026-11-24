@@ -60,6 +60,36 @@ to J1. Same checkouts, same commits:
 Across the estate T1 loses 9 checks and 9 failures, T3 4 and 4, T5 5 and 3. The mean rises by about
 half a point (31 points over 55 realms).
 
+## Requires-aware: a type is scored where it is declared
+
+A realm that `requires` another may write an entry for a label the other declares, adding properties
+or joins (a project realm adding its own fields to a vocabulary's `Issue`). The host accumulates the
+entries into one type, so that entry is an extension, and the checker asked it for the description
+and identity (T1, T2, T3, T5) and the property descriptions (P1 and the other property rules) that
+the owner states. Restating them in the extension would load a second declaration of the type and
+degrade the realm the finding was meant to improve.
+
+The rule now in force:
+
+- The checker reads the realm's `requires:` (realm.yml, or `requires: {...}` in realm.ts) and finds
+  each required realm's checkout the way a directory audit already does: beside the realm, as
+  `realm-<name>`, `<name>`, or a checkout whose realm.yml declares that name, then under
+  `EMBABEL_REALMS_DIR` when it is set. Requirements are followed transitively, and the owner of a
+  label is the required realm that holds it without taking it from one of its own requirements.
+- An entry for a label the owner holds is not scored on T1, T2, T3 or T5, nor on the property rules
+  for properties the owner gives the type. A property only the extension adds is its own, and is
+  still held to P1. Joins are still held to J1, and dropped keys to Z1.
+- The owner's declaration is checked instead, and its findings are reported as the owner's
+  (`ownerFindings` in `--json`, a separate block in the text output), outside the extender's score:
+  the fix is in the owner's files, and the owner's own audit counts them there.
+- A requirement that is not checked out is said, not guessed: an entry declaring no description and
+  no identity in a realm with an unreadable requirement is taken for an extension, left unscored on
+  the type and property rules, and named in a `NOTE` saying the owner's declaration could not be
+  checked.
+
+Rerun over the same estate, no score moves: none of these realms extends a type it requires. The
+case comes from realms written since, project realms above all.
+
 ## The five business realms
 
 | Realm | Commit | Score | MUST | SHOULD | Most frequent findings |
