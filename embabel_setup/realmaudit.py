@@ -89,7 +89,15 @@ PROPERTY_KEYS = {"name", "description", "type", "cardinality", "validation", "va
                  "identity", "required", "annotatable", "annotationVersion", "joinKey", "hub",
                  "unit", "currency", "format"}
 CACHE_KINDS = {"none", "fresh", "ttl", "immutable", "graph", "session"}
-GRAPH_CACHE_KINDS = {"aggregate", "extract"}
+# `cache: {kind: graph}` as the engine reads it (VIRTUAL_CYPHER §5.13.1, embabel/me#4040). An aggregate's
+# or an extract's result is kept while its inputs are unchanged, which the engine checks itself, so
+# `validFor` is refused on them. Any other kind keeps the records it fetched, for `seconds:` or until the
+# producer's definition changes; `validFor: revision` asks the source for a revision before each answer,
+# and only a kind that reads a project location reports one (ProducerSpec.reportsRevision): source-tree
+# (whose `from` is `project` unless it says `jar`) and maven with `from: project`. The engine refuses
+# `validFor: revision` anywhere else when the realm loads.
+GRAPH_INPUT_KINDS = {"aggregate", "extract"}
+REVISION_FROMS = {"source-tree": {None, "project"}, "maven": {"project"}}
 
 # Kinds that fetch from somewhere a cache saves a call to, and that take pushdown rules.
 REMOTE_KINDS = {"remote", "api"}
@@ -354,6 +362,21 @@ def _size_max(op: dict, size_param: str):
     return None
 
 
+def _graph_cache_problems(kind: str, source: object, valid_for: object) -> list:
+    if valid_for is None:
+        return []
+    if str(valid_for) != "revision":
+        return [f"cache validFor {valid_for!r} names nothing a kept record can be valid for; use validFor: revision, or seconds:"]
+    if kind in GRAPH_INPUT_KINDS:
+        return [f"validFor: revision is refused on {kind}: its result is kept while its inputs are unchanged, which the engine checks"]
+    froms = REVISION_FROMS.get(kind)
+    if froms is None or (str(source) if source is not None else None) not in froms:
+        reporting = "source-tree (from: project) and maven (from: project)"
+        return [f"validFor: revision is refused on {kind or 'this kind'}{f' from: {source}' if source is not None else ''}, "
+                f"which reports no revision (only {reporting} do); keep its records for a time with seconds:"]
+    return []
+
+
 def _check_producers(a: Audit, realm: dict, apis: dict):
     ops = _operations(apis)
     used_ops = {str(p.get("operation")) for p in realm.get("producers") or []}
@@ -377,8 +400,8 @@ def _check_producers(a: Audit, realm: dict, apis: dict):
                 wrong.append("a ttl cache with no `seconds`" + (" (`ttlSeconds` is not the field)" if "ttlSeconds" in cache else ""))
             if ckind == "session":
                 wrong.append("cache kind session is accepted and not honoured; it reads as none")
-            if ckind == "graph" and kind not in GRAPH_CACHE_KINDS:
-                wrong.append(f"cache kind graph is honoured only by aggregate and extract producers; on {kind or 'this kind'} it reads as none")
+            if ckind == "graph":
+                wrong += _graph_cache_problems(kind, p.get("from"), cache.get("validFor"))
             cost = p.get("cost") if isinstance(p.get("cost"), dict) else {}
             if "latencyMs" in cost:
                 wrong.append("cost.latencyMs is read by nothing")
