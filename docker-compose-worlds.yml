@@ -367,6 +367,12 @@ services:
       - ORG_ROLE_FALLBACK=${ORG_ROLE_FALLBACK:-admin}
       # World template for NEW worlds — same seam as the me mode; see its file.
       - ASSISTANT_BOOTSTRAP_WORLD
+      # Services on THIS machine a realm's API may call over plain http, as exact
+      # origins: http://host.docker.internal:<port>. Unset, a realm reaches https
+      # origins only. Not defaulted, because the installer does not run those
+      # services and cannot know which ports on the host are safe to hand a
+      # realm; see .env.example.
+      - ASSISTANT_REALM_API_LOCAL_ORIGINS
       - BRAVE_API_KEY
       # ALL THREE NAMES the assistant looks for (WorldBootstrap.resolveGitHubToken), because a
       # developer's shell rarely has the first one: `gh` writes GH_TOKEN, and forwarding only
