@@ -436,6 +436,31 @@ try:
     check(r_app["score"] == 0 and ids(r_app, "M1"), f"an app-only realm with no description scored {r_app['score']}")
     shutil.rmtree(app)
 
+    # `cache: {kind: graph}` as the engine keeps it: `validFor: revision` where the kind reports a
+    # revision (a project location read by source-tree or maven), `seconds:` on any kind, and the
+    # declarations the engine refuses at load — a revision from a kind that has none, `validFor` on an
+    # aggregate, a `validFor` that names no revision — each called out.
+    kept = os.path.join(tmp, "realm-kept")
+    shutil.copytree(good, kept)
+    write(kept, "producers/kept.yml", """
+- { name: projectFiles, kind: source-tree, emit: projectFiles, cache: { kind: graph, validFor: revision } }
+- { name: projectTypes, kind: source-tree, from: project, emit: types, languages: [java], cache: { kind: graph, validFor: revision } }
+- { name: projectModules, kind: maven, from: project, emit: artifact, cache: { kind: graph, validFor: revision } }
+- { name: ticketsKept, kind: remote, operation: listTickets, pushdown: [], cache: { kind: graph, seconds: 3600 } }
+- { name: summaries, kind: aggregate, cache: { kind: graph } }
+- { name: jarTypes, kind: source-tree, from: jar, emit: types, cache: { kind: graph, validFor: revision } }
+- { name: coordinates, kind: maven, emit: tree, cache: { kind: graph, validFor: revision } }
+- { name: ticketsByRevision, kind: remote, operation: listTickets, pushdown: [], cache: { kind: graph, validFor: revision } }
+- { name: summariesByRevision, kind: aggregate, cache: { kind: graph, validFor: revision } }
+- { name: ticketsByCommit, kind: remote, operation: listTickets, pushdown: [], cache: { kind: graph, validFor: commit } }
+""")
+    z1 = ids(realmaudit.audit_realm(kept), "Z1")
+    for honoured in ("projectFiles", "projectTypes", "projectModules", "ticketsKept", "summaries"):
+        check(not any(w.endswith(f" {honoured}") for w in z1), f"Z1 fired on {honoured}, whose graph cache the engine keeps: {z1}")
+    for refused in ("jarTypes", "coordinates", "ticketsByRevision", "summariesByRevision", "ticketsByCommit"):
+        check(any(w.endswith(f" {refused}") for w in z1), f"Z1 did not fire on {refused}, whose graph cache the engine refuses: {z1}")
+    shutil.rmtree(kept)
+
     # ── a directory of checkouts ─────────────────────────────────────────────
     shutil.copytree(good, os.path.join(tmp, "realm-good-fix-thing"))
     shutil.copytree(good, os.path.join(tmp, "realm-spike"))
