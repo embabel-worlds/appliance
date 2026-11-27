@@ -20,6 +20,7 @@ unit test can reach:
 | [`drive-tour-share.py`](drive-tour-share.py) | Somebody exporting a tour and somebody else importing it — including that it survives a restart |
 | [`check-guides.py`](check-guides.py) | `guides.json` names every guide in the tree, each under a name of its own; `--write` regenerates it |
 | [`check-secret-echo.py`](check-secret-echo.py) | Upgrade's pin line, a bug report and coding-agent wiring, each with a sentinel password and token: neither may appear in anything printed |
+| [`realm-yml-to-ts.py`](realm-yml-to-ts.py) | A YAML realm rewritten as a realm.ts realm, each declaration checked to map back to the file it came from; what cannot be carried is printed as `NOT CONVERTED`, which is the list of what realm.ts cannot yet say |
 | [`check-complete.py`](check-complete.py) · [`check-copy.py`](check-copy.py) · [`check-modules.py`](check-modules.py) | Documentation and packaging invariants |
 
 The appliance's own container images are **not** built here — they are built and
