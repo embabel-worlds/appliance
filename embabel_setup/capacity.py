@@ -21,7 +21,7 @@ import shutil
 from .colour import MIDDOT, dim, warn
 from .dockerlib import _docker, graph_engine
 from .memory import describe, plan, resolve
-from .settings import monitoring_enabled
+from .settings import compose_project, monitoring_enabled
 
 # Measured on a working worlds appliance on Neo4j, idle: worlds 2.47 GiB, neo4j 2.09 GiB,
 # console 7.5 MiB. Not measured on the Embabel engine yet, so the same bar stands there.
@@ -61,8 +61,41 @@ def docker_capacity() -> dict | None:
     return {
         "memory": info.get("MemTotal") or 0,
         "cpus": info.get("NCPU") or 0,
+        "held_elsewhere": memory_held_elsewhere(),
         **disk_free(info.get("DockerRootDir") or ""),
     }
+
+
+def memory_held_elsewhere() -> int:
+    """The memory limits of every RUNNING container outside this instance, summed.
+
+    WHY. The split is decided from Docker's total, as if this appliance had the VM to itself.
+    With a second instance (`--instance`), or anything else capped on the same daemon, each
+    was planned against the whole VM, and the limits added up to more memory than exists. A
+    limit is only a ceiling, so nothing refuses that; it surfaces under load, as the VM's own
+    OOM killer (`global_oom` in its kernel log, not the container's) taking whichever JVM is
+    largest — a busy appliance, mid-request, with nothing in its own log. Observed 2026-11-24:
+    six appliances on a 47 GiB Docker VM, each limited to 16 GiB.
+
+    A limit is what the kernel has promised a container, whoever owns it, so every capped
+    container counts. An UNCAPPED one cannot be counted — its limit is the whole VM — and is
+    left out rather than guessed at. This instance's own containers are left out too: they are
+    what is being sized.
+    """
+    run = _docker("ps", "-q", timeout=20)
+    if run is None or run.returncode != 0 or not run.stdout.split():
+        return 0
+    run = _docker("inspect", "--format",
+                  '{{index .Config.Labels "com.docker.compose.project"}}\t{{.HostConfig.Memory}}',
+                  *run.stdout.split(), timeout=30)
+    if run is None or run.returncode != 0:
+        return 0
+    held = 0
+    for line in run.stdout.splitlines():
+        project, _, limit = line.partition("\t")
+        if project.strip() != compose_project() and limit.strip().isdigit():
+            held += int(limit)
+    return held
 
 
 def disk_free(docker_root: str) -> dict:
@@ -109,7 +142,13 @@ def capacity_notes() -> list[tuple[bool, str]]:
         notes.append((False, f"Docker has {gb(memory)} of memory and {have['cpus']} CPU(s)."))
     if memory:
         # The limits `embabel up` will apply (#111), from the same probe.
-        notes.append((False, f"Memory limits: {describe(resolve(plan(memory, graph_engine(), monitoring_enabled())))}."))
+        held = have.get("held_elsewhere") or 0
+        if held:
+            notes.append((held >= memory,
+                f"{gb(held)} of Docker's {gb(memory)} is already promised to other running containers"
+                f" — another appliance instance, or anything else with a memory limit — so this one"
+                f" is sized from the {gb(max(memory - held, 0))} left."))
+        notes.append((False, f"Memory limits: {describe(resolve(plan(memory - held, graph_engine(), monitoring_enabled())))}."))
 
     if disk and disk < CORE_DISK_BYTES:
         notes.append((True,

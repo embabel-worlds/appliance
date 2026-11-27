@@ -177,6 +177,47 @@ check(set(dockerlib.MONITORING_SERVICES) <= set(deferred_on), f"monitoring on, b
 check("GRAFANA_MEM_LIMIT" in env_on, "monitoring on, but its memory is not capped")
 memory.memory_env.cache_clear()
 
+# A second instance on the same Docker VM: what other running containers are already promised
+# is not this one's to plan with. Planned against the whole VM, six appliances on 47 GiB were each
+# limited to 16 GiB, and the VM's own OOM killer took a busy JVM mid-request (2026-11-24).
+from embabel_setup import capacity  # noqa: E402
+
+big = 47 * GIB
+
+
+def crowded():
+    return {"memory": big, "cpus": 8, "disk": 0, "disk_where": "", "held_elsewhere": 40 * GIB}
+
+
+def alone():
+    return {"memory": big, "cpus": 8, "disk": 0, "disk_where": "", "held_elsewhere": 0}
+
+
+sized = {}
+for name, probe in (("alone", alone), ("crowded", crowded)):
+    memory.memory_env.cache_clear()
+    with patch("embabel_setup.capacity.docker_capacity", side_effect=probe), \
+            patch.object(memory, "chosen", return_value=None):
+        sized[name] = memory.parse_size(memory.memory_env("EMBABEL", False)["APP_MEM_LIMIT"])
+memory.memory_env.cache_clear()
+check(sized["crowded"] < sized["alone"],
+      f"memory promised to other containers did not shrink the plan: {sized}")
+check(sized["crowded"] <= 7 * GIB,
+      f"with 40 of 47 GiB promised elsewhere the app was still given {sized['crowded'] / GIB:.1f} GiB")
+
+# Only OTHER projects' CAPPED containers count: this instance's own are what is being sized,
+# and an uncapped container reports a limit of 0.
+ps = type("Run", (), {"returncode": 0, "stdout": "a\nb\nc\nd\n"})()
+inspected = type("Run", (), {"returncode": 0, "stdout": "\n".join([
+    "embabel-other\t17179869184",
+    "embabel-other\t8589934592",
+    f"{capacity.compose_project()}\t17179869184",
+    "elastic\t0",
+])})()
+with patch.object(capacity, "_docker", side_effect=[ps, inspected]):
+    held = capacity.memory_held_elsewhere()
+check(held == 24 * GIB, f"memory held elsewhere summed to {held / GIB:.1f} GiB, expected 24")
+
 # Every limit the plan computes is read by a compose file; one nobody reads is a
 # limit that silently does not apply.
 compose_text = "".join(open(os.path.join(ROOT, f)).read()

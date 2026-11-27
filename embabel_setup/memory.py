@@ -223,7 +223,9 @@ def memory_env(engine: str, monitoring: bool) -> dict[str, str]:
     have = docker_capacity()
     if not have or not have["memory"]:
         return {}
-    return resolve(plan(have["memory"], engine, monitoring))
+    # What other running containers are already promised is not this instance's to plan with:
+    # see capacity.memory_held_elsewhere for the overcommit that came from planning with it.
+    return resolve(plan(have["memory"] - have.get("held_elsewhere", 0), engine, monitoring))
 
 
 def describe(env: dict[str, str]) -> str:
