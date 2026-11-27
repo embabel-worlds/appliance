@@ -251,6 +251,41 @@ check(stepping({}, stable) is None, "a first boot has nothing to step back from,
 check(stepping(newer, {}) is None, "a build nothing on this machine dates was refused rather than let through")
 check(stepping(newer, stable, {"EMBABEL_ALLOW_DOWNGRADE": "1"}) is None, "`up --allow-downgrade` still refused")
 
+# ── whose labels ───────────────────────────────────────────────────────────────
+# A build with no labels of its own carries its BASE image's. The server's base is Ubuntu, so a
+# docker/build.sh image built minutes ago read as `26.04`, built the day Canonical built it, and
+# the guard refused it as older than the published build it was replacing.
+import json  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+from embabel_setup import versions  # noqa: E402
+
+
+def inspected(labels, created):
+    """image_facts over one `docker image inspect`, with these labels and Docker's own Created."""
+    found = {"Config": {"Labels": labels}, "Created": created, "Id": "sha256:" + created, "RepoDigests": []}
+    answer = SimpleNamespace(returncode=0, stdout=json.dumps(found))
+    with patch.object(versions, "_docker", return_value=answer):
+        return versions.image_facts("ghcr.io/embabel/assistant:latest")
+
+
+ubuntu = {"org.opencontainers.image.title": "ubuntu", "org.opencontainers.image.version": "26.04",
+          "org.opencontainers.image.created": "2026-10-25T00:00:00Z"}
+local = inspected(ubuntu, "2026-11-11T09:00:00.123456789Z")
+check(local["version"] is None and local["created"].startswith("2026-11-11"),
+      f"the base image's labels were read as this build's: {local}")
+published = inspected({"org.opencontainers.image.vendor": "Embabel", "org.opencontainers.image.version": "sha-02ccc18",
+                       "org.opencontainers.image.created": "2026-11-10T13:51:37.614Z"}, "2026-11-10T13:52:00Z")
+check(published["version"] == "sha-02ccc18" and published["created"] == "2026-11-10T13:51:37.614Z",
+      f"an Embabel build's own labels were not read: {published}")
+check(release.older(local, published) is False, "a local build made after the running one was called older")
+# The protection stays for what it was for: an Embabel build genuinely older than the running one.
+earlier = inspected({"org.opencontainers.image.vendor": "Embabel", "org.opencontainers.image.version": "sha-0aaaaaa",
+                     "org.opencontainers.image.created": "2026-11-01T00:00:00Z"}, "2026-11-01T00:00:30Z")
+check(release.older(earlier, published) is True, "an older Embabel build was let through")
+# And a local build older than what runs is still older, by Docker's clock.
+stale_local = inspected(ubuntu, "2026-11-02T00:00:00Z")
+check(release.older(stale_local, published) is True, "a local build from before the running one was let through")
+
 if failures:
     print("\n".join("FAIL " + f for f in failures))
     sys.exit(1)

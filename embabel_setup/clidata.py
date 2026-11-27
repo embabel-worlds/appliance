@@ -427,10 +427,11 @@ def _applied_live(args, model: str) -> bool:
     Neither had anything to do with the model itself, which `choose_embeddings` has always pulled
     on the HOST, outside the composition.
 
-    Nothing here is required. A refusal, an older server that does not take a role by name, an
-    appliance that is down, a runner that is not running: each leaves .env correct and the restart
-    still works, so every failure path simply returns False and lets the caller print what it was
-    going to print anyway.
+    Nothing here is required. An appliance that is down, mid-restart, or too old to have the
+    endpoint leaves .env correct and the restart still works, so those return False and let the
+    caller print what it was going to print anyway. A REFUSAL is the exception: the server heard
+    the model and said no, a restart will not change its answer, and `apply_now` raises with the
+    server's reason so the command exits non-zero rather than advising a restart.
     """
     base, auth = _sample_target(args)
     if not base:

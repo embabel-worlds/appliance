@@ -37,6 +37,11 @@ for model in LEGACY_HOSTED_MODELS:
     assert resolve_choice(model) == HOSTED_ROLE, \
         f"the hosted model name {model!r} must map to the role, not pass through"
 
+# A provider model the server reaches by its own name passes through as that name. Mapped to the
+# role, `use text-embedding-3-large` answered "unchanged" on the small model (2026-11-24).
+assert resolve_choice("text-embedding-3-large") == "text-embedding-3-large", \
+    "text-embedding-3-large must reach the server by name, not be rewritten to the hosted role"
+
 # `local` stays a NAME, deliberately: one local model, registered at startup, needing no key.
 assert resolve_choice("local") == LOCAL_EMBEDDING_MODEL, "`use local` must still pin the local model"
 assert LOCAL_EMBEDDING_MODEL.startswith("docker.io/ai/"), \
@@ -151,6 +156,48 @@ assert apply_with({}) is False
 import urllib.error  # noqa: E402
 assert apply_with(raises=urllib.error.URLError("down")) is False
 assert apply_with(raises=OSError("connection refused")) is False
+
+# A role resolving to the model ALREADY in use answers `"result": "unchanged"` — a string where a
+# change answers an object. Reaching into it as a map crashed the command with an AttributeError;
+# it is the server saying the choice is in effect, and status names the resolved model, not the role.
+assert apply_with({"result": "unchanged", "model": "text-embedding-3-small",
+                   "status": {"model": "text-embedding-3-small"}}) is True
+
+# A REFUSAL is not soft. The server heard the model and said no, a restart changes nothing, so the
+# server's reason is what the person sees, and the CLI exits non-zero on the SetupError.
+import io  # noqa: E402
+from embabel_setup.core import SetupError  # noqa: E402
+
+
+def refusal(code, payload):
+    body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+    return urllib.error.HTTPError("http://appliance/api/v1/embeddings", code, "refused", {}, io.BytesIO(body))
+
+
+for code, payload, reason in (
+    (400, {"error": "No embedding model named 'hosted' is available here"}, "No embedding model named 'hosted'"),
+    (409, {"error": "A reindex is already running"}, "A reindex is already running"),
+    (400, b"not json at all", "not json at all"),
+):
+    try:
+        apply_with(raises=refusal(code, payload))
+    except SetupError as refused:
+        assert reason in str(refused), f"the server's reason must reach the person, got {refused}"
+    else:
+        raise AssertionError(f"a {code} refusal must raise with the server's reason, not return quietly")
+
+# A 200 whose body is a bare string is an explanation, not a result: said, not dereferenced.
+try:
+    apply_with("model not available")
+except SetupError as refused:
+    assert "model not available" in str(refused)
+else:
+    raise AssertionError("a string body must be printed as the reason, not crash or pass")
+
+# Not every non-2xx is about the model: a server without the endpoint, or a token that moved on,
+# still falls back to the restart route.
+assert apply_with(raises=refusal(404, {})) is False
+assert apply_with(raises=refusal(503, b"")) is False
 
 # THE LOCAL CHOICE IS APPLIED LIVE, like the hosted one. It used to be refused outright, for two
 # reasons that were true and are not any more: the container was not told where Docker Model
